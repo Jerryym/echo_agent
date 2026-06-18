@@ -1,8 +1,8 @@
-# echo-agent v0.1.0 Model 模块设计
+# Model 模块 v0.1.0 设计文档
 
 ## 1. 模块定位
 
-Model 模块用于定义 Echo-Agent 内部公共领域模型（Domain Model）。其主要职责包括：
+Model 模块用于定义 echo-agent 内部公共领域模型（Domain Model）。其主要职责包括：
 
 * 定义系统内部统一数据结构
 * 提供数据校验能力

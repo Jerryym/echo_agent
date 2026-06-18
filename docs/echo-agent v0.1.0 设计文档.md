@@ -97,8 +97,8 @@ AgentException
 
 Core 模块是 echo-agent 的核心能力集合，由 Model、LLM、Graph、Agent、ReAct、Plan-Execute 和 Tool 七个模块组成。
 
-* [Model 模块](./models/Model%20模块%20v0.1.0%20设计文档.md)：负责定义 echo-agent 中统一的数据模型
-* LLM 模块：负责统一大模型访问能力，屏蔽不同模型供应商差异
+* [Model 模块](./v0.1.0/model模块设计文档.md)：负责定义 echo-agent 中统一的数据模型
+* [LLM 模块](v0.1.0/llm模块设计文档.md)：负责统一大模型访问能力，屏蔽不同模型供应商差异
 * Graph 模块：负责基于 LangGraph 的工作流抽象与封装，为智能体策略提供统一执行模型
 * Agent 模块：负责智能体构建、运行及交互能力
 * ReAct 模块：负责实现 ReAct（Reasoning + Acting）智能体实现
