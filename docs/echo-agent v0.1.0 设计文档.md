@@ -3,10 +3,7 @@
 ## 1. 项目概述
 
 echo-agent 是一个基于 LangChain 与 LangGraph 构建的智能体能力框架（Agent Runtime Framework），用于提供大模型调用、工具调用、工作流编排以及智能体策略实现等核心能力。
-
-echo-agent 不承担日志管理、配置管理、接口暴露等系统级能力，其定位为可独立运行的智能体运行时库（Agent Runtime Library）。
-
-既可以作为独立 Python 库直接使用，也可以集成到 AgentBackend 等上层系统中作为智能体执行引擎。
+echo-agent 不承担日志管理、配置管理、接口暴露等系统级能力，其定位为可独立运行的智能体运行时库（Agent Runtime Library）。既可以作为独立 Python 库直接使用，也可以集成到其他系统中作为智能体执行引擎。
 
 ---
 
@@ -18,8 +15,6 @@ echo-agent 不承担日志管理、配置管理、接口暴露等系统级能力
 * 提供统一的工具调用能力
 * 提供基于 LangGraph 的工作流执行能力
 * 提供标准 Agent 策略实现
-* 支持独立运行
-* 支持作为 AgentBackend 的底层运行时
 
 ### 2.2 非目标
 
@@ -67,6 +62,7 @@ Agent
 
 其中：
 
+* Model：定义 echo-agent 中统一数据模型
 * Agent: 负责统一智能体创建和交互入口
 * Graph：负责工作流组织与执行
 * LLM：提供模型推理能力
@@ -85,11 +81,13 @@ Agent
 
 定义统一异常体系，包括：
 
+```python
 EchoAgentException
 LLMException
 ToolException
 GraphException
 AgentException
+```
 
 用于统一错误处理机制和异常，便于上层系统进行异常捕获与处理。
 
@@ -99,7 +97,7 @@ AgentException
 
 Core 模块是 echo-agent 的核心能力集合，由 Model、LLM、Graph、Agent、ReAct、Plan-Execute 和 Tool 七个模块组成。
 
-* Model 模块：负责定义 echo-agent 中统一的数据模型（Data Model）
+* [Model 模块](./models/Model%20模块%20v0.1.0%20设计文档.md)：负责定义 echo-agent 中统一的数据模型
 * LLM 模块：负责统一大模型访问能力，屏蔽不同模型供应商差异
 * Graph 模块：负责基于 LangGraph 的工作流抽象与封装，为智能体策略提供统一执行模型
 * Agent 模块：负责智能体构建、运行及交互能力
