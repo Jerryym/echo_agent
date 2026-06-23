@@ -8,8 +8,8 @@ LLM 模块用于统一管理与调用大语言模型能力，是 echo-agent 与 
 
 * 管理模型配置
 * 初始化 LangChain ChatModel
-* 在 Echo IR 与 LangChain Message 之间进行双向转换
-* 提供统一模型调用入口（invoke）
+* 在 echo-agent Message 与 LangChain Message 之间进行双向转换
+* 提供统一模型调用入口（invoke / stream）
 
 LLM 模块不负责：
 
@@ -94,6 +94,9 @@ LLMClient 是 LLM 模块的核心组件，负责模型初始化、消息转换�
   * 转换 echo-agent Message → LangChain Message
   * 调用模型
   * 转换 LangChain Message → echo-agent Message
+* 输出方式
+  * 非流式（invoke）：一次性返回完整结果
+  * 流式（stream）：逐 chunk 返回增量结果
 * 调用流程
 
     ```text

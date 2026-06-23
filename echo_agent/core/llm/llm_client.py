@@ -3,15 +3,16 @@ from typing import Any, Dict, List, Optional
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
-from echo_agent.core.llm import (
-    LLMConfig,
+from echo_agent.core.model import UserInput
+
+from .exception import (
     LLMException,
     LLMInitializeError,
     LLMInvokeError,
     LLMResponseDecodeError,
-    LLMResult,
 )
-from echo_agent.core.model import UserInput
+from .llm_config import LLMConfig
+from .llm_result import LLMResult
 
 
 class LLMClient:
@@ -64,6 +65,36 @@ class LLMClient:
                 detail=str(e)
             )
 
+    def stream(self, prompt: str, user_input: UserInput, history: Optional[List[Dict[Any, Any]]] = None,  tool_list: Optional[List[Dict[str, str]]] = None):
+        """
+        流式调用模型
+
+        参数:
+            prompt: 提示语
+            user_input: 用户输入
+            history: 历史记录
+            tool_list: 工具列表
+        """
+        try:
+            # 构建输入消息
+            messages = self._build_messages(
+                prompt=prompt,
+                user_input=user_input,
+                history=history or [],
+            )
+            # 添加工具列表
+            if tool_list is not None and len(tool_list) > 0:
+                self._model.bind_tools(tool_list)
+            # 调用模型
+            for chunk in self._model.stream(messages):
+                yield self._parse_response(chunk)
+        except LLMException:
+            raise
+        except Exception as e:
+            raise LLMInvokeError(
+                message="LLM stream invoke failed",
+                detail=str(e)
+            )
 
     def _initialize_model(self):
         """初始化模型"""

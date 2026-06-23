@@ -1,5 +1,4 @@
-from .core import (
-    Attachment,
+from .llm import (
     LLMClient,
     LLMConfig,
     LLMException,
@@ -7,10 +6,8 @@ from .core import (
     LLMInvokeError,
     LLMResponseDecodeError,
     LLMResult,
-    Message,
-    Role,
-    UserInput,
 )
+from .model import Attachment, Message, Role, UserInput
 
 __all__ = [
     "LLMClient",
