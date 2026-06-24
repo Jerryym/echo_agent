@@ -99,7 +99,7 @@ Core 模块是 echo-agent 的核心能力集合，由 Model、LLM、Graph、Agen
 
 * [Model 模块](./v0.1.0/model模块设计文档.md)：负责定义 echo-agent 中统一的数据模型
 * [LLM 模块](v0.1.0/llm模块设计文档.md)：负责统一大模型访问能力，屏蔽不同模型供应商差异
-* Graph 模块：负责基于 LangGraph 的工作流抽象与封装，为智能体策略提供统一执行模型
+* [Graph 模块](v0.1.0/graph模块设计文档.md)：负责基于 LangGraph 的抽象与封装，为智能体构建提供统一的数据结构
 * Agent 模块：负责智能体构建、运行及交互能力
 * ReAct 模块：负责实现 ReAct（Reasoning + Acting）智能体实现
 * Plan-Execute 模块：负责实现 Plan-Execute 智能体策略
