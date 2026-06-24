@@ -7,7 +7,6 @@ from echo_agent.core.llm import LLMClient, LLMConfig
 from echo_agent.core.model import UserInput
 
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
 def build_config():
     return LLMConfig(
         base_url=os.getenv("BASE_URL"),
@@ -88,6 +87,7 @@ def test_llm_stream():
 
 
 if __name__ == "__main__":
+    load_dotenv(Path(__file__).resolve().parent / ".env")
     mode = input("Choose mode (invoke=0 / stream=1): ").strip()
     if mode == "1":
         test_llm_stream()
