@@ -95,7 +95,7 @@ AgentException
 
 ## 5. Core 模块
 
-Core 模块是 echo-agent 的核心能力集合，由 Model、LLM、Graph、Agent、Strategy 和 Tool 七个模块组成。
+Core 模块是 echo-agent 的核心能力集合，由 Model、LLM、Graph、Agent、Strategy 和 Tool 六个模块组成。
 
 * [Model 模块](./v0.1.0/model模块设计文档.md)：负责定义 echo-agent 中统一的数据模型
 * [LLM 模块](v0.1.0/llm模块设计文档.md)：负责统一大模型访问能力，屏蔽不同模型供应商差异
