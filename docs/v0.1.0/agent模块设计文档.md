@@ -58,11 +58,7 @@ agent
 ├── agent.py
 ├── config.py
 ├── context.py
-├── builder.py
-│
-└── runtime
-    ├── agent_runner.py
-    └── adapter.py
+└── builder.py
 ```
 
 ---
@@ -129,10 +125,10 @@ invoke start → context create → graph execution → destroy
 
 ## 6. Agent 实体
 
-Agent 是 Echo-Agent 的运行实体，用于封装 CompiledGraph 并提供统一执行入口。Agent 负责：
+Agent 是 Echo-Agent 的运行实体，用于封装 Graph 并提供统一执行入口。Agent 负责：
 
 * 持有 AgentConfig
-* 持有 CompiledGraph
+* 持有 Graph
 * 提供统一执行接口
 * 注入运行上下文
 * 转发执行请求到 Graph Runtime
@@ -143,13 +139,13 @@ class Agent:
     def __init__(
         self,
         config: AgentConfig,
-        graph: CompiledGraph
+        graph: Graph
     ):
         self.config = config
         self.graph = graph
 
     # invoke
-    # Message → Graph Input → CompiledGraph.invoke → Output → Message
+    # Message → Graph Input → Graph.invoke → Output → Message
     async def invoke(
         self,
         message: Message,
@@ -164,24 +160,5 @@ class Agent:
         message: Message,
         context: AgentContext | None = None
     ):
-        ...
-```
-
----
-
-## 7. AgentBuilder
-
-AgentBuilder 用于构建 Agent 实例，屏蔽 Graph compile 与 runtime binding 细节。构建流程：**Graph DSL → compile → CompiledGraph → Agent**
-
-```python
-class AgentBuilder:
-
-    def with_config(self, config: AgentConfig):
-        ...
-
-    def with_graph(self, graph: Graph):
-        ...
-
-    def build(self) -> Agent:
         ...
 ```
