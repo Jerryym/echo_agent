@@ -1,8 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from llm import LLMConfig
 from strategy import StrategyType
-
 
 
 class AgentConfig(BaseModel):
@@ -26,5 +25,5 @@ class AgentConfig(BaseModel):
 
     strategy: StrategyType = StrategyType.NONE
 
-    kb_list: list[str] = []
-    skill_list: list[str] = []
+    kb_list: list[str] = Field(default_factory=list)
+    skill_list: list[str] = Field(default_factory=list)
