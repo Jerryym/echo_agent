@@ -95,12 +95,13 @@ AgentException
 
 ## 5. Core 模块
 
-Core 模块是 echo-agent 的核心能力集合，由 Model、LLM、Graph、Agent、Strategy 和 Tool 六个模块组成。
+Core 模块是 echo-agent 的核心能力集合，由 Model、LLM、Graph、Agent、Runtime、Strategy 和 Tool 七个模块组成。
 
 * [Model 模块](./v0.1.0/model模块设计文档.md)：负责定义 echo-agent 中统一的数据模型
 * [LLM 模块](v0.1.0/llm模块设计文档.md)：负责统一大模型访问能力，屏蔽不同模型供应商差异
 * [Graph 模块](v0.1.0/graph模块设计文档.md)：负责基于 LangGraph 的抽象与封装，为智能体构建提供统一的数据结构
 * [Agent 模块](v0.1.0/agent模块设计文档.md)：负责智能体构建、运行及交互能力
+* Runtime 模块
 * Strategy 模块：负责实现智能体策略，目前支持 ReAct 和 Plan-Execute 两种策略
 * Tool 模块：负责统一工具定义、注册、路由及执行能力
 
@@ -115,4 +116,5 @@ v0.1.0 聚焦于构建 echo-agent 的最小可用智能体运行时（Agent Runt
 * Tool 模块：提供工具定义、工具注册、工具路由以及工具执行能力，支持智能体调用外部工具完成任务。
 * Graph 模块：基于 LangGraph 抽象节点（Node）、子图（SubGraph）以及状态（State）等核心概念，为智能体策略提供统一运行时基础。
 * Agent 模块：提供智能体统一抽象与交互入口，支持智能体构建、运行与调用。
+* Runtime 模块
 * Strategy 模块：负责实现智能体策略，目前支持 ReAct 和 Plan-Execute 两种策略

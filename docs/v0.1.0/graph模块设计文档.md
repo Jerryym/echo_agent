@@ -4,13 +4,15 @@
 
 Graph 模块用于对 LangGraph 进行统一抽象与封装，为 Agent 模块和 Strategy 模块提供图结构相关基础数据模型与节点抽象能力。其主要职责包括：
 
-* 定义 Graph 领域基础模型
-* 定义 Graph 节点抽象规范
-* 降低上层模块对 LangGraph 的直接依赖
-* 为 LangGraph 适配层提供统一数据结构
+* 定义 Graph 结构模型（Node / Edge / Schema）
+* 提供 Node 与 SubGraph 抽象规范
+* 对 LangGraph StateGraph 进行轻量封装
+* 为 Agent 层提供可编排的图定义对象
 
 Graph 模块不负责：
 
+* Graph 编译（compile）
+* Graph 运行（invoke / execution）
 * Agent 生命周期管理
 * Agent 运行时管理
 * 策略实现与编排
@@ -168,4 +170,48 @@ SubGraph 用于表示可复用的子图结构。其职责是：**组织多个 No
 ```python
 class SubGraph(ABC):
     pass
+```
+
+---
+
+## 7. Graph
+
+Graph 是 LangGraph StateGraph 的结构化封装层。其职责如下：
+
+* Node 注册
+* Edge 注册（结构定义）
+* SubGraph 组织
+* Schema 绑定
+* 提供构建 StateGraph 的能力
+
+```python
+class Graph:
+    """
+    LangGraph StateGraph wrapper (structural layer)
+    """
+
+    def __init__(
+        self,
+        state_schema: type[BaseState],
+        context_schema: type[BaseContext],
+        input_schema: type[BaseInput],
+        output_schema: type[BaseOutput],
+    ):
+        self._state_schema = state_schema
+        self._context_schema = context_schema
+        self._input_schema = input_schema
+        self._output_schema = output_schema
+
+        self._nodes: dict[str, Node] = {}
+        self._edges: list[tuple[str, str]] = []
+        self._subgraphs: list[SubGraph] = []
+
+    def add_node(self, node: Node) -> None:
+        self._nodes[node.name] = node
+
+    def add_edge(self, from_node: str, to_node: str) -> None:
+        self._edges.append((from_node, to_node))
+
+    def add_subgraph(self, subgraph: SubGraph) -> None:
+        self._subgraphs.append(subgraph)
 ```
