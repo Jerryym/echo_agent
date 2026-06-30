@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
-from llm import LLMConfig
-from strategy import StrategyType
+from ..llm import LLMConfig
+from ..strategy import StrategyType
 
 
 class AgentConfig(BaseModel):

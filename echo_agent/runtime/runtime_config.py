@@ -1,9 +1,11 @@
+from dataclasses import dataclass
+
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.store.base import BaseStore
-from pydantic import BaseModel
 
 
-class RuntimeConfig(BaseModel):
+@dataclass
+class RuntimeConfig:
     """
     Runtime 配置
 

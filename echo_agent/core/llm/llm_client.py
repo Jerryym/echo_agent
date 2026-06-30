@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
-from echo_agent.core.model import UserInput
+from ..model import UserInput
 
 from .exception import (
     LLMException,

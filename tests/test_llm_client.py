@@ -3,8 +3,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from echo_agent.core.llm import LLMClient, LLMConfig
-from echo_agent.core.model import UserInput
+from echo_agent import LLMClient, LLMConfig, UserInput
 
 
 def build_config():

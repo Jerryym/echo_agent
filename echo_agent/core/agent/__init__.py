@@ -1,6 +1,8 @@
-from .agentconfig import AgentConfig
+from .agent_config import AgentConfig
+from .agent import Agent
 
 
 __all__ = [
     "AgentConfig",
+    "Agent",
 ]

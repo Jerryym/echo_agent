@@ -1,11 +1,16 @@
 from pydantic import BaseModel
 
+from ..model import UserInput
+
 
 class BaseInput(BaseModel):
     """
     Graph 输入模型
+
+    参数:
+        input: UserInput 用户输入
     """
-    pass
+    input: UserInput
 
 
 class BaseOutput(BaseModel):

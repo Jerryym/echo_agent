@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from schema import BaseContext, BaseState
+from ..schema import BaseContext, BaseState
 
 
 class Node(ABC):

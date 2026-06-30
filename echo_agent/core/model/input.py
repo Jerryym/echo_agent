@@ -23,5 +23,5 @@ class UserInput(BaseModel):
         text: 用户输入文本
         attachments: 多模态附件
     """
-    text: Optional[str] = None
+    text: Optional[str | dict] = None
     attachments: list[Attachment] = Field(default_factory=list)
