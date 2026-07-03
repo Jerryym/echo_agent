@@ -11,7 +11,7 @@ from echo_agent import Agent, BaseState, Graph, LLMConfig, Node
 from echo_agent.core.agent import AgentConfig
 from echo_agent.core.graph import BaseInput, END_NODE, START_NODE
 from echo_agent.core.model import UserInput
-from echo_agent.runtime import RuntimeConfig
+from echo_agent.core.runtime import RuntimeConfig
 
 
 def build_config():

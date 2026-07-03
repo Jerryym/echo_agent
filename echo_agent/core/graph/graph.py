@@ -1,7 +1,7 @@
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from ...runtime import RuntimeConfig
+from ..runtime import RuntimeConfig
 from .node import Node, SubGraph
 from .schema import BaseContext, BaseInput, BaseOutput, BaseState
 

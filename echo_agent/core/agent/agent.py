@@ -3,7 +3,7 @@ from typing import Iterator
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph.state import StateSnapshot
 
-from ...runtime import RuntimeConfig
+from ..runtime import RuntimeConfig
 from ..graph import BaseInput, Graph
 from ..model import UserInput
 from .agent_config import AgentConfig
