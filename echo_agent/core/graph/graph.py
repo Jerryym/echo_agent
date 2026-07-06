@@ -42,12 +42,14 @@ class Graph:
         self._subgraphs.append(subgraph)
 
     def compile(self, runtime_config: RuntimeConfig) -> CompiledStateGraph:
-        builder = StateGraph(
-            state_schema=self._state_schema,
-            context_schema=self._context_schema,
-            input_schema=self._input_schema,
-            output_schema=self._output_schema,
-        )
+        kwargs: dict = {"state_schema": self._state_schema}
+        if self._context_schema is not None:
+            kwargs["context_schema"] = self._context_schema
+        if self._input_schema is not None:
+            kwargs["input_schema"] = self._input_schema
+        if self._output_schema is not None:
+            kwargs["output_schema"] = self._output_schema
+        builder = StateGraph(**kwargs)
 
          # 注册节点
         for node in self._nodes.values():
@@ -60,4 +62,4 @@ class Graph:
             builder.add_edge(source, target)
 
         # 编译
-        return builder.compile(checkpointer=runtime_config.checkpointer)
+        return builder.compile(checkpointer=runtime_config.checkpointer, store=runtime_config.store)

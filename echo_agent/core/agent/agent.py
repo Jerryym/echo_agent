@@ -1,7 +1,4 @@
-from typing import Iterator
-
 from langchain_core.runnables.config import RunnableConfig
-from langgraph.graph.state import StateSnapshot
 
 from ..runtime import RuntimeConfig
 from ..graph import BaseInput, Graph
@@ -25,46 +22,78 @@ class Agent:
         self._graph = graph
         self._compiled_graph = self._graph.compile(runtime_config)
 
-    def invoke(self, input: UserInput, session_id: str):
+    def invoke(self, session_id: str, input: UserInput):
         """
         调用 Agent 执行
 
         Args:
-            input: UserInput 用户输入
             session_id: 会话 ID
+            input: UserInput 用户输入
         """
-        input = self._build_input(input)
-        config = RunnableConfig(
-            configurable={
-                "thread_id": session_id,
-            }
-        )
-        return self._compiled_graph.invoke(input, config)
+        runnable_config = self._build_runnable_config(session_id)
+        return self._compiled_graph.invoke(input, runnable_config)
 
-    def stream(self, input: UserInput, session_id: str):
+    def stream(self, session_id: str, input: UserInput, version: str = "v3"):
         """
         流式调用 Agent 执行
 
         Args:
+            session_id: 会话 ID
             input: UserInput 用户输入
+            version: 版本
+        """
+        runnable_config = self._build_runnable_config(session_id)
+        return self._compiled_graph.stream_events(input, runnable_config, version=version)
+    
+    def get_state(self, session_id: str, checkpoint_id: str | None = None):
+        """
+        [Debug] 获取当前状态
+
+        Args:
+            session_id: 会话 ID
+            checkpoint_id: 检查点 ID
+        """
+        configurable = {
+            "thread_id": session_id,
+        }
+
+        if checkpoint_id:
+            configurable["checkpoint_id"] = checkpoint_id
+
+        runnable_config = RunnableConfig(configurable=configurable)
+        return self._compiled_graph.get_state(runnable_config)
+
+    def get_state_history(self, session_id: str):
+        """
+        [Debug] 获取状态历史
+
+        Args:
             session_id: 会话 ID
         """
-        input = self._build_input(input)
-        config = RunnableConfig(
+        configurable = {
+            "thread_id": session_id,
+        }
+        runnable_config = RunnableConfig(configurable=configurable)
+        return self._compiled_graph.get_state_history(runnable_config)
+
+    # def _build_input(self, input: UserInput) -> BaseInput:
+    #     """
+    #     构建输入
+
+    #     Args:
+    #         input: UserInput 用户输入
+    #     """
+    #     return BaseInput(input=input)
+
+    def _build_runnable_config(self, session_id: str) -> RunnableConfig:
+        """
+        构建 RunnableConfig
+
+        Args:
+            session_id: 会话 ID
+        """
+        return RunnableConfig(
             configurable={
                 "thread_id": session_id,
             }
         )
-        return self._compiled_graph.stream_events(input, config, version="v3")
-
-    def get_state_history(self, session_id: str) -> Iterator[StateSnapshot]:
-        return self._compiled_graph.get_state_history(RunnableConfig(configurable={"thread_id": session_id}))
-
-    def _build_input(self, input: UserInput) -> BaseInput:
-        """
-        构建输入
-
-        Args:
-            input: UserInput 用户输入
-        """
-        return BaseInput(input=input)

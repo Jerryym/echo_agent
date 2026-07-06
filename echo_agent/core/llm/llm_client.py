@@ -149,15 +149,31 @@ class LLMClient:
         解析 LLM 响应
         """
         try:
+            content = self._normalize_content(response.content)
             return LLMResult(
-                content=getattr(response, "content", ""),
-                tool_calls=getattr(response, "tool_calls", None),
-                raw=response,
-                response_metadata=getattr(response, "response_metadata", None),
-            )
-
+                    content=content,
+                    tool_calls=getattr(response, "tool_calls", None),
+                    raw=response,
+                    response_metadata=getattr(response, "response_metadata", None),
+                )
         except Exception as e:
             raise LLMResponseDecodeError(
                 message="parse llm response failed",
                 detail=str(e)
             )
+
+    def _normalize_content(self, content: Any):
+        """
+        规范化内容
+        """
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+            return "".join(parts)
+        return str(content) if content is not None else ""
