@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import Field
 
-from echo_agent import Agent, BaseInput, BaseState, Graph, LLMClient, LLMConfig, Node
+from echo_agent import Agent, BaseState, Graph, LLMClient, LLMConfig, Node
 from echo_agent.core.agent import AgentConfig
 from echo_agent.core.graph import START_NODE, END_NODE
 from echo_agent.core.model import UserInput
@@ -28,7 +28,6 @@ def build_config():
 
 # 状态
 class State(BaseState):
-    user_input: UserInput
     response: str = ""
     messages: Annotated[list[dict[str, Any]], add] = Field(default_factory=list)
 
@@ -40,16 +39,16 @@ class LLMInvokeNode(Node):
         self._llm_client = llm_client
         self._system_prompt = system_prompt
 
-    def run(self, state: State, context=None):
+    def run(self, state: State):
         result = self._llm_client.invoke(
             prompt=self._system_prompt,
-            user_input=UserInput(text=state.user_input),
+            user_input=state.input,
             history=state.messages,
         )
         return {
             "response": result.content,
             "messages": [
-                {"role": "user", "content": state.user_input},
+                {"role": "user", "content": state.input},
                 {"role": "assistant", "content": result.content},
             ],
         }
@@ -57,7 +56,7 @@ class LLMInvokeNode(Node):
 
 def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
     llm_client = LLMClient(config)
-    graph = Graph(state_schema=State, input_schema=Input)
+    graph = Graph(state_schema=State)
     llm_node = LLMInvokeNode("llm_node", llm_client, system_prompt)
     graph.add_node(llm_node)
     graph.add_edge(START_NODE, llm_node.name)
@@ -71,10 +70,6 @@ def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)
-
-
-def build_user_input(text: str) -> UserInput:
-    return UserInput(text={"user_input": text})
 
 
 def extract_stream_text(event: dict) -> str:
@@ -106,7 +101,7 @@ def chat_invoke(agent: Agent, session_id: str) -> None:
         if user_text.lower() in ["exit", "quit"]:
             break
 
-        result = agent.invoke(session_id, build_user_input(user_text))
+        result = agent.invoke(session_id, UserInput(text=user_text))
         print("\nAssistant:")
         print(result.get("response", result))
         print("\n------------------------------\n")
@@ -123,7 +118,7 @@ def chat_stream(agent: Agent, session_id: str) -> None:
             break
 
         print("\nAssistant: ", end="", flush=True)
-        for event in agent.stream(session_id, build_user_input(user_text)):
+        for event in agent.stream(session_id, UserInput(text=user_text)):
             text = extract_stream_text(event)
             if text:
                 print(text, end="", flush=True)

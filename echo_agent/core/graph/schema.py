@@ -23,8 +23,11 @@ class BaseOutput(BaseModel):
 class BaseState(BaseModel):
     """
     Graph 状态模型
+
+    参数:
+        input: UserInput 用户输入
     """
-    pass
+    input: UserInput
 
 
 class BaseContext(BaseModel):

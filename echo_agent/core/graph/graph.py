@@ -32,6 +32,22 @@ class Graph:
         self._edges: list[tuple[str, str]] = []
         self._subgraphs: list[SubGraph] = []
 
+    @property
+    def state_schema(self):
+        return self._state_schema
+
+    @property
+    def context_schema(self):
+        return self._context_schema
+
+    @property
+    def input_schema(self):
+        return self._input_schema
+
+    @property
+    def output_schema(self):
+        return self._output_schema
+
     def add_node(self, node: Node) -> None:
         self._nodes[node.name] = node
 

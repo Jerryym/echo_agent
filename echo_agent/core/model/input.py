@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,5 +23,5 @@ class UserInput(BaseModel):
         text: 用户输入文本
         attachments: 多模态附件
     """
-    text: Optional[str | dict] = None
+    text: str = None
     attachments: list[Attachment] = Field(default_factory=list)
