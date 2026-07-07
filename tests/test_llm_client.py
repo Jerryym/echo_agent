@@ -1,29 +1,18 @@
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from langchain_core.messages import AIMessage, BaseMessage
 
-from echo_agent import LLMClient, LLMConfig, UserInput
+from echo_agent import LLMClient, UserInput
 
-
-def build_config():
-    return LLMConfig(
-        base_url=os.getenv("BASE_URL"),
-        api_key=os.getenv("API_KEY"),
-        model_name=os.getenv("MODEL_NAME"),
-        model_provider=os.getenv("MODEL_PROVIDER", "openai"),
-        temperature=float(os.getenv("TEMPERATURE", 0.2)),
-        max_tokens=int(os.getenv("MAX_TOKENS", 512)),
-        timeout=int(os.getenv("TIMEOUT", 60)),
-        max_retries=int(os.getenv("MAX_RETRIES", 2)),
-    )
+from env_config import build_config
 
 
 def test_llm_invoke():
     config = build_config()
     llm = LLMClient(config)
 
-    history = []
+    history: list[BaseMessage] = []
 
     print("\n==============================")
     print("TEST: LLM INVOKE")
@@ -43,8 +32,8 @@ def test_llm_invoke():
         print("\nAssistant:")
         print(result.content)
 
-        history.append({"role": "user", "content": user_text})
-        history.append({"role": "assistant", "content": result.content})
+        history.append(UserInput(text=user_text).to_human_message())
+        history.append(AIMessage(content=result.content))
 
         print("\n------------------------------\n")
 
@@ -53,7 +42,7 @@ def test_llm_stream():
     config = build_config()
     llm = LLMClient(config)
 
-    history = []
+    history: list[BaseMessage] = []
 
     print("\n==============================")
     print("TEST: LLM STREAM")
@@ -79,8 +68,8 @@ def test_llm_stream():
 
         print("\n")
 
-        history.append({"role": "user", "content": user_text})
-        history.append({"role": "assistant", "content": full_text})
+        history.append(UserInput(text=user_text).to_human_message())
+        history.append(AIMessage(content=full_text))
 
         print("\n------------------------------\n")
 

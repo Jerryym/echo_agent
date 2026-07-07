@@ -44,7 +44,7 @@ class Agent:
         runnable_config = self._build_runnable_config(session_id)
         return self._compiled_graph.invoke(graph_input, runnable_config)
 
-    def stream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v3"):
+    def stream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
         """
         流式调用 Agent 执行
 
@@ -65,7 +65,7 @@ class Agent:
 
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
-        return self._compiled_graph.stream_events(graph_input, runnable_config, version=version)
+        return self._compiled_graph.stream(graph_input, runnable_config, stream_mode="messages", version=version)
     
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
         """

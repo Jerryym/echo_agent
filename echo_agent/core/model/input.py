@@ -1,5 +1,6 @@
 from typing import Literal
 
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
 
@@ -25,3 +26,7 @@ class UserInput(BaseModel):
     """
     text: str = None
     attachments: list[Attachment] = Field(default_factory=list)
+
+    # TODO: 未来支持多模态附件
+    def to_human_message(self) -> HumanMessage:
+        return HumanMessage(content=self.text)

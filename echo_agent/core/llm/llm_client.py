@@ -1,7 +1,7 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 
 from ..model import UserInput
 
@@ -33,7 +33,7 @@ class LLMClient:
                 detail=str(e)
             )
 
-    def invoke(self, prompt: str, user_input: UserInput, history: Optional[List[Dict[Any, Any]]] = None,  tool_list: Optional[List[Dict[str, str]]] = None):
+    def invoke(self, prompt: str, user_input: UserInput, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[List[Dict[str, Any]]] = None):    
         """
         调用模型
 
@@ -44,28 +44,26 @@ class LLMClient:
             tool_list: 工具列表
         """
         try:
-            # 构建输入消息
+            # 构建 Messages
             messages = self._build_messages(
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
             )
-            # 添加工具列表
-            if tool_list is not None and len(tool_list) > 0:
-                self._model.bind_tools(tool_list)
+            # 绑定工具
+            model = self._model
+            if tool_list:
+                model = model.bind_tools(tool_list)
             # 调用模型
-            response = self._model.invoke(messages)
+            response = model.invoke(messages)
             # 解析响应
             return self._parse_response(response)
         except LLMException:
             raise
         except Exception as e:
-            raise LLMInvokeError(
-                message="LLM invoke failed",
-                detail=str(e)
-            )
+            raise LLMInvokeError(message="LLM invoke failed", detail=str(e))
 
-    def stream(self, prompt: str, user_input: UserInput, history: Optional[List[Dict[Any, Any]]] = None,  tool_list: Optional[List[Dict[str, str]]] = None):
+    def stream(self, prompt: str, user_input: UserInput, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[List[Dict[str, Any]]] = None):
         """
         流式调用模型
 
@@ -76,17 +74,18 @@ class LLMClient:
             tool_list: 工具列表
         """
         try:
-            # 构建输入消息
+            # 构建 Messages
             messages = self._build_messages(
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
             )
-            # 添加工具列表
-            if tool_list is not None and len(tool_list) > 0:
-                self._model.bind_tools(tool_list)
-            # 调用模型
-            for chunk in self._model.stream(messages):
+            # 绑定工具
+            model = self._model
+            if tool_list:
+                model = model.bind_tools(tool_list)
+            # 解析响应
+            for chunk in model.stream(messages):
                 yield self._parse_response(chunk)
         except LLMException:
             raise
@@ -98,51 +97,43 @@ class LLMClient:
 
     def _initialize_model(self):
         """初始化模型"""
-        model = init_chat_model(
-            model=self._config.model_name,# 模型名称
-            model_provider=self._config.model_provider,# 模型提供方
-            api_key=self._config.api_key,# 模型API KEY
-            base_url=self._config.base_url,# 模型地址
-            temperature=self._config.temperature,# 模型温度
-            max_tokens=self._config.max_tokens,# 最大Tokens
-            timeout=self._config.timeout,# 超时时间
-            max_retries=self._config.max_retries,# 最大重试次数
-        )
+        if self._config.model_provider == "openai":
+            model_kwargs: dict[str, Any] = {
+                "model": self._config.model_name,
+                "api_key": self._config.api_key,
+                "base_url": self._config.base_url,
+                "temperature": self._config.temperature,
+                "max_tokens": self._config.max_tokens,
+                "timeout": self._config.timeout,
+                "max_retries": self._config.max_retries,
+                "use_responses_api": self._config.use_responses_api,
+            }
+            if self._config.output_version:
+                model_kwargs["output_version"] = self._config.output_version
+            if self._config.extra_body:
+                model_kwargs["extra_body"] = self._config.extra_body
+            # 初始化模型
+            model = ChatOpenAI(**model_kwargs)
+            # 绑定内置工具
+            if self._config.builtin_tools:
+                model = model.bind(tools=self._config.builtin_tools)
+        else:
+            raise LLMInitializeError(
+                message="model provider not supported",
+                detail=f"model provider {self._config.model_provider} not supported"
+            )
         return model
 
-    def _build_messages(self, prompt: str, user_input: UserInput, history: List[Dict[Any, Any]]):
+    def _build_messages(self, prompt: str, user_input: UserInput, history: Sequence[BaseMessage]):
         """
         构建 LangChain Messages
         """
         messages: List[BaseMessage] = []
 
-        # system prompt
         messages.append(SystemMessage(content=prompt))
-        # history
-        messages.extend(self._build_history(history))
-        # user input
-        messages.append(HumanMessage(content=user_input.text))
+        messages.extend(history)
+        messages.append(user_input.to_human_message())
         return messages
-
-    def _build_history(self, history: List[Dict[Any, Any]]):
-        """
-        构建历史消息
-        """
-        if not history:
-            return []
-
-        result: List[BaseMessage] = []
-        for msg in history:
-            role = msg.get("role")
-            content = msg.get("content")
-            if role == "user":
-                result.append(HumanMessage(content=content))
-            elif role == "assistant":
-                result.append(AIMessage(content=content))
-            elif role == "system":
-                result.append(SystemMessage(content=content))
-
-        return result
 
     def _parse_response(self, response: AIMessage):
         """

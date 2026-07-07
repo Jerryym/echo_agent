@@ -1,11 +1,8 @@
-import os
-from operator import add
 from pathlib import Path
-from typing import Annotated, Any
 
 from dotenv import load_dotenv
+from langchain_core.messages import AIMessage, AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
-from pydantic import Field
 
 from echo_agent import Agent, BaseState, Graph, LLMClient, LLMConfig, Node
 from echo_agent.core.agent import AgentConfig
@@ -13,23 +10,11 @@ from echo_agent.core.graph import START_NODE, END_NODE
 from echo_agent.core.model import UserInput
 from echo_agent.core.runtime import RuntimeConfig
 
-
-def build_config():
-    return LLMConfig(
-        base_url=os.getenv("BASE_URL"),
-        api_key=os.getenv("API_KEY"),
-        model_name=os.getenv("MODEL_NAME"),
-        model_provider=os.getenv("MODEL_PROVIDER", "openai"),
-        temperature=float(os.getenv("TEMPERATURE", 0.2)),
-        max_tokens=int(os.getenv("MAX_TOKENS", 512)),
-        timeout=int(os.getenv("TIMEOUT", 60)),
-        max_retries=int(os.getenv("MAX_RETRIES", 2)),
-    )
+from env_config import build_config
 
 # 状态
 class State(BaseState):
     response: str = ""
-    messages: Annotated[list[dict[str, Any]], add] = Field(default_factory=list)
 
 
 # LLM invoke 节点
@@ -48,8 +33,8 @@ class LLMInvokeNode(Node):
         return {
             "response": result.content,
             "messages": [
-                {"role": "user", "content": state.input},
-                {"role": "assistant", "content": result.content},
+                state.input.to_human_message(),
+                AIMessage(content=result.content),
             ],
         }
 
@@ -72,23 +57,34 @@ def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
     return Agent(agent_config, runtime_config, graph)
 
 
-def extract_stream_text(event: dict) -> str:
-    if not isinstance(event, dict) or event.get("method") != "messages":
+def _message_chunk_text(message: AIMessageChunk) -> str:
+    content = message.content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return "".join(parts)
+    return ""
+
+
+def extract_stream_text(chunk) -> str:
+    """从 stream(v2) 事件中提取可打印的 token 文本。"""
+    if isinstance(chunk, dict) and chunk.get("type") == "messages":
+        message, _metadata = chunk["data"]
+    elif isinstance(chunk, tuple) and len(chunk) == 2:
+        message, _metadata = chunk
+    else:
         return ""
 
-    payload = event["params"]["data"]
-    if isinstance(payload, (list, tuple)):
-        payload = payload[0]
+    if not isinstance(message, AIMessageChunk):
+        return ""
 
-    if isinstance(payload, dict) and payload.get("event") == "content-block-delta":
-        return payload["delta"].get("text", "")
-
-    if hasattr(payload, "content") and payload.content:
-        content = payload.content
-        if isinstance(content, str):
-            return content
-
-    return ""
+    return _message_chunk_text(message)
 
 
 def chat_invoke(agent: Agent, session_id: str) -> None:
@@ -118,8 +114,8 @@ def chat_stream(agent: Agent, session_id: str) -> None:
             break
 
         print("\nAssistant: ", end="", flush=True)
-        for event in agent.stream(session_id, UserInput(text=user_text)):
-            text = extract_stream_text(event)
+        for chunk in agent.stream(session_id, UserInput(text=user_text)):
+            text = extract_stream_text(chunk)
             if text:
                 print(text, end="", flush=True)
         print("\n\n------------------------------\n")
