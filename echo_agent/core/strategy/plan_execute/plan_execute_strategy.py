@@ -1,0 +1,15 @@
+from ..strategy import BaseStrategy
+
+
+class PlanExecuteStrategy(BaseStrategy):
+    """
+    Plan Execute 策略
+    """
+    def build(self):
+        pass
+
+    def as_node(self):
+        pass
+
+    def as_subgraph(self):
+        pass

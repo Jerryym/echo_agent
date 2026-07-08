@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from ..schema import BaseContext, BaseState
+from ...llm import LLMClient, LLMConfig
 
 
 class Node(ABC):
@@ -10,8 +11,9 @@ class Node(ABC):
     Attributes:
         name: 节点名称
     """
-    def __init__(self, name: str):
+    def __init__(self, name: str, llm_config: LLMConfig | None = None):
         self._name = name
+        self._llm_client = LLMClient(llm_config)
 
     @property
     def name(self) -> str:
@@ -19,9 +21,9 @@ class Node(ABC):
         节点名称
         """
         return self._name
-
+    
     @abstractmethod
-    def run(self, state: BaseState, context: BaseContext=None) -> dict:
+    def run(self, state: BaseState, context: BaseContext | None = None) -> dict:
         """
         运行
 

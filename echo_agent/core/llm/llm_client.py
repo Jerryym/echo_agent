@@ -1,8 +1,7 @@
 from typing import Any, Dict, List, Optional, Sequence
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
-
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from ..model import UserInput
 
 from .exception import (
@@ -33,7 +32,7 @@ class LLMClient:
                 detail=str(e)
             )
 
-    def invoke(self, prompt: str, user_input: UserInput, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[List[Dict[str, Any]]] = None):    
+    def invoke(self, prompt: str, user_input: UserInput | dict | str, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[List[Dict[str, Any]]] = None):
         """
         调用模型
 
@@ -63,7 +62,7 @@ class LLMClient:
         except Exception as e:
             raise LLMInvokeError(message="LLM invoke failed", detail=str(e))
 
-    def stream(self, prompt: str, user_input: UserInput, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[List[Dict[str, Any]]] = None):
+    def stream(self, prompt: str, user_input: UserInput | dict | str, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[List[Dict[str, Any]]] = None):
         """
         流式调用模型
 
@@ -124,7 +123,7 @@ class LLMClient:
             )
         return model
 
-    def _build_messages(self, prompt: str, user_input: UserInput, history: Sequence[BaseMessage]):
+    def _build_messages(self, prompt: str, user_input: UserInput | dict, history: Sequence[BaseMessage]):
         """
         构建 LangChain Messages
         """
@@ -132,7 +131,10 @@ class LLMClient:
 
         messages.append(SystemMessage(content=prompt))
         messages.extend(history)
-        messages.append(user_input.to_human_message())
+        if isinstance(user_input, UserInput):
+            messages.append(user_input.to_human_message())
+        elif isinstance(user_input, dict) or isinstance(user_input, str):
+            messages.append(HumanMessage(content=user_input))
         return messages
 
     def _parse_response(self, response: AIMessage):

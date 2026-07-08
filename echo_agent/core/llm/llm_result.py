@@ -1,5 +1,7 @@
-from typing import Any, Optional, List, Dict
-from pydantic import BaseModel
+from typing import Any
+from pydantic import BaseModel, Field
+
+from ..tool import ToolCall
 
 
 class LLMResult(BaseModel):
@@ -13,6 +15,6 @@ class LLMResult(BaseModel):
         response_metadata: 响应元数据
     """
     content: str
-    tool_calls: Optional[List[Dict[str, Any]]] = None
+    tool_calls: list[ToolCall] | None = Field(default_factory=list)
     raw: Any = None
-    response_metadata: Optional[Dict[str, Any]] = None
+    response_metadata: dict[str, Any] | None = None

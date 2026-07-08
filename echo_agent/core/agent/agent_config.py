@@ -23,7 +23,7 @@ class AgentConfig(BaseModel):
     llm_config: LLMConfig
     system_prompt: str | None = None
 
-    strategy: StrategyType = StrategyType.NONE
+    strategy: StrategyType | None = None
 
     kb_list: list[str] = Field(default_factory=list)
     skill_list: list[str] = Field(default_factory=list)
