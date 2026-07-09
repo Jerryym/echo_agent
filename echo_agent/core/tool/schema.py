@@ -1,6 +1,20 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field   
+
+
+class ToolDefinition(BaseModel):
+    """
+    工具定义
+
+    Args:
+        name: 工具名称
+        description: 工具描述
+        parameters: 参数
+    """
+    name: str
+    description: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolCall(BaseModel):
