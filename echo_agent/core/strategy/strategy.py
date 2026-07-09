@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from ..graph import BaseInput, BaseState, BaseOutput, BaseContext
+from ..graph import BaseContext, BaseInput, BaseOutput, BaseState, Node, SubGraph
 
 
 class BaseStrategy(ABC):
@@ -13,22 +13,15 @@ class BaseStrategy(ABC):
     context_schema: type[BaseContext] | None = None
 
     @abstractmethod
-    def build(self):
+    def build(self) -> SubGraph:
         """
-        构建策略
-        """
-        pass
-
-    @abstractmethod
-    def as_node(self):
-        """
-        以 Node 形式加入 Parent Graph
+        构建策略子图
         """
         pass
 
     @abstractmethod
-    def as_subgraph(self):
+    def as_node(self) -> Node:
         """
-        获取 Strategy Subgraph
+        作为节点加入父图（Call a subgraph inside a node）
         """
         pass

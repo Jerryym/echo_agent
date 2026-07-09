@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -32,7 +32,7 @@ class LLMClient:
                 detail=str(e)
             )
 
-    def invoke(self, prompt: str, user_input: UserInput | dict | str, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[List[Dict[str, Any]]] = None):
+    def invoke(self, prompt: str, user_input: UserInput | dict | str, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[list[dict[str, Any]]] = None):
         """
         调用模型
 
@@ -62,7 +62,7 @@ class LLMClient:
         except Exception as e:
             raise LLMInvokeError(message="LLM invoke failed", detail=str(e))
 
-    def stream(self, prompt: str, user_input: UserInput | dict | str, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[List[Dict[str, Any]]] = None):
+    def stream(self, prompt: str, user_input: UserInput | dict | str, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[list[dict[str, Any]]] = None):
         """
         流式调用模型
 
@@ -127,7 +127,7 @@ class LLMClient:
         """
         构建 LangChain Messages
         """
-        messages: List[BaseMessage] = []
+        messages: list[BaseMessage] = []
 
         messages.append(SystemMessage(content=prompt))
         messages.extend(history)

@@ -1,6 +1,6 @@
 from .....prompt import PromptLoader
 from ....graph import Node
-from ....llm import LLMConfig
+from ....llm import LLMClient, LLMConfig
 from ..schema import ReActContext, ReActState
 
 
@@ -9,7 +9,8 @@ class ReasonNode(Node):
     Reason Node：推理节点
     """
     def __init__(self, name: str, llm_config: LLMConfig):
-        super().__init__(name, llm_config)
+        super().__init__(name)
+        self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("strategy/react/prompt/reasoning.md")
 
     def run(self, state: ReActState, context: ReActContext | None = None) -> dict:
@@ -19,6 +20,9 @@ class ReasonNode(Node):
         if context and state.step_count >= context.max_steps:
             return {
                 "reasoning": state.reasoning,
+                "observations": [
+                    "Maximum reasoning steps reached. Execution stopped."
+                ],
             }
 
         # 构建输入
@@ -37,5 +41,14 @@ class ReasonNode(Node):
         """
         return {
             "input": state.input,
-            "observations": state.observations,
+            "observations": state.observations + self._build_observations(state),
         }
+
+    def _build_observations(self, state: ReActState) -> list[str]:
+        """
+        构建观察结果
+        """
+        return [
+            result.content
+            for result in state.tool_results
+        ]

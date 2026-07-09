@@ -4,45 +4,53 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
-from echo_agent import Agent, BaseState, Graph, LLMClient, LLMConfig, Node
+from echo_agent import (
+    Agent,
+    BaseContext,
+    BaseState,
+    LLMClient,
+    LLMConfig,
+    Node,
+    RootGraph,
+)
 from echo_agent.core.agent import AgentConfig
 from echo_agent.core.graph import START_NODE, END_NODE
 from echo_agent.core.model import UserInput
 from echo_agent.core.runtime import RuntimeConfig
-
 from env_config import build_config
 
 # 状态
 class State(BaseState):
-    response: str = ""
+    response: str
 
 
 # LLM invoke 节点
 class LLMInvokeNode(Node):
-    def __init__(self, name: str, llm_client: LLMClient, system_prompt: str):
+    def __init__(self, name: str, llm_config: LLMConfig, system_prompt: str):
         super().__init__(name)
-        self._llm_client = llm_client
+        self._llm_client = LLMClient(llm_config)
         self._system_prompt = system_prompt
 
-    def run(self, state: State):
+    def run(self, state: State, context: BaseContext | None = None) -> dict:
+        user_input = state["input"]
+        history = state.get("messages", [])
         result = self._llm_client.invoke(
             prompt=self._system_prompt,
-            user_input=state.input,
-            history=state.messages,
+            user_input=user_input,
+            history=history,
         )
         return {
             "response": result.content,
             "messages": [
-                state.input.to_human_message(),
+                user_input.to_human_message(),
                 AIMessage(content=result.content),
             ],
         }
 
 
 def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
-    llm_client = LLMClient(config)
-    graph = Graph(state_schema=State)
-    llm_node = LLMInvokeNode("llm_node", llm_client, system_prompt)
+    graph = RootGraph(state_schema=State)
+    llm_node = LLMInvokeNode("llm_node", config, system_prompt)
     graph.add_node(llm_node)
     graph.add_edge(START_NODE, llm_node.name)
     graph.add_edge(llm_node.name, END_NODE)

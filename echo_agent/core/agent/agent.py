@@ -1,6 +1,6 @@
 from langchain_core.runnables.config import RunnableConfig
 
-from ..graph import BaseInput, Graph
+from ..graph import BaseInput, RootGraph
 from ..model import UserInput
 from ..runtime import RuntimeConfig
 from .agent_config import AgentConfig
@@ -8,15 +8,15 @@ from .agent_config import AgentConfig
 
 class Agent:
     """
-    Agent 类：用于定义 Agent 的运行实体，包括 AgentConfig、RuntimeConfig、Graph 等。
+    Agent 类：用于定义 Agent 的运行实体，包括 AgentConfig、RuntimeConfig、RootGraph 等。
 
     Attributes:
         agent_config: Agent 配置
         runtime_config: Runtime 配置
-        graph: Graph 图结构
+        graph: RootGraph 根图
         compiled_graph: 编译后的图
     """
-    def __init__(self, agent_config: AgentConfig, runtime_config: RuntimeConfig, graph: Graph):
+    def __init__(self, agent_config: AgentConfig, runtime_config: RuntimeConfig, graph: RootGraph):
         self._agent_config = agent_config
         self._runtime_config = runtime_config
         self._graph = graph

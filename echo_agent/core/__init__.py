@@ -8,7 +8,7 @@ from .llm import (
     LLMResult,
 )
 from .model import Attachment, Message, Role, UserInput
-from .graph import Graph, Node, SubGraph, BaseInput, BaseOutput, BaseState, BaseContext
+from .graph import Graph, RootGraph, Node, SubGraph, BaseInput, BaseOutput, BaseState, BaseContext
 from .agent import Agent, AgentConfig
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "Role",
     "Message",
     "Graph",
+    "RootGraph",
     "Node",
     "SubGraph",
     "BaseInput",

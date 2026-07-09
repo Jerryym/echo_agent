@@ -1,6 +1,6 @@
 from .....prompt import PromptLoader
 from ....graph import Node
-from ....llm import LLMConfig
+from ....llm import LLMClient, LLMConfig
 from ..schema import ReActContext, ReActState
 
 
@@ -9,7 +9,8 @@ class ActionNode(Node):
     Action Node：动作节点
     """
     def __init__(self, name: str, llm_config: LLMConfig):
-        super().__init__(name, llm_config)
+        super().__init__(name)
+        self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("strategy/react/prompt/action.md")
 
     def run(self, state: ReActState, context: ReActContext | None = None) -> dict:

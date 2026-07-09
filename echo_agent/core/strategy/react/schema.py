@@ -24,11 +24,13 @@ class ReActState(BaseState):
         reasoning: 推理
         observations: 观察结果列表
         step_count: 步数
+        is_finished: 是否已完成
         response: 响应
     """
     reasoning: str
     observations: list[str] = Field(default_factory=list)
     step_count: int = Field(default=0)
+    is_finished: bool
     response: str
 
 
