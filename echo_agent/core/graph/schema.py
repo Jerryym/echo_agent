@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 from ..model import UserInput
-from ..tool import ToolCall
+from ..tool import ToolCall, ToolResult
 
 class BaseInput(BaseModel):
     """
@@ -33,10 +33,12 @@ class BaseState(TypedDict):
         input: 输入
         messages: 消息列表
         tool_calls: 工具调用列表
+        tool_results: 工具执行结果列表
     """
     input: UserInput | dict[str, Any] | str
     messages: Annotated[Sequence[BaseMessage], add_messages]
     tool_calls: list[ToolCall]
+    tool_results: list[ToolResult]
 
 
 class BaseContext(BaseModel):

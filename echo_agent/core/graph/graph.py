@@ -1,17 +1,18 @@
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
+from abc import ABC
+from typing import Any, Callable
 
-from ..runtime import RuntimeConfig
-from .node import Node, SubGraph
+from langgraph.graph import START, END, StateGraph
+
 from .schema import BaseContext, BaseInput, BaseOutput, BaseState
+from .node import Node
 
 
 START_NODE = START
 END_NODE = END
 
-class Graph:
+class Graph(ABC):
     """
-    Graph 类：用于定义图结构，包括节点、边、子图等。
+    Graph：图结构定义，负责描述一个 LangGraph，包括状态模型、节点和边，不负责图的编译与运行。
 
     参数：
         state_schema: 状态
@@ -20,7 +21,6 @@ class Graph:
         output_schema: 输出
         nodes: 节点列表
         edges: 边列表
-        subgraphs: 子图列表
     """
     def __init__(self, state_schema: type[BaseState], context_schema: type[BaseContext] | None = None, input_schema: type[BaseInput] | None = None, output_schema: type[BaseOutput] | None = None):
         self._state_schema = state_schema
@@ -30,7 +30,7 @@ class Graph:
 
         self._nodes: dict[str, Node] = {}
         self._edges: list[tuple[str, str]] = []
-        self._subgraphs: list[SubGraph] = []
+        self._conditional_edges: list[tuple[str, Callable[[Any], str], dict[str, str] | None]] = []
 
     @property
     def state_schema(self):
@@ -54,11 +54,17 @@ class Graph:
     def add_edge(self, from_node: str, to_node: str) -> None:
         self._edges.append((from_node, to_node))
 
-    def add_subgraph(self, subgraph: SubGraph) -> None:
-        self._subgraphs.append(subgraph)
+    def add_conditional_edges(self, from_node: str, condition: Callable[[Any], str], path_map: dict[str, str] | None = None) -> None:
+        self._conditional_edges.append((from_node, condition, path_map))
 
-    def compile(self, runtime_config: RuntimeConfig) -> CompiledStateGraph:
-        kwargs: dict = {"state_schema": self._state_schema}
+    def build(self) -> StateGraph:
+        """
+        构建 LangGraph StateGraph。
+        """
+        kwargs: dict = {
+            "state_schema": self._state_schema,
+        }
+
         if self._context_schema is not None:
             kwargs["context_schema"] = self._context_schema
         if self._input_schema is not None:
@@ -67,15 +73,23 @@ class Graph:
             kwargs["output_schema"] = self._output_schema
         builder = StateGraph(**kwargs)
 
-         # 注册节点
+        # 注册节点
         for node in self._nodes.values():
             builder.add_node(node.name, node.run)
 
         # 注册边
-        for from_node, to_node in self._edges:
-            source = START if from_node == START_NODE else from_node
-            target = END if to_node == END_NODE else to_node
-            builder.add_edge(source, target)
+        for source, target in self._edges:
+            builder.add_edge(
+                START if source == START_NODE else source,
+                END if target == END_NODE else target,
+            )
 
-        # 编译
-        return builder.compile(checkpointer=runtime_config.checkpointer, store=runtime_config.store)
+        # 注册条件边
+        for source, condition, path_map in self._conditional_edges:
+            builder.add_conditional_edges(
+                START if source == START_NODE else source,
+                condition,
+                path_map,
+            )
+
+        return builder
