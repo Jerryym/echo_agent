@@ -1,10 +1,11 @@
 from abc import ABC
 from typing import Any, Callable
 
-from langgraph.graph import START, END, StateGraph
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
-from .schema import BaseContext, BaseInput, BaseOutput, BaseState
 from .node import Node
+from .schema import BaseContext, BaseInput, BaseOutput, BaseState
 
 
 START_NODE = START
@@ -20,7 +21,9 @@ class Graph(ABC):
         input_schema: 输入
         output_schema: 输出
         nodes: 节点列表
+        subgraphs: 子图列表
         edges: 边列表
+        conditional_edges: 条件边列表
     """
     def __init__(self, state_schema: type[BaseState], context_schema: type[BaseContext] | None = None, input_schema: type[BaseInput] | None = None, output_schema: type[BaseOutput] | None = None):
         self._state_schema = state_schema
@@ -29,6 +32,7 @@ class Graph(ABC):
         self._output_schema = output_schema
 
         self._nodes: dict[str, Node] = {}
+        self._subgraphs: dict[str, CompiledStateGraph] = {}
         self._edges: list[tuple[str, str]] = []
         self._conditional_edges: list[tuple[str, Callable[[Any], str], dict[str, str] | None]] = []
 
@@ -50,6 +54,9 @@ class Graph(ABC):
 
     def add_node(self, node: Node) -> None:
         self._nodes[node.name] = node
+
+    def add_subgraph(self, name: str, subgraph: CompiledStateGraph) -> None:
+        self._subgraphs[name] = subgraph
 
     def add_edge(self, from_node: str, to_node: str) -> None:
         self._edges.append((from_node, to_node))
@@ -76,6 +83,10 @@ class Graph(ABC):
         # 注册节点
         for node in self._nodes.values():
             builder.add_node(node.name, node.run)
+
+        # 注册子图
+        for name, subgraph in self._subgraphs.items():
+            builder.add_node(name, subgraph)
 
         # 注册边
         for source, target in self._edges:

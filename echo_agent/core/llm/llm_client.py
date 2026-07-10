@@ -1,15 +1,19 @@
-from typing import Any, Optional, Sequence
+import json
+from typing import Any, Literal, Optional, Sequence
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from ..model import UserInput
+from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel
+from langchain_openai import ChatOpenAI
 
+from ..model import UserInput
 from .exception import (
     LLMException,
     LLMInitializeError,
     LLMInvokeError,
     LLMResponseDecodeError,
 )
+from ..tool import ToolCall
 from .llm_config import LLMConfig
 from .llm_result import LLMResult
 
@@ -32,7 +36,14 @@ class LLMClient:
                 detail=str(e)
             )
 
-    def invoke(self, prompt: str, user_input: UserInput | dict | str, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[list[dict[str, Any]]] = None):
+    def invoke(
+        self, 
+        prompt: str, 
+        user_input: UserInput | dict | str, 
+        history: Optional[Sequence[BaseMessage]] = None, 
+        tool_list: Optional[list[dict[str, Any]]] = None,
+        config: RunnableConfig | None = None,
+    ):
         """
         调用模型
 
@@ -41,6 +52,7 @@ class LLMClient:
             user_input: 用户输入
             history: 历史记录
             tool_list: 工具列表
+            config: 配置
         """
         try:
             # 构建 Messages
@@ -54,7 +66,7 @@ class LLMClient:
             if tool_list:
                 model = model.bind_tools(tool_list)
             # 调用模型
-            response = model.invoke(messages)
+            response = model.invoke(messages, config=config)
             # 解析响应
             return self._parse_response(response)
         except LLMException:
@@ -62,7 +74,13 @@ class LLMClient:
         except Exception as e:
             raise LLMInvokeError(message="LLM invoke failed", detail=str(e))
 
-    def stream(self, prompt: str, user_input: UserInput | dict | str, history: Optional[Sequence[BaseMessage]] = None, tool_list: Optional[list[dict[str, Any]]] = None):
+    def stream(
+        self, prompt: str, 
+        user_input: UserInput | dict | str, 
+        history: Optional[Sequence[BaseMessage]] = None, 
+        tool_list: Optional[list[dict[str, Any]]] = None,
+        config: RunnableConfig | None = None,
+    ):
         """
         流式调用模型
 
@@ -71,6 +89,7 @@ class LLMClient:
             user_input: 用户输入
             history: 历史记录
             tool_list: 工具列表
+            config: 配置
         """
         try:
             # 构建 Messages
@@ -92,6 +111,50 @@ class LLMClient:
             raise LLMInvokeError(
                 message="LLM stream invoke failed",
                 detail=str(e)
+            )
+
+    def invoke_structured(
+        self,
+        schema: type[BaseModel] | dict[str, Any],
+        prompt: str,
+        user_input: UserInput | dict | str,
+        history: Optional[Sequence[BaseMessage]] = None,
+        *,
+        method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
+        strict: bool | None = None,
+        include_raw: bool = False,
+    ) -> BaseModel | dict[str, Any]:
+        """
+        结构化输出调用模型
+
+        参数:
+            schema: 输出 schema（Pydantic 类或 JSON Schema dict）
+            prompt: 提示语
+            user_input: 用户输入
+            history: 历史记录
+            method: 结构化输出方式
+            strict: 是否严格匹配 schema
+            include_raw: 是否同时返回原始响应
+        """
+        try:
+            messages = self._build_messages(
+                prompt=prompt,
+                user_input=user_input,
+                history=history or [],
+            )
+            structured_model = self._model.with_structured_output(
+                schema,
+                method=method,
+                strict=strict,
+                include_raw=include_raw,
+            )
+            return structured_model.invoke(messages)
+        except LLMException:
+            raise
+        except Exception as e:
+            raise LLMInvokeError(
+                message="LLM structured invoke failed",
+                detail=str(e),
             )
 
     def _initialize_model(self):
@@ -133,8 +196,10 @@ class LLMClient:
         messages.extend(history)
         if isinstance(user_input, UserInput):
             messages.append(user_input.to_human_message())
-        elif isinstance(user_input, dict) or isinstance(user_input, str):
+        elif isinstance(user_input, str):
             messages.append(HumanMessage(content=user_input))
+        elif isinstance(user_input, dict):
+            messages.append(HumanMessage(content=json.dumps(user_input, ensure_ascii=False, default=str)))
         return messages
 
     def _parse_response(self, response: AIMessage):
@@ -145,7 +210,7 @@ class LLMClient:
             content = self._normalize_content(response.content)
             return LLMResult(
                     content=content,
-                    tool_calls=getattr(response, "tool_calls", None),
+                    tool_calls=self._normalize_tool_calls(getattr(response, "tool_calls", None)),
                     raw=response,
                     response_metadata=getattr(response, "response_metadata", None),
                 )
@@ -170,3 +235,22 @@ class LLMClient:
                     parts.append(block.get("text", ""))
             return "".join(parts)
         return str(content) if content is not None else ""
+
+    def _normalize_tool_calls(self, raw_tool_calls) -> list[ToolCall]:
+        """
+        规范化工具调用
+        """
+        if not raw_tool_calls:
+            return []
+        normalized = []
+        for i, tc in enumerate(raw_tool_calls):
+            if isinstance(tc, ToolCall):
+                normalized.append(tc)
+                continue
+            if isinstance(tc, dict):
+                normalized.append(ToolCall(
+                    name=tc.get("name", ""),
+                    args=tc.get("args") or {},
+                    tool_call_id=tc.get("id") or tc.get("tool_call_id") or f"call_{i}",
+                ))
+        return normalized

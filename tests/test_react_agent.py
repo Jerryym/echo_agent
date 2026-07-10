@@ -1,65 +1,68 @@
 from pathlib import Path
+import warnings
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.messages import AIMessageChunk
+from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 
-from echo_agent import (
-    Agent,
-    BaseContext,
-    BaseState,
-    LLMClient,
-    LLMConfig,
-    Node,
-    RootGraph,
-)
-from echo_agent.core.agent import AgentConfig
+from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
 from echo_agent.core.graph import START_NODE, END_NODE
-from echo_agent.core.model import UserInput
 from echo_agent.core.runtime import RuntimeConfig
+from echo_agent.core.strategy import StrategyFactory, StrategyType
+from echo_agent.core.tool import ToolDefinition, ToolRegistry
 from env_config import build_config
+from tools.business_tools import BUSINESS_TOOLS
 
-# 状态
+warnings.filterwarnings(
+    "ignore",
+    message="Pydantic serializer warnings",
+)
+
 class State(BaseState):
-    response: str = ""
+    pass
 
 
-# LLM invoke 节点
-class LLMInvokeNode(Node):
-    def __init__(self, name: str, llm_config: LLMConfig, system_prompt: str):
-        super().__init__(name)
-        self._llm_client = LLMClient(llm_config)
-        self._system_prompt = system_prompt
-
-    def run(self, state: State, context: BaseContext | None = None) -> dict:
-        user_input = state.input
-        history = state.messages
-        result = self._llm_client.invoke(
-            prompt=self._system_prompt,
-            user_input=user_input,
-            history=history,
+def build_tool_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+    for tool_obj in BUSINESS_TOOLS:
+        registry.register(
+            ToolDefinition(
+                name=tool_obj.name,
+                description=tool_obj.description,
+                parameters=(
+                    tool_obj.args_schema.model_json_schema()
+                    if tool_obj.args_schema
+                    else {
+                        "type": "object",
+                        "properties": {},
+                    }
+                ),
+            ),
+            tool_obj,
         )
-        return {
-            "response": result.content,
-            "messages": [
-                user_input.to_human_message(),
-                AIMessage(content=result.content),
-            ],
-        }
+    return registry
 
 
-def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
+def build_react_agent(name: str, config: LLMConfig) -> Agent:
+    tool_registry = build_tool_registry()
+
+    # 创建 ReAct 策略子图
+    react_subgraph = StrategyFactory.create_as_subgraph(
+        StrategyType.REACT,
+        llm_config=config,
+        tool_registry=tool_registry,
+    )
+
     graph = RootGraph(state_schema=State)
-    llm_node = LLMInvokeNode("llm_node", config, system_prompt)
-    graph.add_node(llm_node)
-    graph.add_edge(START_NODE, llm_node.name)
-    graph.add_edge(llm_node.name, END_NODE)
+    graph.add_subgraph("ReAct", react_subgraph)
+    graph.add_edge(START_NODE, "ReAct")
+    graph.add_edge("ReAct", END_NODE)
 
     agent_config = AgentConfig(
         name=name,
         description=name,
         llm_config=config,
-        system_prompt=system_prompt,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)
@@ -80,16 +83,26 @@ def _message_chunk_text(message: AIMessageChunk) -> str:
     return ""
 
 
-def extract_stream_text(chunk) -> str:
-    """从 stream(v2) 事件中提取可打印的 token 文本。"""
+def extract_stream_text(chunk, *, node: str | None = "final") -> str:
+    """从 stream(v2) 事件中提取可打印的 token 文本。
+
+    Args:
+        chunk: Agent.stream() 产出的事件
+        node: 只提取指定 LangGraph 节点的 token；None 表示不过滤
+    """
+    metadata = None
+
     if isinstance(chunk, dict) and chunk.get("type") == "messages":
-        message, _metadata = chunk["data"]
+        message, metadata = chunk["data"]
     elif isinstance(chunk, tuple) and len(chunk) == 2:
-        message, _metadata = chunk
+        message, metadata = chunk
     else:
         return ""
 
     if not isinstance(message, AIMessageChunk):
+        return ""
+
+    if node is not None and metadata and metadata.get("langgraph_node") != node:
         return ""
 
     return _message_chunk_text(message)
@@ -97,7 +110,7 @@ def extract_stream_text(chunk) -> str:
 
 def chat_invoke(agent: Agent, session_id: str) -> None:
     print("\n==============================")
-    print("TEST: AGENT INVOKE")
+    print("TEST: REACT AGENT INVOKE")
     print("==============================\n")
 
     while True:
@@ -108,12 +121,14 @@ def chat_invoke(agent: Agent, session_id: str) -> None:
         result = agent.invoke(session_id, UserInput(text=user_text))
         print("\nAssistant:")
         print(result.get("response", result))
+        state = agent.get_state(session_id)
+        print(f"[DEBUG] state values: {state.values}")
         print("\n------------------------------\n")
 
 
 def chat_stream(agent: Agent, session_id: str) -> None:
     print("\n==============================")
-    print("TEST: AGENT STREAM")
+    print("TEST: REACT AGENT STREAM")
     print("==============================\n")
 
     while True:
@@ -123,23 +138,23 @@ def chat_stream(agent: Agent, session_id: str) -> None:
 
         print("\nAssistant: ", end="", flush=True)
         for chunk in agent.stream(session_id, UserInput(text=user_text)):
-            text = extract_stream_text(chunk)
+            text = extract_stream_text(chunk, node="final")
             if text:
                 print(text, end="", flush=True)
-        print("\n\n------------------------------\n")
+        state = agent.get_state(session_id)
+        print(f"\n[DEBUG] state values: {state.values}")
+        print("\n------------------------------\n")
 
 
 if __name__ == "__main__":
     load_dotenv(Path(__file__).resolve().parent / ".env")
     config = build_config()
-    system_prompt = "You are a helpful assistant. Be concise."
-    session_id = "test_session"
+    session_id = "react_test_session"
 
     mode = input("Choose mode (invoke=0 / stream=1): ").strip()
-    agent = build_agent(
-        "stream_agent" if mode == "1" else "invoke_agent",
+    agent = build_react_agent(
+        "react_stream_agent" if mode == "1" else "react_invoke_agent",
         config,
-        system_prompt,
     )
 
     if mode == "1":

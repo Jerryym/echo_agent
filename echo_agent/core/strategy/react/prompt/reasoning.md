@@ -36,6 +36,12 @@ Focus on **what information or capability is needed**, rather than **which tool 
 
 If sufficient information is already available, indicate that no additional information is required and the task can proceed to generating the final response.
 
+When the task can already be completed:
+
+- Explicitly state that the available information is sufficient.
+- Explicitly state that no further information or action is required.
+- Indicate that the next stage should generate the final response.
+
 # Reasoning Principles
 
 Your reasoning should:
@@ -44,6 +50,7 @@ Your reasoning should:
 - Describe what is still unknown.
 - Explain whether additional information is required.
 - Explain why the next action is necessary.
+- Clearly distinguish between "more information/action is required" and "the task is ready for final response".
 
 Keep the reasoning concise and logical.
 
@@ -54,11 +61,13 @@ Do not answer the user's request.
 
 # Output
 
-Output only the reasoning text.
+Return the result using the provided structured output schema.
 
-Do not output JSON.
-Do not output Markdown.
-Do not include any prefixes such as "Reasoning:".
-Do not explain your role.
+The reasoning field should contain your reasoning.
 
-Return only the reasoning content.
+The information_status field must be one of:
+
+- "sufficient": the available information is sufficient to generate the final response.
+- "insufficient": additional information is still required before the final response can be generated.
+
+Do not include any information beyond the defined schema.

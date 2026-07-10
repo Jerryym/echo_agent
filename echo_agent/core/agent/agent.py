@@ -65,7 +65,7 @@ class Agent:
 
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
-        return self._compiled_graph.stream(graph_input, runnable_config, stream_mode="messages", version=version)
+        return self._compiled_graph.stream(graph_input, runnable_config, stream_mode="messages", subgraphs=True, version=version)
     
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
         """
@@ -97,15 +97,6 @@ class Agent:
         }
         runnable_config = RunnableConfig(configurable=configurable)
         return self._compiled_graph.get_state_history(runnable_config)
-
-    # def _build_input(self, input: UserInput) -> BaseInput:
-    #     """
-    #     构建输入
-
-    #     Args:
-    #         input: UserInput 用户输入
-    #     """
-    #     return BaseInput(input=input)
 
     def _build_runnable_config(self, session_id: str) -> RunnableConfig:
         """

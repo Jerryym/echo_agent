@@ -1,12 +1,12 @@
-from typing import Annotated, Any, Sequence
+from typing import Annotated, Any
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel
-from typing_extensions import TypedDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..model import UserInput
 from ..tool import ToolCall, ToolResult
+
 
 class BaseInput(BaseModel):
     """
@@ -25,7 +25,7 @@ class BaseOutput(BaseModel):
     pass
 
 
-class BaseState(TypedDict):
+class BaseState(BaseModel):
     """
     Graph 状态模型
 
@@ -34,11 +34,13 @@ class BaseState(TypedDict):
         messages: 消息列表
         tool_calls: 工具调用列表
         tool_results: 工具执行结果列表
+        response: 响应
     """
-    input: UserInput | dict[str, Any] | str
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    tool_calls: list[ToolCall]
-    tool_results: list[ToolResult]
+    input: UserInput | dict[str, Any] | str | None = None
+    messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
+    tool_calls: list[ToolCall] = Field(default_factory=list)
+    tool_results: list[ToolResult] = Field(default_factory=list)
+    response: str | None = None
 
 
 class BaseContext(BaseModel):

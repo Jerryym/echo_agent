@@ -1,6 +1,7 @@
-from .react_strategy import ReActStrategy
+from .react_strategy import ReActStrategy, ReActNode
 
 
 __all__ = [
     "ReActStrategy",
+    "ReActNode",
 ]

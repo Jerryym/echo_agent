@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+from langchain_core.runnables import RunnableConfig
+
 from ..schema import BaseContext, BaseState
 
 
@@ -21,14 +23,15 @@ class Node(ABC):
         return self._name
     
     @abstractmethod
-    def run(self, state: BaseState, context: BaseContext | None = None) -> dict:
+    def run(self, state: BaseState, context: BaseContext | None = None, config: RunnableConfig | None = None,) -> dict:
         """
         运行
 
         Parameters:
             state: 状态
             context: 上下文
-
+            config: 配置
+            
         Returns:
             dict: 状态
         """

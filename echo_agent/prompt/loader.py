@@ -5,9 +5,14 @@ class PromptLoader:
     """
     提示词加载器
     """
+    _BASE_DIR = Path(__file__).resolve().parent.parent
+
     @staticmethod
     def load(path: str | Path) -> str:
         path = Path(path)
+        if not path.is_absolute():
+            path = PromptLoader._BASE_DIR / path
+        
         if not path.exists():
             raise FileNotFoundError(f"Prompt file not found: {path}")
         if not path.is_file():
