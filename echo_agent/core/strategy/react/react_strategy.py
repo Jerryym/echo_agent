@@ -124,7 +124,7 @@ class ReActStrategy(BaseStrategy):
             target = "action"
             reason = "information_status=insufficient"
 
-        # print(f"[ReAct][route] reason -> {target} ({reason})")
+        print(f"[ReAct][route] reason -> {target} ({reason})")
         return target
 
     def _action_router(self, state: ReActState) -> str:
@@ -146,7 +146,7 @@ class ReActStrategy(BaseStrategy):
             target = "final"
             reason = "no tool_calls"
 
-        # print(f"[ReAct][route] action -> {target} ({reason})")
+        print(f"[ReAct][route] action -> {target} ({reason})")
         return target
 
 

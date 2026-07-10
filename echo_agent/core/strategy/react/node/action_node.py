@@ -1,9 +1,12 @@
 from typing import Any
 
+from langchain_core.messages import AIMessage
+
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....tool import ToolCall
+from .....common import format_debug
 from ..schema import ReActContext, ReActState
 
 
@@ -21,10 +24,7 @@ class ActionNode(Node):
         """
         Run the node
         """
-        # print(
-        #     f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}"
-        # )
-        # print(f"[ReAct][action] valid_tools={self._valid_tool_names()}")
+        print(f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}")
 
         # 构建输入
         input = self._build_input(state)
@@ -32,22 +32,25 @@ class ActionNode(Node):
         response = self._llm_client.invoke(prompt=self._prompt, user_input=input, tool_list=self._tool_list)
         # 没有工具调用，则认为完成
         if not response.tool_calls:
-            # print("[ReAct][action] no tool_calls -> is_finished=True")
+            print("[ReAct][action] no tool_calls -> is_finished=True")
             return {
                 "tool_calls": [],
                 "is_finished": True,
             }
 
-        tool_info = [
-            {"name": tc.name, "args": tc.args, "id": tc.tool_call_id}
-            for tc in response.tool_calls
-        ]
-        print(f"[ReAct][action] tool_calls={tool_info}")
+        for tc in response.tool_calls:
+            print(f"[ReAct][action] tool_call name={tc.name} id={tc.tool_call_id}")
+            print(format_debug(tc.args))
 
         # 有工具调用，则更新状态
         result = {
             "tool_calls": response.tool_calls,
             "step_count": state.step_count + 1,
+            "messages": [
+                self._build_tool_call_message(
+                    response.tool_calls
+                )
+            ],
         }
 
         # 工具不存在
@@ -59,9 +62,11 @@ class ActionNode(Node):
             if context and state.retry_count + 1 >= context.retry_max_count:
                 result["is_finished"] = True
 
-        # print(f"[ReAct][action] return step={result.get('step_count')} "
-        #       f"retry={result.get('retry_count', state.retry_count)} "
-        #       f"finished={result.get('is_finished', False)}")
+        print(
+            f"[ReAct][action] return step={result.get('step_count')} "
+            f"retry={result.get('retry_count', state.retry_count)} "
+            f"finished={result.get('is_finished', False)}"
+        )
         return result
 
     def _build_input(self, state: ReActState) -> dict:
@@ -73,6 +78,22 @@ class ActionNode(Node):
             "messages": state.messages,
             "reasoning": state.reasoning,
         }
+
+    def _build_tool_call_message(self, tool_calls: list[ToolCall]) -> AIMessage:
+        """
+        构建包含 tool_calls 的 AIMessage
+        """
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": tool_call.name,
+                    "args": tool_call.args,
+                    "id": tool_call.tool_call_id,
+                }
+                for tool_call in tool_calls
+            ],
+        )
 
     def _has_invalid_tool(self, tool_calls: list[ToolCall]) -> bool:
         """

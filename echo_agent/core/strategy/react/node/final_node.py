@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
+from .....common import debug_print_messages
 from ..schema import ReActContext, ReActState
 
 
@@ -20,22 +21,17 @@ class FinalNode(Node):
         """
         Run the node
         """
-        # print(
-        #     f"[ReAct][final] enter | step={state.step_count} retry={state.retry_count}"
-        # )
-        # reasoning_preview = state.reasoning[:200]
-        # reasoning_suffix = "..." if len(state.reasoning) > 200 else ""
-        # print(f"[ReAct][final] reasoning={reasoning_preview!r}{reasoning_suffix}")
-        # print(f"[ReAct][final] observations={state.observations}")
+        print(f"[ReAct][final] enter | step={state.step_count} retry={state.retry_count}")
+        debug_print_messages("[ReAct][final]", state.messages)
 
         # 构建输入
         input = self._build_input(state)
         # 调用llm
         response = self._llm_client.invoke(prompt=self._prompt, user_input=input, config=config)
         # 更新状态
-        # preview = response.content[:300]
-        # suffix = "..." if len(response.content) > 300 else ""
-        # print(f"[ReAct][final] response={preview!r}{suffix}")
+        preview = response.content[:300]
+        suffix = "..." if len(response.content) > 300 else ""
+        print(f"[ReAct][final] response={preview}{suffix}")
         return {
             "response": response.content,
             "messages": [AIMessage(content=response.content)],

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
+from .....common import debug_print_messages
 from ..schema import ReActContext, ReActState
 
 
@@ -32,15 +33,16 @@ class ReasonNode(Node):
         """
         Run the node
         """
-        # print(
-        #     f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} "
-        #     f"finished={state.is_finished}"
-        # )
+        print(
+            f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} "
+            f"finished={state.is_finished}"
+        )
+        debug_print_messages("[ReAct][reason]", state.messages)
 
         # 检查工具执行失败
         if self._has_tool_error(state):
             failed = [r.name for r in state.tool_results if not r.success]
-            # print(f"[ReAct][reason] tool error detected: {failed}")
+            print(f"[ReAct][reason] tool error detected: {failed}")
             result = {
                 "retry_count": state.retry_count + 1,
             }
@@ -68,7 +70,10 @@ class ReasonNode(Node):
             "reasoning": response.reasoning,
             "information_status": response.information_status,
         }
-        # print("[ReAct][reason] " f"status={response.information_status} "f"reasoning={response.reasoning}")
+        print(
+            f"[ReAct][reason] status={response.information_status} "
+            f"reasoning={response.reasoning[:200]}"
+        )
         return result
 
     def _build_input(self, state: ReActState) -> dict:
