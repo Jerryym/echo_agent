@@ -1,13 +1,53 @@
-from typing import Any
+import json
+from typing import Any, Literal
 
 from langchain_core.messages import AIMessage
+from pydantic import BaseModel, Field
 
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....tool import ToolCall
-from .....common import format_debug
 from ..schema import ReActContext, ReActState
+
+
+class ActionResult(BaseModel):
+    """
+    Action节点结构化输出
+
+    参数：
+        action_status: 动作状态
+            ready: 可执行工具调用已生成
+            need_information: 需要信息
+            failed: 动作计划失败
+        tool_calls: 工具调用
+        reasoning: 动作计划的原因
+    """
+    action_status: Literal["ready", "need_information", "failed"] = Field(
+        description=(
+            "Action planning result.\n"
+
+            "'ready': "
+            "Only when valid executable tool calls "
+            "are generated and all required parameters "
+            "are available.\n"
+
+            "'need_information': "
+            "Required user information is missing. "
+            "No tool call should be generated.\n"
+
+            "'failed': "
+            "The action cannot be executed because "
+            "of invalid tool selection or unrecoverable error."
+        )
+    )
+    tool_calls: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Executable tool calls."
+    )
+    reasoning: str = Field(
+        description="Explain why this action result was selected."
+    )
 
 
 class ActionNode(Node):
@@ -28,46 +68,16 @@ class ActionNode(Node):
 
         # 构建输入
         input = self._build_input(state)
-        # 调用llm
-        response = self._llm_client.invoke(prompt=self._prompt, user_input=input, tool_list=self._tool_list)
-        # 没有工具调用，则认为完成
-        if not response.tool_calls:
-            print("[ReAct][action] no tool_calls -> is_finished=True")
-            return {
-                "tool_calls": [],
-                "is_finished": True,
-            }
-
-        for tc in response.tool_calls:
-            print(f"[ReAct][action] tool_call name={tc.name} id={tc.tool_call_id}")
-            print(format_debug(tc.args))
-
-        # 有工具调用，则更新状态
-        result = {
-            "tool_calls": response.tool_calls,
-            "step_count": state.step_count + 1,
-            "messages": [
-                self._build_tool_call_message(
-                    response.tool_calls
-                )
-            ],
-        }
-
-        # 工具不存在
-        if self._has_invalid_tool(response.tool_calls):
-            valid_names = self._valid_tool_names()
-            invalid = [tc.name for tc in response.tool_calls if tc.name not in valid_names]
-            # print(f"[ReAct][action] invalid tools: {invalid}")
-            result["retry_count"] = state.retry_count + 1
-            if context and state.retry_count + 1 >= context.retry_max_count:
-                result["is_finished"] = True
-
-        print(
-            f"[ReAct][action] return step={result.get('step_count')} "
-            f"retry={result.get('retry_count', state.retry_count)} "
-            f"finished={result.get('is_finished', False)}"
+        # 调用llm-结构化输出
+        response = self._llm_client.invoke_structured(
+            schema=ActionResult,
+            prompt=self._prompt,
+            user_input=input,
+            tool_list=self._tool_list,
         )
-        return result
+        print(f"[ReAct][action] status={response.action_status} reasoning={response.reasoning}")
+        # 处理结果
+        return self._handle_result(response, state)
 
     def _build_input(self, state: ReActState) -> dict:
         """
@@ -77,6 +87,70 @@ class ActionNode(Node):
             "input": state.input,
             "messages": state.messages,
             "reasoning": state.reasoning,
+        }
+
+    def _handle_result(self, result: ActionResult, state: ReActState) -> dict:
+        """
+        Handle the result
+        """
+        print(f"[ReAct][action] status={result.action_status}")
+        if result.action_status == "ready":# 可执行工具调用已生成
+            return self._handle_ready(result, state)
+        elif result.action_status == "need_information":# 需要信息
+            return {
+                "task_status": "human_in_the_loop",
+                "reasoning": result.reasoning,
+                "step_count": state.step_count + 1,
+            }
+        
+        return self._handle_failed(result, state)
+
+    def _handle_ready(self, result: ActionResult, state: ReActState) -> dict:
+        """
+        处理ready状态
+        """
+        # 没有工具调用，则返回失败，重试次数加1
+        if not result.tool_calls:
+            return {
+                "task_status": "failed",
+                "reasoning": "Action marked ready, but no tool calls generated.",
+                "step_count": state.step_count + 1,
+                "retry_count": state.retry_count + 1,
+            }
+
+        # 标准化工具调用
+        tool_calls = self._normalize_tool_calls(result.tool_calls)
+        # 获取无效工具
+        invalid_tools = self._get_invalid_tools(tool_calls)
+        # 有无效工具，则返回失败，重试次数加1
+        if invalid_tools:
+            return {
+                "task_status": "failed",
+                "reasoning": f"Action failed because invalid tools were generated: {invalid_tools}",
+                "step_count": state.step_count + 1,
+                "retry_count": state.retry_count + 1,
+            }
+
+        # 返回结果
+        return {
+            "tool_calls": tool_calls,
+            "messages": [
+                self._build_tool_call_message(tool_calls)
+            ],
+            "step_count": state.step_count + 1,
+            "reasoning": result.reasoning,
+        }
+
+    def _handle_failed(self, result: ActionResult, state: ReActState) -> dict:
+        """
+        处理failed状态
+        """
+        # 返回失败，重试次数加1
+        return {
+            "task_status": "failed",
+            "reasoning": result.reasoning,
+            "step_count": state.step_count + 1,
+            "retry_count": state.retry_count + 1,
         }
 
     def _build_tool_call_message(self, tool_calls: list[ToolCall]) -> AIMessage:
@@ -95,12 +169,16 @@ class ActionNode(Node):
             ],
         )
 
-    def _has_invalid_tool(self, tool_calls: list[ToolCall]) -> bool:
+    def _get_invalid_tools(self, tool_calls: list[ToolCall]) -> list[str]:
         """
-        判断工具是否存在
+        获取非法工具
         """
         valid_names = self._valid_tool_names()
-        return any(tool_call.name not in valid_names for tool_call in tool_calls)
+        return [
+            tc.name
+            for tc in tool_calls
+            if tc.name not in valid_names
+        ]
 
     def _valid_tool_names(self) -> set[str]:
         """从 OpenAI tool schema 列表提取合法工具名。"""
@@ -111,3 +189,22 @@ class ActionNode(Node):
             elif "name" in tool:
                 names.add(tool["name"])
         return names
+
+    def _normalize_tool_calls(self, tool_calls: list[ToolCall]) -> list[ToolCall]:
+        """
+        标准化工具调用
+        """
+        seen = set()
+        result = []
+        for tc in tool_calls:
+            key = (
+                tc.name,
+                json.dumps(tc.args, sort_keys=True)
+            )
+            if key in seen:
+                continue
+
+            seen.add(key)
+            result.append(tc)
+
+        return result

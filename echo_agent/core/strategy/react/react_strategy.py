@@ -46,7 +46,7 @@ class ReActStrategy(BaseStrategy):
         graph.add_edge(START_NODE, reason_node.name)
         # reason -> action
         graph.add_conditional_edges(reason_node.name, self._reason_router)
-        # action -> tool/reason/final
+        # action -> tool/reason
         graph.add_conditional_edges(action_node.name, self._action_router)
         # tool -> reason
         graph.add_edge(tool_node.name, reason_node.name)
@@ -88,41 +88,36 @@ class ReActStrategy(BaseStrategy):
     def invoke(self, state: BaseState, context: BaseContext | None = None) -> dict:
         input = self.to_strategy_input(state, context)
         strategy_context = self.to_strategy_context(context)
-        # print(f"[ReAct][invoke] strategy_input={input.model_dump()}")
-
         output = self.compiled_graph.invoke(input, context=strategy_context)
-        # print(f"[ReAct][invoke] raw_output={output}")
 
         if self.output_schema is not None and isinstance(output, dict):
             output = self.output_schema(**output)
 
         parent_state = self.to_parent_state(output)
-        # print(f"[ReAct][invoke] parent_state={parent_state}")
         return parent_state
 
     def _reason_router(self, state: ReActState) -> str:
         """
         Reason 节点路由
-
-        返回:
-            action: 动作节点
-            final: 最终节点
         """
-        if state.information_status == "sufficient":
+        if state.task_status == "completed":
             target = "final"
-            reason = "information_status=sufficient"
-
+            reason = "task_status=completed"
+        elif state.task_status == "human_in_the_loop":
+            target = "final"
+            reason = "task_status=human_in_the_loop"
+        elif state.task_status == "failed":
+            target = "final"
+            reason = "task_status=failed"
         elif state.step_count >= self._max_steps:
             target = "final"
             reason = f"step_count={state.step_count} >= max={self._max_steps}"
-
         elif state.retry_count >= self._retry_max_count:
             target = "final"
             reason = f"retry_count={state.retry_count} >= max={self._retry_max_count}"
-
         else:
             target = "action"
-            reason = "information_status=insufficient"
+            reason = "task_status=in_progress"
 
         print(f"[ReAct][route] reason -> {target} ({reason})")
         return target
@@ -135,16 +130,18 @@ class ReActStrategy(BaseStrategy):
             tool: 工具节点
             final: 最终节点
         """
-        if state.is_finished:
-            target = "final"
-            reason = "is_finished=True"
-        elif state.tool_calls:
+        if state.tool_calls:
             target = "tool"
-            names = [tc.name for tc in state.tool_calls]
-            reason = f"tool_calls={names}"
+            reason = (
+                f"tool_calls="
+                f"{[tc.name for tc in state.tool_calls]}"
+            )
+        elif state.task_status in ["completed", "failed", "human_in_the_loop"]:
+            target = "final"
+            reason = f"task_status={state.task_status}"
         else:
             target = "final"
-            reason = "no tool_calls"
+            reason = "action_finished_without_tool"
 
         print(f"[ReAct][route] action -> {target} ({reason})")
         return target

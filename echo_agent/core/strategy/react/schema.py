@@ -27,17 +27,15 @@ class ReActState(BaseState):
     参数:
         reasoning: 推理
         information_status: 信息状态
-        observations: 观察结果列表
+        task_status: 任务状态
         step_count: 步数
         retry_count: 重试次数
-        is_finished: 是否完成
     """
     reasoning: str = ""
-    information_status: Literal["sufficient","insufficient"] = "insufficient"
+    task_status: Literal["in_progress", "human_in_the_loop", "completed", "failed"] = "in_progress"
     observations: list[str] = Field(default_factory=list)
     step_count: int = Field(default=0)
     retry_count: int = Field(default=0)
-    is_finished: bool = Field(default=False)
 
 
 class ReActOutput(BaseOutput):

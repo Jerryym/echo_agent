@@ -6,6 +6,8 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 
+from echo_agent.prompt import PromptLoader
+
 from ..model import UserInput
 from .exception import (
     LLMException,
@@ -57,14 +59,14 @@ class LLMClient:
         try:
             # 构建 Messages
             messages = self._build_messages(
-                prompt=prompt,
+                prompt=self._build_prompt(prompt, tool_list),
                 user_input=user_input,
                 history=history or [],
             )
             # 绑定工具
             model = self._model
             if tool_list:
-                model = model.bind_tools(tool_list)
+                model = model.bind_tools(tool_list, parallel_tool_calls=True)
             # 调用模型
             response = model.invoke(messages, config=config)
             # 解析响应
@@ -73,6 +75,53 @@ class LLMClient:
             raise
         except Exception as e:
             raise LLMInvokeError(message="LLM invoke failed", detail=str(e))
+
+    def invoke_structured(
+        self,
+        schema: type[BaseModel] | dict[str, Any],
+        prompt: str,
+        user_input: UserInput | dict | str,
+        history: Optional[Sequence[BaseMessage]] = None,
+        tool_list: Optional[list[dict[str, Any]]] = None,
+        *,
+        method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
+        strict: bool | None = None,
+        include_raw: bool = False,
+    ) -> BaseModel | dict[str, Any]:
+        """
+        结构化输出调用模型
+
+        参数:
+            schema: 输出 schema（Pydantic 类或 JSON Schema dict）
+            prompt: 提示语
+            user_input: 用户输入
+            history: 历史记录
+            tool_list: 工具列表
+            method: 结构化输出方式
+            strict: 是否严格匹配 schema
+            include_raw: 是否同时返回原始响应
+        """
+        try:
+            messages = self._build_messages(
+                prompt=self._build_prompt(prompt, tool_list),
+                user_input=user_input,
+                history=history or [],
+            )
+            structured_model = self._model.with_structured_output(
+                schema,
+                method=method,
+                strict=strict,
+                include_raw=include_raw,
+                tools=tool_list,
+            )
+            return structured_model.invoke(messages)
+        except LLMException:
+            raise
+        except Exception as e:
+            raise LLMInvokeError(
+                message="LLM structured invoke failed",
+                detail=str(e),
+            )
 
     def stream(
         self, prompt: str, 
@@ -94,16 +143,16 @@ class LLMClient:
         try:
             # 构建 Messages
             messages = self._build_messages(
-                prompt=prompt,
+                prompt=self._build_prompt(prompt, tool_list),
                 user_input=user_input,
                 history=history or [],
             )
             # 绑定工具
             model = self._model
             if tool_list:
-                model = model.bind_tools(tool_list)
+                model = model.bind_tools(tool_list, parallel_tool_calls=True)
             # 解析响应
-            for chunk in model.stream(messages):
+            for chunk in model.stream(messages, config=config):
                 yield self._parse_response(chunk)
         except LLMException:
             raise
@@ -111,50 +160,6 @@ class LLMClient:
             raise LLMInvokeError(
                 message="LLM stream invoke failed",
                 detail=str(e)
-            )
-
-    def invoke_structured(
-        self,
-        schema: type[BaseModel] | dict[str, Any],
-        prompt: str,
-        user_input: UserInput | dict | str,
-        history: Optional[Sequence[BaseMessage]] = None,
-        *,
-        method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
-        strict: bool | None = None,
-        include_raw: bool = False,
-    ) -> BaseModel | dict[str, Any]:
-        """
-        结构化输出调用模型
-
-        参数:
-            schema: 输出 schema（Pydantic 类或 JSON Schema dict）
-            prompt: 提示语
-            user_input: 用户输入
-            history: 历史记录
-            method: 结构化输出方式
-            strict: 是否严格匹配 schema
-            include_raw: 是否同时返回原始响应
-        """
-        try:
-            messages = self._build_messages(
-                prompt=prompt,
-                user_input=user_input,
-                history=history or [],
-            )
-            structured_model = self._model.with_structured_output(
-                schema,
-                method=method,
-                strict=strict,
-                include_raw=include_raw,
-            )
-            return structured_model.invoke(messages)
-        except LLMException:
-            raise
-        except Exception as e:
-            raise LLMInvokeError(
-                message="LLM structured invoke failed",
-                detail=str(e),
             )
 
     def _initialize_model(self):
@@ -185,6 +190,23 @@ class LLMClient:
                 detail=f"model provider {self._config.model_provider} not supported"
             )
         return model
+
+    def _build_prompt(self, prompt: str, tool_list: list[dict[str, Any]] | None = None):
+        """
+        构建提示词
+        """
+        system_prompts: list[str] = []
+
+        # tool call policy prompt: 当工具列表不为空时，才添加工具调用策略提示词
+        if tool_list:
+            tool_call_policy_prompt = PromptLoader.load("prompt/tool_call_policy.md")
+            if tool_call_policy_prompt:
+                system_prompts.append(tool_call_policy_prompt)
+
+        if prompt:
+            system_prompts.append(prompt)
+
+        return "\n\n".join(system_prompts)
 
     def _build_messages(self, prompt: str, user_input: UserInput | dict, history: Sequence[BaseMessage]):
         """

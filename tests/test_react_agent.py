@@ -3,7 +3,7 @@ import warnings
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessageChunk
-from langchain_core.tools import tool
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
@@ -26,18 +26,13 @@ class State(BaseState):
 def build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
     for tool_obj in BUSINESS_TOOLS:
+        tool = convert_to_openai_tool(tool_obj)
+        fn = tool["function"]
         registry.register(
             ToolDefinition(
-                name=tool_obj.name,
-                description=tool_obj.description,
-                parameters=(
-                    tool_obj.args_schema.model_json_schema()
-                    if tool_obj.args_schema
-                    else {
-                        "type": "object",
-                        "properties": {},
-                    }
-                ),
+                name=fn["name"],
+                description=fn["description"],
+                parameters=fn["parameters"],
             ),
             tool_obj,
         )
