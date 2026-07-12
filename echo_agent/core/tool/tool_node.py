@@ -1,3 +1,4 @@
+import json
 from langchain_core.messages import ToolMessage
 
 from ..graph import BaseContext, BaseState, Node
@@ -33,8 +34,11 @@ class ToolNode(Node):
         tool_messages: list[ToolMessage] = []
         if tool_results:
             for tool_result in tool_results:
+                # 将结果转换为字符串
+                content = json.dumps(tool_result.result, ensure_ascii=False, default=str)
+                # 构建 ToolMessage
                 tool_messages.append(ToolMessage(
-                    content=tool_result.result,
+                    content=content,
                     tool_call_id=tool_result.tool_call_id,
                 ))
 

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from .....prompt import PromptLoader
 from ....graph import Node
-from ....llm import LLMClient, LLMConfig
+from ....llm import LLMClient, LLMConfig, LLMResult
 from ....tool import ToolCall
 from ..schema import ReActContext, ReActState
 
@@ -16,37 +16,31 @@ class ActionResult(BaseModel):
     Action节点结构化输出
 
     参数：
-        action_status: 动作状态
+        status: 状态
             ready: 可执行工具调用已生成
-            need_information: 需要信息
-            failed: 动作计划失败
-        tool_calls: 工具调用
-        reasoning: 动作计划的原因
+            missing_parameters: 缺少参数
+        missing_parameters: 缺失的参数名称列表，当 status 为 missing_parameters 时有效，否则为空列表
     """
-    action_status: Literal["ready", "need_information", "failed"] = Field(
+    status: Literal["ready", "missing_parameters"] = Field(
         description=(
-            "Action planning result.\n"
+            "Validation result of the generated native tool calls.\n\n"
 
             "'ready': "
-            "Only when valid executable tool calls "
-            "are generated and all required parameters "
-            "are available.\n"
+            "All generated tool calls contain every required argument "
+            "and can be executed immediately.\n\n"
 
-            "'need_information': "
-            "Required user information is missing. "
-            "No tool call should be generated.\n"
-
-            "'failed': "
-            "The action cannot be executed because "
-            "of invalid tool selection or unrecoverable error."
+            "'missing_parameters': "
+            "One or more generated tool calls are missing required "
+            "arguments that cannot be inferred from the current context "
+            "or obtained from available observations."
         )
     )
-    tool_calls: list[dict[str, Any]] = Field(
+    missing_parameters: list[str] = Field(
         default_factory=list,
-        description="Executable tool calls."
-    )
-    reasoning: str = Field(
-        description="Explain why this action result was selected."
+        description=(
+            "Names of missing required parameters. "
+            "Leave empty when status is 'ready'."
+        ),
     )
 
 
@@ -57,8 +51,9 @@ class ActionNode(Node):
     def __init__(self, name: str, llm_config: LLMConfig, tool_list: list[dict[str, Any]] | None = None):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
-        self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
-        self._tool_list = tool_list if tool_list is not None else []
+        self._tool_selection_prompt = PromptLoader.load("core/strategy/react/prompt/tool_selection.md")
+        self._action_validation_prompt = PromptLoader.load("core/strategy/react/prompt/action_validation.md")
+        self._tool_list = tool_list or []
 
     def run(self, state: ReActState, context: ReActContext | None = None) -> dict:
         """
@@ -68,16 +63,45 @@ class ActionNode(Node):
 
         # 构建输入
         input = self._build_input(state)
-        # 调用llm-结构化输出
-        response = self._llm_client.invoke_structured(
-            schema=ActionResult,
-            prompt=self._prompt,
+        # Step-1: 选择工具
+        tool_selection_response = self._llm_client.invoke(
+            prompt=self._tool_selection_prompt,
             user_input=input,
+            history=state.messages,
             tool_list=self._tool_list,
         )
-        print(f"[ReAct][action] status={response.action_status} reasoning={response.reasoning}")
+        print(f"[ReAct][action] tool_selection_response={tool_selection_response}")
+        print(f"[ReAct][action] tool_selection_response.tool_calls={tool_selection_response.tool_calls}")
+
+        # Step-2: 验证工具参数是否齐全
+        if not tool_selection_response.tool_calls:
+            validation_input = {
+                "input": state.input,
+                "reasoning": state.reasoning,
+                "tool_calls": [],
+                "available_tools": self._tool_list,
+            }
+        else:
+            validation_input = {
+                "input": state.input,
+                "reasoning": state.reasoning,
+                "tool_calls": [
+                    tc.model_dump()
+                    for tc in tool_selection_response.tool_calls
+                ],
+            }
+        action_validation_response = self._llm_client.invoke_structured(
+            prompt=self._action_validation_prompt,
+            user_input=validation_input,
+            history=state.messages,
+            schema=ActionResult,
+            strict=True
+        )
+        print(f"[ReAct][action] action_validation_response={action_validation_response}")
+        print(f"[ReAct][action] action_validation_response.structured={action_validation_response.structured}")
+
         # 处理结果
-        return self._handle_result(response, state)
+        return self._handle_result(tool_selection_response, action_validation_response, state)
 
     def _build_input(self, state: ReActState) -> dict:
         """
@@ -89,28 +113,39 @@ class ActionNode(Node):
             "reasoning": state.reasoning,
         }
 
-    def _handle_result(self, result: ActionResult, state: ReActState) -> dict:
+    def _handle_result(self, tool_selection_response: LLMResult, action_validation_response: LLMResult, state: ReActState) -> dict:
         """
         Handle the result
         """
-        print(f"[ReAct][action] status={result.action_status}")
-        if result.action_status == "ready":# 可执行工具调用已生成
-            return self._handle_ready(result, state)
-        elif result.action_status == "need_information":# 需要信息
+        # 验证工具调用是否合法
+        tool_calls = tool_selection_response.tool_calls
+        invalid_tools = self._get_invalid_tools(tool_calls)
+        # 有非法工具，则返回失败，重试次数加1
+        if invalid_tools:
             return {
-                "task_status": "human_in_the_loop",
-                "reasoning": result.reasoning,
+                "task_status": "failed",
+                "reasoning": f"Invalid tools selected: {', '.join(invalid_tools)}",
                 "step_count": state.step_count + 1,
+                "retry_count": state.retry_count + 1,
             }
-        
-        return self._handle_failed(result, state)
 
-    def _handle_ready(self, result: ActionResult, state: ReActState) -> dict:
+        status = action_validation_response.structured.status
+        print(f"[ReAct][action] status={status}")
+
+        result: dict = {}
+        if status == "ready":# 可执行工具调用已生成
+            result = self._handle_ready(tool_calls, state)
+        elif status == "missing_parameters":# 缺少参数
+            result = self._handle_missing_parameters(tool_calls, action_validation_response, state)
+
+        return result
+
+    def _handle_ready(self, tool_calls: list[ToolCall], state: ReActState) -> dict:
         """
         处理ready状态
         """
         # 没有工具调用，则返回失败，重试次数加1
-        if not result.tool_calls:
+        if not tool_calls:
             return {
                 "task_status": "failed",
                 "reasoning": "Action marked ready, but no tool calls generated.",
@@ -118,39 +153,30 @@ class ActionNode(Node):
                 "retry_count": state.retry_count + 1,
             }
 
-        # 标准化工具调用
-        tool_calls = self._normalize_tool_calls(result.tool_calls)
-        # 获取无效工具
-        invalid_tools = self._get_invalid_tools(tool_calls)
-        # 有无效工具，则返回失败，重试次数加1
-        if invalid_tools:
-            return {
-                "task_status": "failed",
-                "reasoning": f"Action failed because invalid tools were generated: {invalid_tools}",
-                "step_count": state.step_count + 1,
-                "retry_count": state.retry_count + 1,
-            }
-
         # 返回结果
         return {
+            "task_status": "in_progress",
             "tool_calls": tool_calls,
             "messages": [
                 self._build_tool_call_message(tool_calls)
             ],
             "step_count": state.step_count + 1,
-            "reasoning": result.reasoning,
         }
 
-    def _handle_failed(self, result: ActionResult, state: ReActState) -> dict:
+    def _handle_missing_parameters(self, tool_calls: list[ToolCall], response: LLMResult, state: ReActState) -> dict:
         """
-        处理failed状态
+        处理缺少参数状态
         """
-        # 返回失败，重试次数加1
+        result = response.structured
         return {
-            "task_status": "failed",
-            "reasoning": result.reasoning,
+            "task_status": "human_in_the_loop",
+            "tool_calls": tool_calls,
+            "reasoning": (
+                "Missing required parameters: "
+                f"{', '.join(result.missing_parameters)}"
+            ),
+            "missing_parameters": result.missing_parameters,
             "step_count": state.step_count + 1,
-            "retry_count": state.retry_count + 1,
         }
 
     def _build_tool_call_message(self, tool_calls: list[ToolCall]) -> AIMessage:
@@ -189,22 +215,3 @@ class ActionNode(Node):
             elif "name" in tool:
                 names.add(tool["name"])
         return names
-
-    def _normalize_tool_calls(self, tool_calls: list[ToolCall]) -> list[ToolCall]:
-        """
-        标准化工具调用
-        """
-        seen = set()
-        result = []
-        for tc in tool_calls:
-            key = (
-                tc.name,
-                json.dumps(tc.args, sort_keys=True)
-            )
-            if key in seen:
-                continue
-
-            seen.add(key)
-            result.append(tc)
-
-        return result

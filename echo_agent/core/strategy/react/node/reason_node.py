@@ -75,13 +75,14 @@ class ReasonNode(Node):
         input = self._build_input(state)
         # 调用llm-结构化输出
         response = self._llm_client.invoke_structured(
-            schema=ReasonResult, 
-            prompt=self._prompt, 
-            user_input=input, 
+            prompt=self._prompt,
+            user_input=input,
             history=state.messages,
+            schema=ReasonResult,
         )
-        print(f"[ReAct][reason] status={response.information_status} reasoning={response.reasoning} task_status={response.task_status}")
-        return self._handle_result(response, state)
+        reason_result = response.structured
+        print(f"[ReAct][reason] status={reason_result.information_status} reasoning={reason_result.reasoning} task_status={reason_result.task_status}")
+        return self._handle_result(reason_result, state)
 
     def _build_input(self, state: ReActState) -> dict:
         """

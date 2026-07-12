@@ -59,14 +59,13 @@ class LLMClient:
         try:
             # 构建 Messages
             messages = self._build_messages(
-                prompt=self._build_prompt(prompt, tool_list),
+                prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_list=tool_list,
             )
             # 绑定工具
-            model = self._model
-            if tool_list:
-                model = model.bind_tools(tool_list, parallel_tool_calls=True)
+            model = self._configure_model(tool_list=tool_list)
             # 调用模型
             response = model.invoke(messages, config=config)
             # 解析响应
@@ -82,39 +81,43 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[BaseMessage]] = None,
-        tool_list: Optional[list[dict[str, Any]]] = None,
         *,
         method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
         strict: bool | None = None,
-        include_raw: bool = False,
-    ) -> BaseModel | dict[str, Any]:
+        config: RunnableConfig | None = None
+    ):
         """
         结构化输出调用模型
+
+        ⚠️ 注意：本方法不支持工具调用，若需要工具调用请使用 invoke / stream 方法
 
         参数:
             schema: 输出 schema（Pydantic 类或 JSON Schema dict）
             prompt: 提示语
             user_input: 用户输入
             history: 历史记录
-            tool_list: 工具列表
             method: 结构化输出方式
             strict: 是否严格匹配 schema
-            include_raw: 是否同时返回原始响应
+            config: 配置
         """
         try:
+            # 构建 Messages
             messages = self._build_messages(
-                prompt=self._build_prompt(prompt, tool_list),
+                prompt=prompt,
                 user_input=user_input,
                 history=history or [],
             )
-            structured_model = self._model.with_structured_output(
-                schema,
+            # 配置模型
+            model = self._configure_model(
+                structured=True,
+                schema=schema,
                 method=method,
                 strict=strict,
-                include_raw=include_raw,
-                tools=tool_list,
             )
-            return structured_model.invoke(messages)
+            # 调用模型
+            response = model.invoke(messages, config=config)
+            # 解析响应
+            return self._parse_structured_response(response)
         except LLMException:
             raise
         except Exception as e:
@@ -143,9 +146,10 @@ class LLMClient:
         try:
             # 构建 Messages
             messages = self._build_messages(
-                prompt=self._build_prompt(prompt, tool_list),
+                prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_list=tool_list,
             )
             # 绑定工具
             model = self._model
@@ -175,7 +179,7 @@ class LLMClient:
                 "max_retries": self._config.max_retries,
                 "use_responses_api": self._config.use_responses_api,
             }
-            if self._config.output_version:
+            if self._config.use_responses_api and self._config.output_version:
                 model_kwargs["output_version"] = self._config.output_version
             if self._config.extra_body:
                 model_kwargs["extra_body"] = self._config.extra_body
@@ -190,6 +194,33 @@ class LLMClient:
                 detail=f"model provider {self._config.model_provider} not supported"
             )
         return model
+
+    def _build_messages(
+        self, 
+        prompt: str, 
+        user_input: UserInput | dict | str, 
+        history: Optional[Sequence[BaseMessage]] = None, 
+        tool_list: Optional[list[dict[str, Any]]] = None,
+    ):
+        """
+        构建 LangChain Messages
+        """
+        messages: list[BaseMessage] = []
+
+        # 添加系统提示词
+        system_prompt = self._build_prompt(prompt, tool_list)
+        messages.append(SystemMessage(content=system_prompt))
+        # 添加历史记录
+        messages.extend(history)
+        # 添加用户输入
+        if isinstance(user_input, UserInput):
+            messages.append(user_input.to_human_message())
+        elif isinstance(user_input, str):
+            messages.append(HumanMessage(content=user_input))
+        elif isinstance(user_input, dict):
+            messages.append(HumanMessage(content=json.dumps(user_input, ensure_ascii=False, default=str)))
+        
+        return messages
 
     def _build_prompt(self, prompt: str, tool_list: list[dict[str, Any]] | None = None):
         """
@@ -208,21 +239,40 @@ class LLMClient:
 
         return "\n\n".join(system_prompts)
 
-    def _build_messages(self, prompt: str, user_input: UserInput | dict, history: Sequence[BaseMessage]):
+    def _configure_model(
+        self,
+        *,
+        structured: bool = False,
+        schema: type[BaseModel] | dict[str, Any] | None = None,
+        tool_list: list[dict[str, Any]] | None = None,
+        method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
+        strict: bool | None = None,
+    ):
         """
-        构建 LangChain Messages
+        配置模型
         """
-        messages: list[BaseMessage] = []
+        model = self._model
 
-        messages.append(SystemMessage(content=prompt))
-        messages.extend(history)
-        if isinstance(user_input, UserInput):
-            messages.append(user_input.to_human_message())
-        elif isinstance(user_input, str):
-            messages.append(HumanMessage(content=user_input))
-        elif isinstance(user_input, dict):
-            messages.append(HumanMessage(content=json.dumps(user_input, ensure_ascii=False, default=str)))
-        return messages
+        # 结构化输出
+        if structured:
+            if schema is None: 
+                raise LLMInvokeError(
+                    message="schema is required when structured=True",
+                )
+            # 配置结构化输出
+            kwargs = {
+                "schema": schema,
+                "method": method,
+                "strict": strict,
+                "include_raw": True,
+            }
+            return model.with_structured_output(**kwargs)
+
+        # 绑定工具
+        if tool_list:
+            return model.bind_tools(tool_list, parallel_tool_calls=True)
+
+        return model
 
     def _parse_response(self, response: AIMessage):
         """
@@ -240,6 +290,36 @@ class LLMClient:
             raise LLMResponseDecodeError(
                 message="parse llm response failed",
                 detail=str(e)
+            )
+
+    def _parse_structured_response(self, response) -> LLMResult:
+        """
+        解析 LLM 结构化输出
+        """
+        try:
+            # 解析原始消息
+            raw = response.get("raw")
+            if raw is None:
+                raise LLMResponseDecodeError(
+                    message="structured response missing raw message",
+                )
+            # 解析结构化输出
+            parsed = response["parsed"]
+            if parsed is None:
+                raise LLMResponseDecodeError(
+                    message="structured response missing parsed message",
+                )
+
+            return LLMResult(
+                content=self._normalize_content(raw.content),
+                raw=raw,
+                structured=parsed,
+                response_metadata=getattr(raw, "response_metadata", {}),
+            )
+        except Exception as e:
+            raise LLMResponseDecodeError(
+                message="parse structured response failed",
+                detail=str(e),
             )
 
     def _normalize_content(self, content: Any):
@@ -264,15 +344,16 @@ class LLMClient:
         """
         if not raw_tool_calls:
             return []
-        normalized = []
+
+        tool_calls = []
         for i, tc in enumerate(raw_tool_calls):
             if isinstance(tc, ToolCall):
-                normalized.append(tc)
+                tool_calls.append(tc)
                 continue
             if isinstance(tc, dict):
-                normalized.append(ToolCall(
+                tool_calls.append(ToolCall(
                     name=tc.get("name", ""),
-                    args=tc.get("args") or {},
+                    args=tc.get("args") or tc.get("arguments") or {},
                     tool_call_id=tc.get("id") or tc.get("tool_call_id") or f"call_{i}",
                 ))
-        return normalized
+        return tool_calls

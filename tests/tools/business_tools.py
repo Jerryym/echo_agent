@@ -343,6 +343,62 @@ def generate_business_report(
 
     return "\n".join(lines)
 
+# =========================
+# User
+# =========================
+
+@tool
+def query_user_by_name(
+    name: str,
+) -> dict[str, Any]:
+    """
+    根据用户姓名查询用户信息。
+
+    This tool should be used before querying user-related data
+    when only the user's name is available.
+
+    Args:
+        name:
+            用户姓名，例如 张伟
+    """
+
+    for user_id, user in _USERS.items():
+        if user["name"] == name:
+            return {
+                "user_id": user_id,
+                **user,
+            }
+
+    return {
+        "error": "user not found",
+    }
+
+
+@tool
+def query_user_orders(
+    user_id: str,
+) -> list[dict[str, Any]]:
+    """
+    根据用户ID查询该用户所有订单。
+
+    IMPORTANT:
+    The user_id must come from a previous user query result.
+    Do not guess or infer user_id.
+
+    Args:
+        user_id:
+            用户唯一ID，例如 u001
+    """
+
+    return [
+        {
+            "order_id": order_id,
+            **order,
+        }
+        for order_id, order in _ORDERS.items()
+        if order["user_id"] == user_id
+    ]
+
 
 # =========================
 # Export
@@ -359,4 +415,6 @@ BUSINESS_TOOLS = [
     currency_exchange,
     query_weather,
     generate_business_report,
+    query_user_by_name,
+    query_user_orders,
 ]
