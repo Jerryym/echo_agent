@@ -64,7 +64,7 @@ class LLMClient:
                 history=history or [],
                 tool_list=tool_list,
             )
-            # 绑定工具
+            # 配置模型
             model = self._configure_model(tool_list=tool_list)
             # 调用模型
             response = model.invoke(messages, config=config)
@@ -151,10 +151,8 @@ class LLMClient:
                 history=history or [],
                 tool_list=tool_list,
             )
-            # 绑定工具
-            model = self._model
-            if tool_list:
-                model = model.bind_tools(tool_list, parallel_tool_calls=True)
+            # 配置模型
+            model = self._configure_model(tool_list=tool_list)
             # 解析响应
             for chunk in model.stream(messages, config=config):
                 yield self._parse_response(chunk)

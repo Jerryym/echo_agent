@@ -37,10 +37,12 @@ class ToolCall(BaseModel):
         name: 工具名称
         args: 工具参数
         tool_call_id: 工具调用ID
+        missing_args: 缺少的参数列表
     """
     name: str
     args: dict[str, Any] = Field(default_factory=dict)
     tool_call_id: str
+    missing_args: list[str] = Field(default_factory=list)
 
 
 class ToolResult(BaseModel):

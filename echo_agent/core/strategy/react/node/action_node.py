@@ -1,4 +1,3 @@
-import json
 from typing import Any, Literal
 
 from langchain_core.messages import AIMessage
@@ -26,20 +25,32 @@ class ActionResult(BaseModel):
             "Validation result of the generated native tool calls.\n\n"
 
             "'ready': "
-            "All generated tool calls contain every required argument "
-            "and can be executed immediately.\n\n"
+            "All generated tool calls contain all required arguments "
+            "and are ready for immediate execution.\n\n"
 
             "'missing_parameters': "
             "One or more generated tool calls are missing required "
-            "arguments that cannot be inferred from the current context "
-            "or obtained from available observations."
+            "arguments and cannot be executed until additional information "
+            "is provided."
         )
     )
-    missing_parameters: list[str] = Field(
-        default_factory=list,
+    missing_parameters: dict[str, list[str]] = Field(
+        default_factory=dict,
         description=(
-            "Names of missing required parameters. "
-            "Leave empty when status is 'ready'."
+            "Missing required arguments grouped by tool_call_id.\n\n"
+
+            "The key is the identifier of the generated tool call "
+            "(tool_call_id).\n"
+
+            "The value is a list of missing argument names for that "
+            "specific tool call.\n\n"
+
+            "Example:\n"
+            "{\n"
+            "  \"call_xxx\": [\"order_id\", \"reason\"]\n"
+            "}\n\n"
+
+            "Return an empty object when status is 'ready'."
         ),
     )
 
@@ -47,12 +58,18 @@ class ActionResult(BaseModel):
 class ActionNode(Node):
     """
     Action Node：动作节点
+
+    流程：
+        Step-1: 选择工具
+        Step-2: 验证工具参数是否齐全
+            如果参数不齐全，则返回 human_in_the_loop 状态，并等待用户输入
+            如果参数齐全，则返回 ready 状态，并执行工具
     """
     def __init__(self, name: str, llm_config: LLMConfig, tool_list: list[dict[str, Any]] | None = None):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._tool_selection_prompt = PromptLoader.load("core/strategy/react/prompt/tool_selection.md")
-        self._action_validation_prompt = PromptLoader.load("core/strategy/react/prompt/action_validation.md")
+        self._tool_validation_prompt = PromptLoader.load("core/strategy/react/prompt/tool_validation.md")
         self._tool_list = tool_list or []
 
     def run(self, state: ReActState, context: ReActContext | None = None) -> dict:
@@ -72,36 +89,32 @@ class ActionNode(Node):
         )
         print(f"[ReAct][action] tool_selection_response={tool_selection_response}")
         print(f"[ReAct][action] tool_selection_response.tool_calls={tool_selection_response.tool_calls}")
-
-        # Step-2: 验证工具参数是否齐全
+        # 没有工具调用，则返回完成状态
         if not tool_selection_response.tool_calls:
-            validation_input = {
-                "input": state.input,
-                "reasoning": state.reasoning,
-                "tool_calls": [],
-                "available_tools": self._tool_list,
-            }
-        else:
-            validation_input = {
-                "input": state.input,
-                "reasoning": state.reasoning,
-                "tool_calls": [
-                    tc.model_dump()
-                    for tc in tool_selection_response.tool_calls
-                ],
-            }
-        action_validation_response = self._llm_client.invoke_structured(
-            prompt=self._action_validation_prompt,
+            return self._handle_no_tool_calls(state)
+
+        # Step-2: 验证工具参数是否齐全, 本步骤不进行工具调用
+        tool_calls = [
+            tc.model_dump()
+            for tc in tool_selection_response.tool_calls
+        ]
+        validation_input = {
+            "input": state.input,
+            "reasoning": state.reasoning,
+            "tool_calls": tool_calls
+        }
+        tool_validation_response = self._llm_client.invoke_structured(
+            prompt=self._tool_validation_prompt,
             user_input=validation_input,
             history=state.messages,
             schema=ActionResult,
             strict=True
         )
-        print(f"[ReAct][action] action_validation_response={action_validation_response}")
-        print(f"[ReAct][action] action_validation_response.structured={action_validation_response.structured}")
+        print(f"[ReAct][action] action_validation_response={tool_validation_response}")
+        print(f"[ReAct][action] action_validation_response.structured={tool_validation_response.structured}")
 
         # 处理结果
-        return self._handle_result(tool_selection_response, action_validation_response, state)
+        return self._handle_result(tool_selection_response, tool_validation_response, state)
 
     def _build_input(self, state: ReActState) -> dict:
         """
@@ -111,6 +124,16 @@ class ActionNode(Node):
             "input": state.input,
             "messages": state.messages,
             "reasoning": state.reasoning,
+        }
+
+    def _handle_no_tool_calls(self, state: ReActState) -> dict:
+        """
+        处理没有工具调用的情况
+        """
+        return {
+            "task_status": "completed",
+            "reasoning": "No executable tool calls required.",
+            "step_count": state.step_count + 1,
         }
 
     def _handle_result(self, tool_selection_response: LLMResult, action_validation_response: LLMResult, state: ReActState) -> dict:
@@ -168,14 +191,12 @@ class ActionNode(Node):
         处理缺少参数状态
         """
         result = response.structured
+        missing_parameters_map = result.missing_parameters
+        updated_tool_calls = self._update_tool_calls(tool_calls, missing_parameters_map)
         return {
             "task_status": "human_in_the_loop",
-            "tool_calls": tool_calls,
-            "reasoning": (
-                "Missing required parameters: "
-                f"{', '.join(result.missing_parameters)}"
-            ),
-            "missing_parameters": result.missing_parameters,
+            "tool_calls": updated_tool_calls,
+            "reasoning": f"Missing required parameters: {missing_parameters_map}",
             "step_count": state.step_count + 1,
         }
 
@@ -215,3 +236,15 @@ class ActionNode(Node):
             elif "name" in tool:
                 names.add(tool["name"])
         return names
+
+    def _update_tool_calls(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> list[ToolCall]:
+        """
+        更新工具调用，添加缺少的参数
+        """
+        updated_tool_calls = []
+        for tool_call in tool_calls:
+            missing_parameters = missing_parameters_map.get(tool_call.tool_call_id, [])
+            if missing_parameters:
+                tool_call.missing_args = missing_parameters
+            updated_tool_calls.append(tool_call)
+        return updated_tool_calls

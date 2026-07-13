@@ -26,8 +26,12 @@ class ReActState(BaseState):
 
     参数:
         reasoning: 推理
-        information_status: 信息状态
         task_status: 任务状态
+            in_progress: 进行中
+            human_in_the_loop: 需要人类干预
+            completed: 完成
+            failed: 失败
+        observations: 观察
         step_count: 步数
         retry_count: 重试次数
     """
