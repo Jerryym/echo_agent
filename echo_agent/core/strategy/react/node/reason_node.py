@@ -15,6 +15,7 @@ class ReasonResult(BaseModel):
 
     参数:
         reasoning: 推理结果
+        action_intent: 下一步行动意图
         information_status: 信息状态
             sufficient: 信息充足
             insufficient: 信息不足
@@ -29,6 +30,15 @@ class ReasonResult(BaseModel):
             "and the reason for the next step."
         )
     )
+    action_intent: str = Field(
+        description=(
+            "Describe the intended next action. "
+            "This output will be consumed by the Action node. "
+            "Do not select tools. "
+            "Do not mention tool names. "
+            "Describe only what capability or operation should be performed."
+        )
+    )
     information_status: Literal["sufficient", "insufficient"] = Field(
         description=(
             "Whether the currently available information is sufficient "
@@ -37,11 +47,9 @@ class ReasonResult(BaseModel):
     )
     task_status: Literal["in_progress", "completed"] = Field(
         description=(
-            "Whether the user's requested objective has been achieved. "
-
+            "Whether the user's requested objective has been achieved.\n\n"
             "'completed': "
-            "All requested work has been successfully completed. "
-
+            "All requested work has been successfully completed.\n\n"
             "'in_progress': "
             "Further execution steps are still required."
         )
@@ -51,6 +59,16 @@ class ReasonResult(BaseModel):
 class ReasonNode(Node):
     """
     Reason Node：推理节点
+
+    职责：
+        1. 判断当前任务状态
+        2. 判断信息是否满足下一步执行要求
+        3. 生成下一步动作意图
+
+    不负责：
+        1. 工具选择
+        2. 参数生成
+        3. 工具执行
     """
     def __init__(self, name: str, llm_config: LLMConfig):
         super().__init__(name)
@@ -80,9 +98,15 @@ class ReasonNode(Node):
             history=state.messages,
             schema=ReasonResult,
         )
-        reason_result = response.structured
-        print(f"[ReAct][reason] status={reason_result.information_status} reasoning={reason_result.reasoning} task_status={reason_result.task_status}")
-        return self._handle_result(reason_result, state)
+        result = response.structured
+        print(
+            "[ReAct][reason] "
+            f"information={result.information_status} "
+            f"task={result.task_status} "
+            f"intent={result.action_intent}"
+        )
+
+        return self._handle_result(result, state)
 
     def _build_input(self, state: ReActState) -> dict:
         """
@@ -105,7 +129,7 @@ class ReasonNode(Node):
 
     def _has_tool_error(self, state: ReActState) -> bool:
         """
-        判断是否存在工具错误
+        判断是否存在工具执行失败错误
         """
         return any(not result.success for result in state.tool_results)
 
@@ -132,10 +156,16 @@ class ReasonNode(Node):
         """
         处理Reason结果
         """
+        reasoning = (
+            f"{response.reasoning}\n\n"
+            f"Next action intent: {response.action_intent}"
+        )
+
         result = {
-            "reasoning": response.reasoning,
+            "reasoning": reasoning,
         }
-        # 只有in_progress状态由Reason负责
+
+        # 只有in_progress状态由 Reason负责
         if state.task_status == "in_progress":
             result["task_status"] = response.task_status
 

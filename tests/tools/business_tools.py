@@ -67,18 +67,23 @@ _WEATHER = {
 }
 
 
+_PURCHASE_REQUESTS: list[dict[str, Any]] = []
+
+
 # =========================
 # User
 # =========================
-
 @tool
-def get_user_profile(user_id: str) -> dict[str, Any]:
+def get_user_profile(
+    user_id: str,
+) -> dict[str, Any]:
     """
     根据用户ID查询用户基本信息。
 
     Args:
         user_id:
-            用户唯一ID，例如 u001
+            用户唯一ID，例如 u001。
+            必须由用户提供或通过其他工具查询获得。
     """
 
     return _USERS.get(
@@ -89,18 +94,71 @@ def get_user_profile(user_id: str) -> dict[str, Any]:
     )
 
 
+@tool
+def query_user_by_name(
+    name: str,
+) -> dict[str, Any]:
+    """
+    根据用户姓名查询用户信息。
+
+    This tool should be used before querying user-related data
+    when only the user's name is available.
+
+    Args:
+        name:
+            用户姓名，例如 张伟。
+    """
+
+    for user_id, user in _USERS.items():
+        if user["name"] == name:
+            return {
+                "user_id": user_id,
+                **user,
+            }
+
+    return {
+        "error": "user not found",
+    }
+
+
+@tool
+def query_salary(
+    user_id: str,
+) -> dict[str, Any]:
+    """
+    查询员工月薪。
+
+    Args:
+        user_id:
+            用户ID。
+    """
+
+    salary = _SALARY.get(user_id)
+
+    if salary is None:
+        return {
+            "error": "salary unavailable",
+        }
+
+    return {
+        "user_id": user_id,
+        "monthly_salary": salary,
+    }
+
+
 # =========================
 # Order
 # =========================
-
 @tool
-def get_order_detail(order_id: str) -> dict[str, Any]:
+def get_order_detail(
+    order_id: str,
+) -> dict[str, Any]:
     """
     查询订单详情。
 
     Args:
         order_id:
-            订单编号
+            订单编号。
     """
 
     return _ORDERS.get(
@@ -112,6 +170,32 @@ def get_order_detail(order_id: str) -> dict[str, Any]:
 
 
 @tool
+def query_user_orders(
+    user_id: str,
+) -> list[dict[str, Any]]:
+    """
+    根据用户ID查询该用户所有订单。
+
+    IMPORTANT:
+    The user_id must come from a previous user query result.
+    Do not guess or infer user_id.
+
+    Args:
+        user_id:
+            用户唯一ID，例如 u001。
+    """
+
+    return [
+        {
+            "order_id": order_id,
+            **order,
+        }
+        for order_id, order in _ORDERS.items()
+        if order["user_id"] == user_id
+    ]
+
+
+@tool
 def create_refund(
     order_id: str,
     reason: str,
@@ -119,19 +203,12 @@ def create_refund(
     """
     创建退款申请。
 
-    IMPORTANT:
-    This tool must be called whenever a user requests
-    creating, applying, submitting or processing a refund.
-
-    This tool only creates a refund request.
-    It does not happen automatically.
-
     Args:
         order_id:
-            订单编号
+            需要退款的订单编号。
 
         reason:
-            退款原因
+            退款原因。
     """
 
     refund = {
@@ -155,7 +232,7 @@ def get_refund_status(
 
     Args:
         refund_id:
-            退款编号
+            退款编号。
     """
 
     for refund in _REFUNDS:
@@ -170,7 +247,6 @@ def get_refund_status(
 # =========================
 # Product
 # =========================
-
 @tool
 def query_inventory(
     product_name: str,
@@ -180,7 +256,7 @@ def query_inventory(
 
     Args:
         product_name:
-            商品名称
+            商品名称。
     """
 
     return {
@@ -198,7 +274,7 @@ def query_product_price(
 
     Args:
         product_name:
-            商品名称
+            商品名称。
     """
 
     price = _PRICES.get(product_name)
@@ -215,38 +291,8 @@ def query_product_price(
 
 
 # =========================
-# Employee
-# =========================
-
-@tool
-def query_salary(
-    user_id: str,
-) -> dict[str, Any]:
-    """
-    查询员工月薪。
-
-    Args:
-        user_id:
-            用户ID
-    """
-
-    salary = _SALARY.get(user_id)
-
-    if salary is None:
-        return {
-            "error": "salary unavailable",
-        }
-
-    return {
-        "user_id": user_id,
-        "monthly_salary": salary,
-    }
-
-
-# =========================
 # Finance
 # =========================
-
 @tool
 def currency_exchange(
     amount: float,
@@ -258,13 +304,13 @@ def currency_exchange(
 
     Args:
         amount:
-            金额
+            金额。
 
         from_currency:
-            原货币，例如 USD
+            原货币，例如 USD。
 
         to_currency:
-            目标货币，例如 CNY
+            目标货币，例如 CNY。
     """
 
     rates = {
@@ -293,7 +339,6 @@ def currency_exchange(
 # =========================
 # Weather
 # =========================
-
 @tool
 def query_weather(
     city: str,
@@ -303,7 +348,7 @@ def query_weather(
 
     Args:
         city:
-            城市名称
+            城市名称。
     """
 
     return _WEATHER.get(
@@ -315,7 +360,6 @@ def query_weather(
 # =========================
 # Report
 # =========================
-
 @tool
 def generate_business_report(
     title: str,
@@ -326,10 +370,12 @@ def generate_business_report(
 
     Args:
         title:
-            报告标题
+            报告标题。
 
         metrics:
-            数据指标
+            数据指标。
+            必须由用户提供。
+            不允许自动生成。
     """
 
     lines = [
@@ -343,67 +389,76 @@ def generate_business_report(
 
     return "\n".join(lines)
 
-# =========================
-# User
-# =========================
 
+# =========================
+# Approval Test
+# =========================
 @tool
-def query_user_by_name(
-    name: str,
+def delete_user_account(
+    user_id: str,
 ) -> dict[str, Any]:
     """
-    根据用户姓名查询用户信息。
-
-    This tool should be used before querying user-related data
-    when only the user's name is available.
-
-    Args:
-        name:
-            用户姓名，例如 张伟
-    """
-
-    for user_id, user in _USERS.items():
-        if user["name"] == name:
-            return {
-                "user_id": user_id,
-                **user,
-            }
-
-    return {
-        "error": "user not found",
-    }
-
-
-@tool
-def query_user_orders(
-    user_id: str,
-) -> list[dict[str, Any]]:
-    """
-    根据用户ID查询该用户所有订单。
+    删除用户账号。
 
     IMPORTANT:
-    The user_id must come from a previous user query result.
-    Do not guess or infer user_id.
+    This operation requires user confirmation before execution.
 
     Args:
         user_id:
-            用户唯一ID，例如 u001
+            用户ID。
     """
 
-    return [
-        {
-            "order_id": order_id,
-            **order,
-        }
-        for order_id, order in _ORDERS.items()
-        if order["user_id"] == user_id
-    ]
+    return {
+        "user_id": user_id,
+        "status": "deleted",
+    }
+
+
+# =========================
+# Information Collection Test
+# =========================
+@tool
+def submit_purchase_request(
+    product_name: str,
+    quantity: int,
+    reason: str,
+) -> dict[str, Any]:
+    """
+    提交采购申请。
+
+    Args:
+        product_name:
+            商品名称。
+            必须由用户明确提供。
+            不允许推断。
+
+        quantity:
+            采购数量。
+            必须由用户明确提供。
+            不允许推断。
+
+        reason:
+            采购原因。
+            必须由用户明确说明。
+            不允许自动生成。
+    """
+
+    request = {
+        "request_id": f"purchase_{len(_PURCHASE_REQUESTS)+1}",
+        "product_name": product_name,
+        "quantity": quantity,
+        "reason": reason,
+        "status": "pending",
+    }
+
+    _PURCHASE_REQUESTS.append(request)
+
+    return request
 
 
 # =========================
 # Export
 # =========================
-
 BUSINESS_TOOLS = [
     get_user_profile,
     get_order_detail,
@@ -417,4 +472,6 @@ BUSINESS_TOOLS = [
     generate_business_report,
     query_user_by_name,
     query_user_orders,
+    submit_purchase_request,
+    delete_user_account,
 ]

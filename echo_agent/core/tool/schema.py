@@ -28,6 +28,15 @@ class ToolDefinition(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     type: ToolType = ToolType.FUNCTION
 
+    def get_parameter_description(self, param_name: str) -> str:
+        """
+        获取参数描述
+        """
+        properties = self.parameters.get("properties", {})
+        parameter_schema = properties.get(param_name)
+        if parameter_schema:
+            return parameter_schema.get("description", param_name)
+        return param_name
 
 class ToolCall(BaseModel):
     """

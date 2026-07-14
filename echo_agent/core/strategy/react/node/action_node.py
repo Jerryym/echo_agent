@@ -1,13 +1,16 @@
 from typing import Any, Literal
 
 from langchain_core.messages import AIMessage
+from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig, LLMResult
 from ....tool import ToolCall
+from ....tool.utils import get_tool_definition, to_tool_list
 from ..schema import ReActContext, ReActState
+from ....runtime.interrupt import InformationCollectionRequest, InformationCollectionResponse, InterruptField, InterruptType
 
 
 class ActionResult(BaseModel):
@@ -70,13 +73,22 @@ class ActionNode(Node):
         self._llm_client = LLMClient(llm_config)
         self._tool_selection_prompt = PromptLoader.load("core/strategy/react/prompt/tool_selection.md")
         self._tool_validation_prompt = PromptLoader.load("core/strategy/react/prompt/tool_validation.md")
-        self._tool_list = tool_list or []
+        self._tool_json_schema = tool_list or []
+        self._tool_list = to_tool_list(self._tool_json_schema)
 
     def run(self, state: ReActState, context: ReActContext | None = None) -> dict:
         """
         Run the node
         """
         print(f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}")
+
+        # 如果存在工具调用，则跳过工具选择
+        # if state.tool_calls:
+        #     print("[ReAct][action] existing tool_calls detected, skip tool selection")
+        #     return {
+        #         "task_status": "in_progress",
+        #         "tool_calls": state.tool_calls,
+        #     }
 
         # 构建输入
         input = self._build_input(state)
@@ -85,7 +97,7 @@ class ActionNode(Node):
             prompt=self._tool_selection_prompt,
             user_input=input,
             history=state.messages,
-            tool_list=self._tool_list,
+            tool_list=self._tool_json_schema,
         )
         print(f"[ReAct][action] tool_selection_response={tool_selection_response}")
         print(f"[ReAct][action] tool_selection_response.tool_calls={tool_selection_response.tool_calls}")
@@ -99,9 +111,10 @@ class ActionNode(Node):
             for tc in tool_selection_response.tool_calls
         ]
         validation_input = {
-            "input": state.input,
-            "reasoning": state.reasoning,
-            "tool_calls": tool_calls
+            # "input": state.input,
+            # "reasoning": state.reasoning,
+            "tool_calls": tool_calls,
+            "tool_definitions": self._tool_json_schema
         }
         tool_validation_response = self._llm_client.invoke_structured(
             prompt=self._tool_validation_prompt,
@@ -192,11 +205,30 @@ class ActionNode(Node):
         """
         result = response.structured
         missing_parameters_map = result.missing_parameters
-        updated_tool_calls = self._update_tool_calls(tool_calls, missing_parameters_map)
+        tool_calls = self._mark_missing_parameters(tool_calls, missing_parameters_map)
+
+        # 构造 interruption request
+        request = InformationCollectionRequest(
+            type=InterruptType.INFORMATION_COLLECTION,
+            description="Please provide the missing parameters. ",
+            fields=self._build_fields(tool_calls, missing_parameters_map)
+        )
+        print(f"[ReAct][action] interruption request={request}")
+
+        # 触发中断
+        values = interrupt(request.model_dump())
+        print(f"[ReAct][action] interruption values={values}")
+
+        # 构造 interruption response
+        interruption_response = InformationCollectionResponse(**values)
+        print(f"[ReAct][action] interruption response={interruption_response}")
+
+        # 更新工具调用
+        updated_tool_calls = self._fill_tool_calls(tool_calls, interruption_response)
         return {
-            "task_status": "human_in_the_loop",
+            "task_status": "in_progress",
             "tool_calls": updated_tool_calls,
-            "reasoning": f"Missing required parameters: {missing_parameters_map}",
+            "reasoning": f"Missing required parameters: {list(interruption_response.values.keys())}",
             "step_count": state.step_count + 1,
         }
 
@@ -228,23 +260,47 @@ class ActionNode(Node):
         ]
 
     def _valid_tool_names(self) -> set[str]:
-        """从 OpenAI tool schema 列表提取合法工具名。"""
-        names: set[str] = set()
-        for tool in self._tool_list:
-            if "function" in tool and "name" in tool["function"]:
-                names.add(tool["function"]["name"])
-            elif "name" in tool:
-                names.add(tool["name"])
-        return names
+        """
+        获取合法工具名称列表
+        """
+        return {
+            tool.name
+            for tool in self._tool_list
+        }
 
-    def _update_tool_calls(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> list[ToolCall]:
+    def _build_fields(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> list[InterruptField]:
         """
-        更新工具调用，添加缺少的参数
+        构建信息补全字段
         """
-        updated_tool_calls = []
+        fields = []
         for tool_call in tool_calls:
             missing_parameters = missing_parameters_map.get(tool_call.tool_call_id, [])
-            if missing_parameters:
-                tool_call.missing_args = missing_parameters
-            updated_tool_calls.append(tool_call)
-        return updated_tool_calls
+            # 获取工具定义
+            tool_definition = get_tool_definition(self._tool_list, tool_call.name)
+            for param in missing_parameters:
+                fields.append(InterruptField(
+                    name=param, 
+                    description=tool_definition.get_parameter_description(param)
+                    if tool_definition else param
+                ))
+        return fields
+
+    def _mark_missing_parameters(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> list[ToolCall]: 
+        """
+        标记待补充参数
+        """
+        for tool_call in tool_calls:
+            tool_call.missing_args = missing_parameters_map.get(tool_call.tool_call_id, [])
+        return tool_calls
+
+    def _fill_tool_calls(self, tool_calls: list[ToolCall], response: InformationCollectionResponse) -> list[ToolCall]:
+        """
+        使用 interrupt 返回值填充工具参数
+        """
+        for tool_call in tool_calls:
+            for key, value in response.values.items():
+                if key in tool_call.missing_args:
+                    tool_call.args[key] = value
+            
+            tool_call.missing_args = []
+        return tool_calls
