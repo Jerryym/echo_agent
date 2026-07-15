@@ -38,7 +38,6 @@ class ApprovalResponse(InterruptResponse):
     """
     审批响应
     """
-
     approved: bool
 
 

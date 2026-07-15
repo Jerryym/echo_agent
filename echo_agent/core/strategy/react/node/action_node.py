@@ -1,12 +1,12 @@
 from typing import Any, Literal
 
 from langchain_core.messages import AIMessage
-from langgraph.types import interrupt
+from langgraph.types import Command, interrupt
 from pydantic import BaseModel, Field
 
 from .....prompt import PromptLoader
 from ....graph import Node
-from ....llm import LLMClient, LLMConfig, LLMResult
+from ....llm import LLMClient, LLMConfig
 from ....tool import ToolCall
 from ....tool.utils import get_tool_definition, to_tool_list
 from ..schema import ReActContext, ReActState
@@ -61,18 +61,11 @@ class ActionResult(BaseModel):
 class ActionNode(Node):
     """
     Action Node：动作节点
-
-    流程：
-        Step-1: 选择工具
-        Step-2: 验证工具参数是否齐全
-            如果参数不齐全，则返回 human_in_the_loop 状态，并等待用户输入
-            如果参数齐全，则返回 ready 状态，并执行工具
     """
     def __init__(self, name: str, llm_config: LLMConfig, tool_list: list[dict[str, Any]] | None = None):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
-        self._tool_selection_prompt = PromptLoader.load("core/strategy/react/prompt/tool_selection.md")
-        self._tool_validation_prompt = PromptLoader.load("core/strategy/react/prompt/tool_validation.md")
+        self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
         self._tool_json_schema = tool_list or []
         self._tool_list = to_tool_list(self._tool_json_schema)
 
@@ -83,113 +76,72 @@ class ActionNode(Node):
         print(f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}")
 
         # 如果存在工具调用，则跳过工具选择
-        # if state.tool_calls:
-        #     print("[ReAct][action] existing tool_calls detected, skip tool selection")
-        #     return {
-        #         "task_status": "in_progress",
-        #         "tool_calls": state.tool_calls,
-        #     }
+        print(f"[ReAct][action] state.tool_calls={state.tool_calls}")
+        if state.tool_calls:
+            print("[ReAct][action] existing tool_calls detected, skip tool selection")
+            return {
+                "task_status": "in_progress",
+                "tool_calls": state.tool_calls,
+            }
 
         # 构建输入
-        input = self._build_input(state)
-        # Step-1: 选择工具
-        tool_selection_response = self._llm_client.invoke(
-            prompt=self._tool_selection_prompt,
+        input = {
+            "reasoning": state.reasoning,
+        }
+        # 选择工具
+        response = self._llm_client.invoke(
+            prompt=self._prompt,
             user_input=input,
             history=state.messages,
             tool_list=self._tool_json_schema,
         )
-        print(f"[ReAct][action] tool_selection_response={tool_selection_response}")
-        print(f"[ReAct][action] tool_selection_response.tool_calls={tool_selection_response.tool_calls}")
-        # 没有工具调用，则返回完成状态
-        if not tool_selection_response.tool_calls:
+        print(f"[ReAct][action] tool_selection_response={response}")
+        print(f"[ReAct][action] tool_selection_response.tool_calls={response.tool_calls}")
+
+        # 没有工具调用，则返回 no_tool_calls 状态
+        if not response.tool_calls:
             return self._handle_no_tool_calls(state)
 
-        # Step-2: 验证工具参数是否齐全, 本步骤不进行工具调用
-        tool_calls = [
-            tc.model_dump()
-            for tc in tool_selection_response.tool_calls
-        ]
-        validation_input = {
-            # "input": state.input,
-            # "reasoning": state.reasoning,
-            "tool_calls": tool_calls,
-            "tool_definitions": self._tool_json_schema
-        }
-        tool_validation_response = self._llm_client.invoke_structured(
-            prompt=self._tool_validation_prompt,
-            user_input=validation_input,
-            history=state.messages,
-            schema=ActionResult,
-            strict=True
-        )
-        print(f"[ReAct][action] action_validation_response={tool_validation_response}")
-        print(f"[ReAct][action] action_validation_response.structured={tool_validation_response.structured}")
+        tool_calls = response.tool_calls
+        # 工具合法性校验
+        invalid_tools = self._get_invalid_tools(tool_calls)
+        if invalid_tools:
+            return self._handle_invalid_tools(invalid_tools, state)
+        # 参数校验
+        missing_parameters_map = self._get_missing_parameters(tool_calls)
+        if missing_parameters_map:
+            return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
 
-        # 处理结果
-        return self._handle_result(tool_selection_response, tool_validation_response, state)
-
-    def _build_input(self, state: ReActState) -> dict:
-        """
-        Build the input
-        """
-        return {
-            "input": state.input,
-            "messages": state.messages,
-            "reasoning": state.reasoning,
-        }
+        return self._handle_ready(tool_calls, state)
 
     def _handle_no_tool_calls(self, state: ReActState) -> dict:
         """
         处理没有工具调用的情况
         """
         return {
-            "task_status": "completed",
-            "reasoning": "No executable tool calls required.",
+            "task_status": "no_tool_calls",
             "step_count": state.step_count + 1,
+            "retry_count": state.retry_count + 1,
+            "observations":[
+                "Action stage did not generate executable tool calls."
+            ]
         }
 
-    def _handle_result(self, tool_selection_response: LLMResult, action_validation_response: LLMResult, state: ReActState) -> dict:
+    def _handle_invalid_tools(self, invalid_tools: list[str], state: ReActState) -> dict:
         """
-        Handle the result
+        处理非法工具的情况
         """
-        # 验证工具调用是否合法
-        tool_calls = tool_selection_response.tool_calls
-        invalid_tools = self._get_invalid_tools(tool_calls)
-        # 有非法工具，则返回失败，重试次数加1
-        if invalid_tools:
-            return {
-                "task_status": "failed",
-                "reasoning": f"Invalid tools selected: {', '.join(invalid_tools)}",
-                "step_count": state.step_count + 1,
-                "retry_count": state.retry_count + 1,
-            }
-
-        status = action_validation_response.structured.status
-        print(f"[ReAct][action] status={status}")
-
-        result: dict = {}
-        if status == "ready":# 可执行工具调用已生成
-            result = self._handle_ready(tool_calls, state)
-        elif status == "missing_parameters":# 缺少参数
-            result = self._handle_missing_parameters(tool_calls, action_validation_response, state)
-
-        return result
+        return {
+            "task_status": "failed",
+            "reasoning": f"Invalid tools selected: {', '.join(invalid_tools)}",
+            "step_count": state.step_count + 1,
+            "retry_count": state.retry_count + 1,
+        }
 
     def _handle_ready(self, tool_calls: list[ToolCall], state: ReActState) -> dict:
         """
         处理ready状态
         """
-        # 没有工具调用，则返回失败，重试次数加1
-        if not tool_calls:
-            return {
-                "task_status": "failed",
-                "reasoning": "Action marked ready, but no tool calls generated.",
-                "step_count": state.step_count + 1,
-                "retry_count": state.retry_count + 1,
-            }
-
-        # 返回结果
         return {
             "task_status": "in_progress",
             "tool_calls": tool_calls,
@@ -199,19 +151,23 @@ class ActionNode(Node):
             "step_count": state.step_count + 1,
         }
 
-    def _handle_missing_parameters(self, tool_calls: list[ToolCall], response: LLMResult, state: ReActState) -> dict:
+    def _handle_missing_parameters(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]], state: ReActState) -> dict:
         """
         处理缺少参数状态
         """
-        result = response.structured
-        missing_parameters_map = result.missing_parameters
-        tool_calls = self._mark_missing_parameters(tool_calls, missing_parameters_map)
+        updated_tool_calls = self._mark_missing_parameters(tool_calls, missing_parameters_map)
+        print(f"[ReAct][action] updated tool_calls={updated_tool_calls}")
+
+        # 更新状态
+        state.task_status = "human_in_the_loop"
+        state.tool_calls = updated_tool_calls
+        print(f"[ReAct][action] updated state={state}")
 
         # 构造 interruption request
         request = InformationCollectionRequest(
             type=InterruptType.INFORMATION_COLLECTION,
             description="Please provide the missing parameters. ",
-            fields=self._build_fields(tool_calls, missing_parameters_map)
+            fields=self._build_fields(updated_tool_calls, missing_parameters_map)
         )
         print(f"[ReAct][action] interruption request={request}")
 
@@ -224,11 +180,15 @@ class ActionNode(Node):
         print(f"[ReAct][action] interruption response={interruption_response}")
 
         # 更新工具调用
-        updated_tool_calls = self._fill_tool_calls(tool_calls, interruption_response)
+        final_tool_calls = self._fill_tool_calls(updated_tool_calls, interruption_response)
+        print(f"[ReAct][action] final tool_calls={final_tool_calls}")
+
         return {
             "task_status": "in_progress",
-            "tool_calls": updated_tool_calls,
-            "reasoning": f"Missing required parameters: {list(interruption_response.values.keys())}",
+            "tool_calls": final_tool_calls ,
+            "messages": [
+                self._build_tool_call_message(final_tool_calls)
+            ],
             "step_count": state.step_count + 1,
         }
 
@@ -304,3 +264,38 @@ class ActionNode(Node):
             
             tool_call.missing_args = []
         return tool_calls
+
+    def _get_missing_parameters(self, tool_calls: list[ToolCall]) -> dict[str, list[str]]:
+        """
+        获取缺失的参数
+        """
+        missing_params_map = {}
+        for tool_call in tool_calls:
+            definition = get_tool_definition(
+                self._tool_list,
+                tool_call.name,
+            )
+
+            if not definition:
+                continue
+
+            missing_args = []
+            for required in definition.required_parameters:
+                if required not in tool_call.args or self._is_missing(tool_call.args[required]):
+                    missing_args.append(required)
+
+            if missing_args:
+                missing_params_map[tool_call.tool_call_id] = missing_args
+
+        return missing_params_map
+
+    def _is_missing(self, value: Any) -> bool:
+        """
+        判断参数值是否缺失
+        """
+        if value is None:
+            return True
+
+        if isinstance(value, str):
+            return not value.strip()
+        return False

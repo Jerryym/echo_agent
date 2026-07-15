@@ -28,14 +28,36 @@ class ToolDefinition(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     type: ToolType = ToolType.FUNCTION
 
+    @property
+    def required_parameters(self) -> list[str]:
+        """
+        获取必填参数名称
+        """
+        return self.parameters.get(
+            "required",
+            []
+        )
+
+    @property
+    def parameter_schema(self) -> dict[str, Any]:
+        """
+        获取参数 schema
+        """
+        return self.parameters.get(
+            "properties",
+            {}
+        )
+
     def get_parameter_description(self, param_name: str) -> str:
         """
         获取参数描述
         """
-        properties = self.parameters.get("properties", {})
-        parameter_schema = properties.get(param_name)
+        parameter_schema = self.parameter_schema.get(param_name)
         if parameter_schema:
-            return parameter_schema.get("description", param_name)
+            return parameter_schema.get(
+                "description",
+                param_name
+            )
         return param_name
 
 class ToolCall(BaseModel):
@@ -60,11 +82,13 @@ class ToolResult(BaseModel):
 
     Args:
         name: 工具名称
-        result: 工具执行结果
         success: 工具执行是否成功
+        result: 工具执行结果
+        error: 工具执行错误信息, 当success为False时有效
         tool_call_id: 工具调用ID, 同对应ToolCall的tool_call_id
     """
     name: str
-    result: Any = None
     success: bool = False
+    result: Any = None
+    error: str | None = None
     tool_call_id: str

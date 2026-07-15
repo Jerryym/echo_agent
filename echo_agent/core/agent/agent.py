@@ -1,4 +1,5 @@
 from langchain_core.runnables.config import RunnableConfig
+from langgraph.types import Command
 
 from ..graph import BaseInput, RootGraph
 from ..model import UserInput
@@ -66,7 +67,30 @@ class Agent:
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
         return self._compiled_graph.stream(graph_input, runnable_config, stream_mode="messages", subgraphs=True, version=version)
-    
+
+    def resume(self, session_id: str, values: dict):
+        """
+        恢复 Agent 执行
+
+        Args:
+            session_id: 会话 ID
+            values: 输入
+        """
+        runnable_config = self._build_runnable_config(session_id)
+        return self._compiled_graph.invoke(Command(resume=values), runnable_config)
+
+    def stream_resume(self, session_id: str, values: dict, version: str = "v2"):
+        """
+        流式恢复 Agent 执行
+
+        Args:
+            session_id: 会话 ID
+            values: 输入
+            version: 版本
+        """
+        runnable_config = self._build_runnable_config(session_id)
+        return self._compiled_graph.stream(Command(resume=values), runnable_config, stream_mode="messages", subgraphs=True, version=version)
+
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
         """
         [Debug] 获取当前状态

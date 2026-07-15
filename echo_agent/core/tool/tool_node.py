@@ -50,5 +50,6 @@ class ToolNode(Node):
         # 更新状态
         return {
             "tool_results": tool_results,
+            "tool_calls": [],
             "messages": tool_messages,
         }

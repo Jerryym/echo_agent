@@ -103,21 +103,24 @@ class ReActStrategy(BaseStrategy):
         if state.task_status == "completed":
             target = "final"
             reason = "task_status=completed"
-        elif state.task_status == "human_in_the_loop":
-            target = "final"
-            reason = "task_status=human_in_the_loop"
         elif state.task_status == "failed":
             target = "final"
             reason = "task_status=failed"
         elif state.step_count >= self._max_steps:
             target = "final"
-            reason = f"step_count={state.step_count} >= max={self._max_steps}"
+            reason = (
+                f"step_count={state.step_count}"
+                f" >= max={self._max_steps}"
+            )
         elif state.retry_count >= self._retry_max_count:
             target = "final"
-            reason = f"retry_count={state.retry_count} >= max={self._retry_max_count}"
+            reason = (
+                f"retry_count={state.retry_count}"
+                f" >= max={self._retry_max_count}"
+            )
         else:
             target = "action"
-            reason = "task_status=in_progress"
+            reason = "task_in_progress"
 
         print(f"[ReAct][route] reason -> {target} ({reason})")
         return target
@@ -136,12 +139,12 @@ class ReActStrategy(BaseStrategy):
                 f"tool_calls="
                 f"{[tc.name for tc in state.tool_calls]}"
             )
-        elif state.task_status in ["completed", "failed", "human_in_the_loop"]:
-            target = "final"
-            reason = f"task_status={state.task_status}"
         else:
-            target = "final"
-            reason = "action_finished_without_tool"
+            target = "reason"
+            reason = (
+                "no tool calls generated, "
+                "re-evaluate task state"
+            )
 
         print(f"[ReAct][route] action -> {target} ({reason})")
         return target

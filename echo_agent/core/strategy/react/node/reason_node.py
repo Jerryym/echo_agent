@@ -2,56 +2,46 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .....common import debug_print_messages
+from .....common import debug_print_messages, format_debug
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ..schema import ReActContext, ReActState
 
 
-class ReasonResult(BaseModel):
+class ReasonStructuredOutput(BaseModel):
     """
     Reason节点结构化输出
 
     参数:
-        reasoning: 推理结果
-        action_intent: 下一步行动意图
-        information_status: 信息状态
-            sufficient: 信息充足
-            insufficient: 信息不足
-        task_status: 任务状态
-            in_progress: 任务进行中
-            completed: 任务完成
+        thought: 思考结果，面向调试和可观测性的思考过程
+        reasoning: 推理结果，面向 Action 节点的推理结果，用于指导下一步能力选择，不包含工具信息
+        task_status: 任务状态，用于驱动 ReAct 流程
     """
+    thought: str = Field(
+        description=(
+            "A concise description of the reasoning process used to analyze "
+            "the current task. This field is intended for tracing, debugging, "
+            "and runtime visualization only. It is not used for tool selection "
+            "or execution."
+        )
+    )
     reasoning: str = Field(
         description=(
-            "A concise assessment of the current task state, "
-            "including known information, missing information, "
-            "and the reason for the next step."
-        )
-    )
-    action_intent: str = Field(
-        description=(
-            "Describe the intended next action. "
-            "This output will be consumed by the Action node. "
-            "Do not select tools. "
-            "Do not mention tool names. "
-            "Describe only what capability or operation should be performed."
-        )
-    )
-    information_status: Literal["sufficient", "insufficient"] = Field(
-        description=(
-            "Whether the currently available information is sufficient "
-            "for the agent to decide and perform the next step."
+            "A structured execution-oriented reasoning result describing what "
+            "capability or operation should be performed next. This output will "
+            "be consumed by the Action node for capability and tool selection. "
+            "Do not mention tool names, implementation details, or specific "
+            "tool parameters."
         )
     )
     task_status: Literal["in_progress", "completed"] = Field(
         description=(
-            "Whether the user's requested objective has been achieved.\n\n"
-            "'completed': "
-            "All requested work has been successfully completed.\n\n"
-            "'in_progress': "
-            "Further execution steps are still required."
+            "The current lifecycle status of the task. "
+            "'in_progress' indicates that additional execution steps are "
+            "required. 'completed' indicates that the user's requested task "
+            "has been fully completed and the workflow can proceed to the "
+            "final response."
         )
     )
 
@@ -96,14 +86,14 @@ class ReasonNode(Node):
             prompt=self._prompt,
             user_input=input,
             history=state.messages,
-            schema=ReasonResult,
+            schema=ReasonStructuredOutput,
         )
         result = response.structured
         print(
             "[ReAct][reason] "
-            f"information={result.information_status} "
-            f"task={result.task_status} "
-            f"intent={result.action_intent}"
+            f"thought={result.thought} \n"
+            f"reasoning={result.reasoning} \n"
+            f"task_status={result.task_status}"
         )
 
         return self._handle_result(result, state)
@@ -118,14 +108,23 @@ class ReasonNode(Node):
             "observations": state.observations + self._build_observations(state),
         }
 
-    def _build_observations(self, state: ReActState) -> list[str]:
+    def _build_observations(self, state: ReActState) -> list[dict]:
         """
         构建观察结果
         """
-        return [
-            tool_result.result
-            for tool_result in state.tool_results
-        ]
+        observations = []
+        for tool_result in state.tool_results:
+            observation = {
+                "name": tool_result.name,
+                "success": tool_result.success,
+                "tool_call_id": tool_result.tool_call_id,
+            }
+            if tool_result.success:
+                observation["result"] = tool_result.result
+            else:
+                observation["error"] = tool_result.error or "unknown error"
+            observations.append(observation)
+        return observations
 
     def _has_tool_error(self, state: ReActState) -> bool:
         """
@@ -137,7 +136,7 @@ class ReasonNode(Node):
         """
         处理工具错误
         """
-        failed_tools = [r.name for r in state.tool_results if not r.success]
+        failed_tools = [r.name for r in state.tool_results if r.error]
         print(f"[ReAct][reason] tool error detected: {failed_tools}")
 
         retry_count = state.retry_count + 1
@@ -152,17 +151,12 @@ class ReasonNode(Node):
             
         return result
 
-    def _handle_result(self, response: ReasonResult, state: ReActState) -> dict:
+    def _handle_result(self, response: ReasonStructuredOutput, state: ReActState) -> dict:
         """
         处理Reason结果
         """
-        reasoning = (
-            f"{response.reasoning}\n\n"
-            f"Next action intent: {response.action_intent}"
-        )
-
         result = {
-            "reasoning": reasoning,
+            "reasoning": response.reasoning,
         }
 
         # 只有in_progress状态由 Reason负责
