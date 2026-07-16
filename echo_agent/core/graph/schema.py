@@ -13,9 +13,9 @@ class BaseInput(BaseModel):
     Graph 输入模型
 
     参数:
-        input: UserInput 用户输入
+        input: 输入
     """
-    input: UserInput
+    input: UserInput | dict[str, Any] | str
 
 
 class BaseOutput(BaseModel):

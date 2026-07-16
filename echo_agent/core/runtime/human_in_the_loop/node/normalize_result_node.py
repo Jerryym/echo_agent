@@ -2,7 +2,7 @@ from langchain_core.runnables import RunnableConfig
 
 from ....graph import Node
 from ....graph.schema import BaseContext
-from ..schema import HITLState, HITLOutput
+from ..schema import HITLState
 
 
 class NormalizeResultNode(Node):
@@ -13,13 +13,10 @@ class NormalizeResultNode(Node):
         super().__init__(name)
 
     def run(self, state: HITLState, context: BaseContext | None = None, config: RunnableConfig | None = None) -> dict:
-        output = HITLOutput(
-            id=state.id,
-            status=self._normalize_status(state),
-            result=state.result,
-        )
         return {
-            "response": output.model_dump(),
+            "id": state.id,
+            "status": self._normalize_status(state),
+            "result": state.result or {},
         }
 
     def _normalize_status(self, state: HITLState) -> str:

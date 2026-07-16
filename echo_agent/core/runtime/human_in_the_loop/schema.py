@@ -1,7 +1,9 @@
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from ...graph import BaseInput, BaseOutput, BaseState
 
 
 class HITLType(str, Enum):
@@ -12,7 +14,7 @@ class HITLType(str, Enum):
     APPROVAL = "approval"
 
 
-class HITLInput(BaseModel):
+class HITLInput(BaseInput):
     """
     HITL输入
     """
@@ -21,17 +23,19 @@ class HITLInput(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
-class HITLState(BaseModel):
+class HITLState(BaseState):
     """
     HITL状态
     """
-    id: str
+    id: str = ""
     type: HITLType
-    status: Literal["pending", "waiting", "completed", "cancelled"]
+    description: str = ""
+    payload: dict[str, Any] = Field(default_factory=dict)
+    status: Literal["pending", "waiting", "completed", "cancelled"] = "pending"
     result: dict[str, Any] | None = None
 
 
-class HITLOutput(BaseModel):
+class HITLOutput(BaseOutput):
     """
     HITL输出
     """

@@ -13,10 +13,8 @@ class ReActInput(BaseInput):
     ReAct 输入模型
 
     参数:
-        input: 输入
         messages: 消息列表
     """
-    input: UserInput | dict[str, Any] | str
     messages: Sequence[BaseMessage] = []
 
 
