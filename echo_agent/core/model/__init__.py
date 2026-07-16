@@ -1,3 +1,4 @@
+from .hitl import HITLInput, HITLOutput, HITLType
 from .input import Attachment, UserInput
 from .message import Message, Role
 
@@ -6,4 +7,7 @@ __all__ = [
     "UserInput",
     "Role",
     "Message",
+    "HITLType",
+    "HITLInput",
+    "HITLOutput",
 ]

@@ -1,5 +1,4 @@
-from .hitl_subgraph import HITLSubgraph
-from .schema import HITLInput, HITLOutput, HITLState, HITLType
+from .schema import HITLState
+from .hitl_subgraph import HITLSubgraph, HITLNode
 
-
-__all__ = ["HITLSubgraph", "HITLInput", "HITLState", "HITLOutput", "HITLType"]
+__all__ = ["HITLSubgraph", "HITLNode", "HITLState"]

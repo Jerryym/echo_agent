@@ -29,13 +29,14 @@ class ReActState(BaseState):
             human_in_the_loop: 需要人类干预
             no_tool_calls: 没有工具调用
             completed: 完成
+            cancelled: 取消
             failed: 失败
         observations: 观察
         step_count: 步数
         retry_count: 重试次数
     """
     reasoning: str = ""
-    task_status: Literal["in_progress", "human_in_the_loop", "no_tool_calls", "completed", "failed"] = "in_progress"
+    task_status: Literal["in_progress", "human_in_the_loop", "no_tool_calls", "completed", "cancelled", "failed"] = "in_progress"
     observations: list[str] = Field(default_factory=list)
     step_count: int = Field(default=0)
     retry_count: int = Field(default=0)

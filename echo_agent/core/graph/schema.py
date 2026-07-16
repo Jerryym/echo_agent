@@ -4,7 +4,7 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
-from ..model import UserInput
+from ..model import HITLInput, HITLOutput, UserInput
 from ..tool import ToolCall, ToolResult
 
 
@@ -34,12 +34,16 @@ class BaseState(BaseModel):
         messages: 消息列表
         tool_calls: 工具调用列表
         tool_results: 工具执行结果列表
+        hitl_request: HITL 请求
+        hitl_response: HITL 响应
         response: 响应
     """
     input: UserInput | dict[str, Any] | str | None = None
     messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
     tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_results: list[ToolResult] = Field(default_factory=list)
+    hitl_request: HITLInput | None = None
+    hitl_response: HITLOutput | None = None
     response: str | None = None
 
 

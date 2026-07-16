@@ -6,6 +6,7 @@ from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
 from .node import ActionNode, FinalNode, ReasonNode
 from .schema import ReActContext, ReActInput, ReActOutput, ReActState
+from ...runtime.human_in_the_loop import HITLSubgraph
 
 
 class ReActStrategy(BaseStrategy):
@@ -33,14 +34,20 @@ class ReActStrategy(BaseStrategy):
         )
 
         reason_node = ReasonNode(name="reason", llm_config=self._llm_config)
-        action_node = ActionNode(name="action", llm_config=self._llm_config, tool_list=self._tool_registry.get_tools())
+        action_node = ActionNode(
+            name="action",
+            llm_config=self._llm_config,
+            tool_list=self._tool_registry.list_definitions(),
+        )
         tool_node = ToolNode(name="tool", tool_executor=self._tool_executor)
         final_node = FinalNode(name="final", llm_config=self._llm_config)
+        hitl_node = HITLSubgraph().as_node()
 
         graph.add_node(reason_node)
         graph.add_node(action_node)
         graph.add_node(tool_node)
         graph.add_node(final_node)
+        graph.add_node(hitl_node)
 
         # START -> reason
         graph.add_edge(START_NODE, reason_node.name)
@@ -48,6 +55,8 @@ class ReActStrategy(BaseStrategy):
         graph.add_conditional_edges(reason_node.name, self._reason_router)
         # action -> tool/reason
         graph.add_conditional_edges(action_node.name, self._action_router)
+        # HITL -> action
+        graph.add_edge(hitl_node.name, action_node.name)
         # tool -> reason
         graph.add_edge(tool_node.name, reason_node.name)
         # final -> END
@@ -103,6 +112,9 @@ class ReActStrategy(BaseStrategy):
         if state.task_status == "completed":
             target = "final"
             reason = "task_status=completed"
+        elif state.task_status == "cancelled":
+            target = "final"
+            reason = "task_status=cancelled"
         elif state.task_status == "failed":
             target = "final"
             reason = "task_status=failed"
@@ -133,18 +145,15 @@ class ReActStrategy(BaseStrategy):
             tool: 工具节点
             final: 最终节点
         """
-        if state.tool_calls:
+        if state.task_status == "human_in_the_loop":
+            target = "HITL"
+            reason = "hitl_required"
+        elif state.tool_calls:
             target = "tool"
-            reason = (
-                f"tool_calls="
-                f"{[tc.name for tc in state.tool_calls]}"
-            )
+            reason = f"tool_calls={[tc.name for tc in state.tool_calls]}"
         else:
             target = "reason"
-            reason = (
-                "no tool calls generated, "
-                "re-evaluate task state"
-            )
+            reason = "no tool calls generated, re-evaluate task state"
 
         print(f"[ReAct][route] action -> {target} ({reason})")
         return target

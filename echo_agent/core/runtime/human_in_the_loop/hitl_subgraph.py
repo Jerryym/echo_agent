@@ -4,18 +4,20 @@ import uuid
 from langchain_core.runnables import RunnableConfig
 
 from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE
+from ...model import HITLInput, HITLOutput, HITLType
 from .node import ApprovalFlow, InputFlow, NormalizeResultNode
-from .schema import HITLInput, HITLOutput, HITLState, HITLType
+from .schema import HITLState
+
 
 class HITLSubgraph:
     """
     HITL 动态子图：一张图内按 type 分支，仅通过 as_node / invoke 接入父图。
     """
     def __init__(self):
-        self.state_schema = HITLState
-        self.input_schema = HITLInput
-        self.output_schema = HITLOutput
-        self.context_schema = None
+        self._state_schema = HITLState
+        self._input_schema = HITLInput
+        self._output_schema = HITLOutput
+        self._context_schema = None
 
     @cached_property
     def compiled_graph(self):
@@ -30,10 +32,7 @@ class HITLSubgraph:
         """
         graph = SubGraph(
             name="HITL",
-            state_schema=self.state_schema,
-            context_schema=self.context_schema,
-            input_schema=self.input_schema,
-            output_schema=self.output_schema,
+            state_schema=self._state_schema,
         )
 
         input_flow = InputFlow(name="input_flow")
@@ -58,13 +57,23 @@ class HITLSubgraph:
 
         return graph
 
-    def as_node(self) -> Node:
+    def as_node(self, name: str = "HITL") -> Node:
         """
         作为节点加入父图（Call a subgraph inside a node）
         """
-        return HITLNode(name="HITL", hitl=self, input_builder=self.to_hitl_input)
+        return HITLNode(name=name, hitl=self)
 
-    def to_hitl_state(self, input: HITLInput) -> HITLState:
+    def invoke(self, input: HITLInput, context: BaseContext | None = None, config: RunnableConfig | None = None) -> dict:
+        """
+        调用 HITL 子图
+        """
+        state = self._to_hitl_state(input)
+        output = self.compiled_graph.invoke(state, context=context, config=config)
+        if self._output_schema is not None and isinstance(output, dict):
+            output = self._output_schema(**output)
+        return self._to_parent_state(output)
+
+    def _to_hitl_state(self, input: HITLInput) -> HITLState:
         """
         将 Parent State 映射为 HITL Input
         """
@@ -76,23 +85,13 @@ class HITLSubgraph:
             status="pending",
         )
 
-    def to_parent_state(self, output: HITLOutput) -> dict:
+    def _to_parent_state(self, output: HITLOutput) -> dict:
         """
         将 HITL Output 映射为 Parent State 更新内容
         """
         return {
-            "hitl_result": output.model_dump(),
+            "hitl_response": output,
         }
-
-    def invoke(self, input: HITLInput, context: BaseContext | None = None, config: RunnableConfig | None = None) -> dict:
-        """
-        调用 HITL 子图
-        """
-        state = self.to_hitl_state(input)
-        output = self.compiled_graph.invoke(state, context=context, config=config)
-        if self.output_schema is not None and isinstance(output, dict):
-            output = self.output_schema(**output)
-        return self.to_parent_state(output)
 
     def _type_router(self, state: HITLState) -> str:
         """
@@ -111,10 +110,12 @@ class HITLNode(Node):
     """
     HITLSubgraph Node：在父节点内调用 HITL 动态子图
     """
-    def __init__(self, name: str, hitl: HITLSubgraph, input: HITLInput):
+    def __init__(self, name: str, hitl: HITLSubgraph):
         super().__init__(name)
         self._hitl = hitl
-        self._input = input
 
     def run(self, state: BaseState, context: BaseContext | None = None, config=None) -> dict:
-        return self._hitl.invoke(self._input, context, config)
+        if state.hitl_request is None:
+            raise ValueError("hitl_request is required")
+
+        return self._hitl.invoke(state.hitl_request, context, config)

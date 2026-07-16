@@ -28,6 +28,11 @@ TOOL_SETS: dict[str, tuple[str, Sequence[Any]]] = {
     "1": ("it_operations", IT_OPERATIONS_TOOLS),
 }
 
+# 写操作需人工审批；测 APPROVAL 时用参数齐全的话术，避免先进 INPUT
+APPROVAL_REQUIRED_TOOLS = {
+    "create_refund",
+}
+
 
 class State(BaseState):
     pass
@@ -46,11 +51,15 @@ def build_tool_registry(tools: Sequence[Any]) -> ToolRegistry:
         runnable = _as_runnable_tool(tool_obj)
         tool = convert_to_openai_tool(runnable)
         fn = tool["function"]
+        name = fn["name"]
         registry.register(
             ToolDefinition(
-                name=fn["name"],
+                name=name,
                 description=fn["description"],
                 parameters=fn["parameters"],
+                meta_data={
+                    "required_approval": name in APPROVAL_REQUIRED_TOOLS,
+                },
             ),
             runnable,
         )
@@ -148,15 +157,26 @@ def _get_pending_interrupt(agent: Agent, session_id: str) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
-def _collect_info_response(request: dict) -> dict:
-    """按 InformationCollectionRequest 交互收集，返回 InformationCollectionResponse dict。"""
-    print(f"\n[HITL] {request.get('description', 'Need more information')}")
-    values: dict[str, Any] = {}
-    for field in request.get("fields", []):
-        name = field["name"]
-        desc = field.get("description") or name
-        values[name] = input(f"  {name} ({desc}): ").strip()
-    return {"values": values}
+def _collect_hitl_response(request: dict) -> dict:
+    """按 HITLSubgraph interrupt payload 交互收集 resume 值。"""
+    hitl_type = request.get("type")
+    payload = request.get("payload", {})
+    print(f"\n[HITL] {request.get('description', 'Human input required')}")
+    print(f"[HITL] payload={payload}")
+
+    if hitl_type == "input":
+        values: dict[str, Any] = {}
+        for field in payload.get("fields", []):
+            name = field["name"]
+            desc = field.get("description") or name
+            values[name] = input(f"  {name} ({desc}): ").strip()
+        return {"values": values}
+
+    if hitl_type == "approval":
+        approved = input("  approve? (y/n): ").strip().lower() == "y"
+        return {"approved": approved}
+
+    raise ValueError(f"unsupported HITL interrupt type: {hitl_type!r}")
 
 
 def chat_invoke(agent: Agent, session_id: str) -> None:
@@ -175,11 +195,12 @@ def chat_invoke(agent: Agent, session_id: str) -> None:
             request = _get_pending_interrupt(agent, session_id)
             if request is None:
                 break
-            if request.get("type") != "information_collection":
-                print(f"[HITL] unsupported interrupt type: {request.get('type')}")
+            try:
+                resume_values = _collect_hitl_response(request)
+            except ValueError as exc:
+                print(f"[HITL] {exc}")
                 break
 
-            resume_values = _collect_info_response(request)
             result = agent.resume(session_id, resume_values)
 
         print("\nAssistant:")
@@ -209,11 +230,12 @@ def chat_stream(agent: Agent, session_id: str) -> None:
             request = _get_pending_interrupt(agent, session_id)
             if request is None:
                 break
-            if request.get("type") != "information_collection":
-                print(f"\n[HITL] unsupported interrupt type: {request.get('type')}")
+            try:
+                resume_values = _collect_hitl_response(request)
+            except ValueError as exc:
+                print(f"\n[HITL] {exc}")
                 break
 
-            resume_values = _collect_info_response(request)
             print("\nAssistant: ", end="", flush=True)
             for chunk in agent.stream_resume(session_id, resume_values):
                 text = extract_stream_text(chunk, node="final")
@@ -247,6 +269,7 @@ if __name__ == "__main__":
     )
     agent = build_react_agent(agent_name, config, tools)
     print(f"Using tool set: {tool_set_name} ({len(tools)} tools)")
+    print(f"Approval-required tools: {sorted(APPROVAL_REQUIRED_TOOLS)}")
 
     if mode == "1":
         chat_stream(agent, session_id)
