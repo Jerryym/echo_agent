@@ -26,6 +26,7 @@ class InputFlow(Node):
                 "payload": state.payload,
             }
         )
+        print("[InputFlow] response:", response)
 
         return {
             "id": hitl_id,

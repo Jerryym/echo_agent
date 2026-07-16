@@ -26,6 +26,8 @@ class ApprovalFlow(Node):
                 "payload": state.payload,
             }
         )
+        print("[ApprovalFlow] response:", response)
+
         return {
             "id": hitl_id,
             "status": "completed",
