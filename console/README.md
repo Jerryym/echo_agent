@@ -1,4 +1,4 @@
-# echo-agent example
+# echo-agent console
 
 PyQt6 交互测试壳：固定 `MainWindow`，测例逻辑放在 `module/`，依赖与核心库隔离。
 

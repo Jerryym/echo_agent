@@ -1,0 +1,39 @@
+/* Main Window */
+
+QMainWindow {
+    background-color: #212121;
+}
+
+
+/* Root container */
+
+QWidget {
+    background-color: #212121;
+}
+
+
+/* Splitter */
+
+QSplitter::handle {
+    background-color: #444444;
+    width: 2px;
+}
+
+
+/* Panel */
+
+QWidget#session {
+    background-color: #171717;
+    border-right: 1px solid #333333;
+}
+
+
+QWidget#chat {
+    background-color: #212121;
+}
+
+
+QWidget#log {
+    background-color: #111111;
+    border-left: 1px solid #333333;
+}

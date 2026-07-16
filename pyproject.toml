@@ -1,7 +1,7 @@
 [project]
 name = "echo-agent"
 version = "0.1.0"
-description = "基于langchain构建的智能体能力框架"
+description = "基于langchain和langgraph构建的智能体能力框架"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,3 +13,10 @@ dependencies = [
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
 ]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["echo_agent*"]
