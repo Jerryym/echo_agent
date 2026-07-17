@@ -136,10 +136,10 @@ class ActionNode(Node):
             # HITL 被取消
             if state.hitl_response.status == "cancelled":
                 return {
-                "task_status": "cancelled",
-                "tool_calls": [],
-                "step_count": state.step_count + 1,
-            }
+                    "task_status": "cancelled",
+                    "tool_calls": [],
+                    "step_count": state.step_count + 1,
+                }
 
             if state.hitl_request:
                 if state.hitl_request.type == HITLType.INPUT:# INPUT 类型
@@ -158,13 +158,22 @@ class ActionNode(Node):
                         "step_count": state.step_count + 1,
                     }
                 if state.hitl_request.type == HITLType.APPROVAL:# APPROVAL 类型
+                    approved = (state.hitl_response.result or {}).get("approved")
+                    if approved is not True:
+                        return {
+                            "task_status": "cancelled",
+                            "tool_calls": [],
+                            "hitl_response": None,
+                            "hitl_request": None,
+                            "step_count": state.step_count + 1,
+                        }
                     return {
                         "task_status": "in_progress",
                         "tool_calls": state.tool_calls,
                         "hitl_response": None,
                         "hitl_request": None,
                         "messages": [
-                            self._build_tool_call_message(tool_calls)
+                            self._build_tool_call_message(state.tool_calls)
                         ],
                         "step_count": state.step_count + 1,
                     }
@@ -224,6 +233,7 @@ class ActionNode(Node):
         updated_tool_calls = self._mark_missing_parameters(tool_calls, missing_parameters_map)
         print(f"[ReAct][action] updated tool_calls={updated_tool_calls}")
 
+        # 构建 HITL 请求
         request = HITLInput(
             type=HITLType.INPUT,
             description="Please provide the missing parameters. ",

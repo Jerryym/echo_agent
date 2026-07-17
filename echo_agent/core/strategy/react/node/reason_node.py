@@ -37,11 +37,19 @@ class ReasonStructuredOutput(BaseModel):
     )
     task_status: Literal["in_progress", "completed"] = Field(
         description=(
-            "The current lifecycle status of the task. "
-            "'in_progress' indicates that additional execution steps are "
-            "required. 'completed' indicates that the user's requested task "
-            "has been fully completed and the workflow can proceed to the "
-            "final response."
+            "Reason-owned lifecycle signal only. "
+            "Allowed values: 'in_progress' | 'completed'. "
+            "Do NOT output human_in_the_loop, no_tool_calls, cancelled, or failed "
+            "(those are set by Action/runtime). "
+            "'in_progress': the user objective is not yet achieved; further execution "
+            "is required. Put the next required capability in 'reasoning'. "
+            "'completed': the user objective has been achieved AND confirmed by "
+            "existing observations (tool results). "
+            "If there are no confirming observations, you MUST use 'in_progress' "
+            "even when a conversational reply seems sufficient—Final, not Reason, "
+            "produces the user-facing answer. "
+            "Never mark 'completed' because Action produced no tool calls; "
+            "that signal is handled by runtime status, not by this field."
         )
     )
 
@@ -142,6 +150,9 @@ class ReasonNode(Node):
         retry_count = state.retry_count + 1
         result = {
             "retry_count": retry_count,
+            "tool_calls": [], # 清空工具调用
+            "tool_results": [], # 清空工具执行结果
+            "observations": self._build_observations(state), # 包含工具执行失败的结果
         }
 
         # 重试次数达到最大，则返回失败
@@ -159,8 +170,7 @@ class ReasonNode(Node):
             "reasoning": response.reasoning,
         }
 
-        # 只有in_progress状态由 Reason负责
-        if state.task_status == "in_progress":
+        if state.task_status in ("in_progress", "no_tool_calls"):
             result["task_status"] = response.task_status
 
         return result

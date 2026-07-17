@@ -14,9 +14,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
 ]
 
-[build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-include = ["echo_agent*"]
+[dependency-groups]
+dev = [
+    "pyside6>=6.11.1",
+]

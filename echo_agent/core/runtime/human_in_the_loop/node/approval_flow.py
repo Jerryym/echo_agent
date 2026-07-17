@@ -1,3 +1,4 @@
+from typing import Any, Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -28,8 +29,23 @@ class ApprovalFlow(Node):
         )
         print("[ApprovalFlow] response:", response)
 
+        result = response if isinstance(response, dict) else {"raw": response}
         return {
             "id": hitl_id,
-            "status": "completed",
-            "result": response,
+            "status": self._resolve_status(response),
+            "result": result,
         }
+
+    def _resolve_status(self, response: Any) -> Literal["completed", "cancelled"]:
+        """
+        APPROVAL resume 协议：
+          completed: {"approved": true}
+          cancelled: {"approved": false} / 显式取消 / 非法载荷
+        """
+        if not isinstance(response, dict):
+            return "cancelled"
+        if response.get("status") == "cancelled" or response.get("cancelled") is True:
+            return "cancelled"
+        if response.get("approved") is True:
+            return "completed"
+        return "cancelled"

@@ -1,3 +1,4 @@
+from typing import Any, Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -28,8 +29,23 @@ class InputFlow(Node):
         )
         print("[InputFlow] response:", response)
 
+        result = response if isinstance(response, dict) else {"raw": response}
         return {
             "id": hitl_id,
-            "status": "completed",
-            "result": response,
+            "status": self._resolve_status(response),
+            "result": result,
         }
+
+    def _resolve_status(self, response: Any) -> Literal["completed", "cancelled"]:
+        """
+        INPUT resume 协议：
+          completed: {"values": {...}}
+          cancelled: {"cancelled": true} / {"status": "cancelled"} / 非法载荷
+        """
+        if not isinstance(response, dict):
+            return "cancelled"
+        if response.get("status") == "cancelled" or response.get("cancelled") is True:
+            return "cancelled"
+        if "values" in response:
+            return "completed"
+        return "cancelled"

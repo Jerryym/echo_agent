@@ -31,17 +31,7 @@ class ToolNode(Node):
             print(format_debug(result.result))
             tool_results.append(result)
 
-        tool_messages: list[ToolMessage] = []
-        if tool_results:
-            for tool_result in tool_results:
-                # 将结果转换为字符串
-                content = json.dumps(tool_result.result, ensure_ascii=False, default=str)
-                # 构建 ToolMessage
-                tool_messages.append(ToolMessage(
-                    content=content,
-                    tool_call_id=tool_result.tool_call_id,
-                ))
-
+        tool_messages = self._build_tool_messages(tool_results)
         print(f"[ReAct][tool] appended {len(tool_messages)} ToolMessage(s) to messages")
         for tm in tool_messages:
             print(f"[ReAct][tool] ToolMessage id={tm.tool_call_id}")
@@ -53,3 +43,18 @@ class ToolNode(Node):
             "tool_calls": [],
             "messages": tool_messages,
         }
+
+    def _build_tool_messages(self, tool_results: list[ToolResult]) -> list[ToolMessage]:
+        tool_messages: list[ToolMessage] = []
+        if tool_results:
+            for tool_result in tool_results:
+                if tool_result.success:# 执行成功, 将结果转换为字符串
+                    content = json.dumps(tool_result.result, ensure_ascii=False, default=str)
+                else:# 执行失败, 将错误信息转换为字符串
+                    content = tool_result.error or "unknown error"
+                # 构建 ToolMessage
+                tool_messages.append(ToolMessage(
+                    content=content,
+                    tool_call_id=tool_result.tool_call_id,
+                ))
+        return tool_messages

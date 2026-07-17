@@ -1,19 +1,28 @@
 # echo-agent console
 
-PyQt6 交互测试壳：固定 `MainWindow`，测例逻辑放在 `module/`，依赖与核心库隔离。
+PySide6 交互测试壳：固定 `MainWindow`，测例逻辑放在 `case/`。
 
 ## Setup
 
 ```bash
-cd example
+# 在仓库根目录
 uv sync
-cp .env.template .env   # 填写模型配置
+cp console/.env.template console/.env   # 填写模型配置
 ```
-
-使用本目录独立 `.venv`，不会把 PyQt6 装进仓库根环境。
 
 ## Run
 
 ```bash
-uv run python app.py
+cd console
+uv run --project .. python app.py
 ```
+
+## Test Cases
+
+| Case | 说明 |
+|------|------|
+| LLM Client | 直接测 LLMClient |
+| Agent（无策略） | 单 LLM 节点 Agent |
+| ReAct（无HITL） | ReAct + business tools，无审批 |
+| ReAct（有HITL） | ReAct + `create_refund` 需审批 |
+| HITL Subgraph | 无模型；消息含 `approval` 走审批，否则补参 |
