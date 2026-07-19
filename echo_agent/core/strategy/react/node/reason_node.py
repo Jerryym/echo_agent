@@ -1,8 +1,9 @@
 from typing import Literal
 
+from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from .....common import debug_print_messages, format_debug
+from .....common import debug_print_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
@@ -73,7 +74,7 @@ class ReasonNode(Node):
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
 
-    def run(self, state: ReActState, context: ReActContext | None = None) -> dict:
+    def run(self, state: ReActState, context: ReActContext | None = None) -> Command:
         """
         Run the node
         """
@@ -104,7 +105,7 @@ class ReasonNode(Node):
             f"task_status={result.task_status}"
         )
 
-        return self._handle_result(result, state)
+        return self._handle_result(result, state, context)
 
     def _build_input(self, state: ReActState) -> dict:
         """
@@ -140,7 +141,7 @@ class ReasonNode(Node):
         """
         return any(not result.success for result in state.tool_results)
 
-    def _handle_tool_error(self, state: ReActState, context: ReActContext | None) -> dict:
+    def _handle_tool_error(self, state: ReActState, context: ReActContext | None) -> Command:
         """
         处理工具错误
         """
@@ -159,10 +160,10 @@ class ReasonNode(Node):
         if context and retry_count >= context.retry_max_count: 
             result["task_status"] = "failed"
             result["reasoning"] = "Tool execution failed and retry limit reached."
-            
-        return result
 
-    def _handle_result(self, response: ReasonStructuredOutput, state: ReActState) -> dict:
+        return self._router(state, context, result)
+
+    def _handle_result(self, response: ReasonStructuredOutput, state: ReActState, context: ReActContext | None) -> Command:
         """
         处理Reason结果
         """
@@ -173,4 +174,24 @@ class ReasonNode(Node):
         if state.task_status in ("in_progress", "no_tool_calls"):
             result["task_status"] = response.task_status
 
-        return result
+        return self._router(state, context, result)
+
+    def _router(self, state: ReActState, context: ReActContext | None, update_state: dict) -> Command:
+        next_node = self._select_node(state, context, update_state)
+        print(f"[ReAct][route] reason -> {next_node}")
+        return Command(update=update_state, goto=next_node)
+
+    def _select_node(self, state: ReActState, context: ReActContext | None, update_state: dict) -> Literal["action", "final"]:
+        task_status = update_state.get("task_status", state.task_status)
+        step_count = update_state.get("step_count", state.step_count)
+        retry_count = update_state.get("retry_count", state.retry_count)
+        max_steps = context.max_steps if context else 10
+        retry_max = context.retry_max_count if context else 3
+
+        if task_status in ("completed", "cancelled", "failed"):
+            return "final"
+        if step_count >= max_steps:
+            return "final"
+        if retry_count >= retry_max:
+            return "final"
+        return "action"

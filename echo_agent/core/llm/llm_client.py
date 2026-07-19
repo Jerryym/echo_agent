@@ -354,4 +354,9 @@ class LLMClient:
                     args=tc.get("args") or tc.get("arguments") or {},
                     tool_call_id=tc.get("id") or tc.get("tool_call_id") or f"call_{i}",
                 ))
+            else:
+                raise LLMResponseDecodeError(
+                    message="invalid tool call",
+                    detail=f"invalid tool call: {tc}",
+                )
         return tool_calls

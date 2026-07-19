@@ -165,12 +165,33 @@ def _collect_hitl_response(request: dict) -> dict:
     print(f"[HITL] payload={payload}")
 
     if hitl_type == "input":
-        values: dict[str, Any] = {}
-        for field in payload.get("fields", []):
+        fields = payload.get("fields") or {}
+        tool_calls = payload.get("tool_calls") or []
+        tool_name_by_id = {
+            tc.get("tool_call_id"): tc.get("name") or tc.get("tool_call_id")
+            for tc in tool_calls
+            if tc.get("tool_call_id")
+        }
+        # 新协议：fields = {tool_call_id: [{name, description}, ...]}
+        if isinstance(fields, dict):
+            values: dict[str, Any] = {}
+            for tool_call_id, call_fields in fields.items():
+                tool_name = tool_name_by_id.get(tool_call_id) or tool_call_id
+                print(f"  [{tool_name} / {tool_call_id}]")
+                per_call: dict[str, Any] = {}
+                for field in call_fields or []:
+                    name = field["name"]
+                    desc = field.get("description") or name
+                    per_call[name] = input(f"    {name} ({desc}): ").strip()
+                values[tool_call_id] = per_call
+            return {"values": values}
+        # 旧扁平 list 兜底
+        flat_values: dict[str, Any] = {}
+        for field in fields:
             name = field["name"]
             desc = field.get("description") or name
-            values[name] = input(f"  {name} ({desc}): ").strip()
-        return {"values": values}
+            flat_values[name] = input(f"  {name} ({desc}): ").strip()
+        return {"values": flat_values}
 
     if hitl_type == "approval":
         approved = input("  approve? (y/n): ").strip().lower() == "y"

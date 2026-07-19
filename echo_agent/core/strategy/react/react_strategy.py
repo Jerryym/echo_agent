@@ -51,10 +51,6 @@ class ReActStrategy(BaseStrategy):
 
         # START -> reason
         graph.add_edge(START_NODE, reason_node.name)
-        # reason -> action
-        graph.add_conditional_edges(reason_node.name, self._reason_router)
-        # action -> tool/reason
-        graph.add_conditional_edges(action_node.name, self._action_router)
         # HITL -> action
         graph.add_edge(hitl_node.name, action_node.name)
         # tool -> reason
@@ -83,7 +79,10 @@ class ReActStrategy(BaseStrategy):
         """
         将 Parent Context 映射为 Strategy Context
         """
-        return ReActContext()
+        return ReActContext(
+            max_steps=self._max_steps,
+            retry_max_count=self._retry_max_count,
+        )
 
     def to_parent_state(self, output: ReActOutput) -> dict:
         """
@@ -104,59 +103,6 @@ class ReActStrategy(BaseStrategy):
 
         parent_state = self.to_parent_state(output)
         return parent_state
-
-    def _reason_router(self, state: ReActState) -> str:
-        """
-        Reason 节点路由
-        """
-        if state.task_status == "completed":
-            target = "final"
-            reason = "task_status=completed"
-        elif state.task_status == "cancelled":
-            target = "final"
-            reason = "task_status=cancelled"
-        elif state.task_status == "failed":
-            target = "final"
-            reason = "task_status=failed"
-        elif state.step_count >= self._max_steps:
-            target = "final"
-            reason = (
-                f"step_count={state.step_count}"
-                f" >= max={self._max_steps}"
-            )
-        elif state.retry_count >= self._retry_max_count:
-            target = "final"
-            reason = (
-                f"retry_count={state.retry_count}"
-                f" >= max={self._retry_max_count}"
-            )
-        else:
-            target = "action"
-            reason = "task_in_progress"
-
-        print(f"[ReAct][route] reason -> {target} ({reason})")
-        return target
-
-    def _action_router(self, state: ReActState) -> str:
-        """
-        Action 节点路由
-
-        返回:
-            tool: 工具节点
-            final: 最终节点
-        """
-        if state.task_status == "human_in_the_loop":
-            target = "HITL"
-            reason = "hitl_required"
-        elif state.tool_calls:
-            target = "tool"
-            reason = f"tool_calls={[tc.name for tc in state.tool_calls]}"
-        else:
-            target = "reason"
-            reason = "no tool calls generated, re-evaluate task state"
-
-        print(f"[ReAct][route] action -> {target} ({reason})")
-        return target
 
 
 class ReActNode(Node):

@@ -178,9 +178,20 @@ def chat_hitl(hitl_type: HITLType) -> None:
             print(f"\n[HITL] {request.get('description')}")
             print(f"[HITL] payload={request.get('payload')}")
             if request.get("type") == "input":
-                values = {}
-                for field in request.get("payload", {}).get("fields", []):
-                    values[field["name"]] = input(f"  {field['name']}: ").strip()
+                fields = request.get("payload", {}).get("fields") or {}
+                values: dict[str, Any] = {}
+                if isinstance(fields, dict):
+                    for tool_call_id, call_fields in fields.items():
+                        print(f"  [{tool_call_id}]")
+                        per_call: dict[str, Any] = {}
+                        for field in call_fields or []:
+                            per_call[field["name"]] = input(
+                                f"    {field['name']}: "
+                            ).strip()
+                        values[tool_call_id] = per_call
+                else:
+                    for field in fields:
+                        values[field["name"]] = input(f"  {field['name']}: ").strip()
                 resume_values: dict[str, Any] = {"values": values}
             else:
                 approved = input("  approve? (y/n): ").strip().lower() == "y"

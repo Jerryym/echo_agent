@@ -80,7 +80,7 @@ class ActionNode(Node):
             for tool in self._tool_list
         ]
 
-    def run(self, state: ReActState, context: ReActContext | None = None, config: RunnableConfig | None = None) -> dict:
+    def run(self, state: ReActState, context: ReActContext | None = None, config: RunnableConfig | None = None) -> Command:
         """
         Run the node
         """
@@ -116,18 +116,18 @@ class ActionNode(Node):
             return self._handle_invalid_tools(invalid_tools, state)
         # 参数校验
         missing_parameters_map = self._get_missing_parameters(tool_calls)
-        
+
         # 参数缺失，需要收集信息
         if missing_parameters_map:
             return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
-        
+
         # 人工审核
         if self._need_approval(tool_calls):
             return self._handle_approval(tool_calls, state)
 
         return self._handle_ready(tool_calls, state)
 
-    def _handle_existing_tool_calls(self, state: ReActState) -> dict:
+    def _handle_existing_tool_calls(self, state: ReActState) -> Command:
         """
         处理存在工具调用的情况
         """
@@ -135,11 +135,11 @@ class ActionNode(Node):
             print("[ReAct][action] applying hitl response to tool_calls")
             # HITL 被取消
             if state.hitl_response.status == "cancelled":
-                return {
+                return self._router(state, {
                     "task_status": "cancelled",
                     "tool_calls": [],
                     "step_count": state.step_count + 1,
-                }
+                })
 
             if state.hitl_request:
                 if state.hitl_request.type == HITLType.INPUT:# INPUT 类型
@@ -147,7 +147,7 @@ class ActionNode(Node):
                     # 判断是否需要人工审核
                     if self._need_approval(tool_calls):
                         return self._handle_approval(tool_calls, state)
-                    return {
+                    return self._router(state, {
                         "task_status": "in_progress",
                         "tool_calls": tool_calls,
                         "hitl_response": None,
@@ -156,18 +156,18 @@ class ActionNode(Node):
                             self._build_tool_call_message(tool_calls)
                         ],
                         "step_count": state.step_count + 1,
-                    }
+                    })
                 if state.hitl_request.type == HITLType.APPROVAL:# APPROVAL 类型
                     approved = (state.hitl_response.result or {}).get("approved")
                     if approved is not True:
-                        return {
+                        return self._router(state, {
                             "task_status": "cancelled",
                             "tool_calls": [],
                             "hitl_response": None,
                             "hitl_request": None,
                             "step_count": state.step_count + 1,
-                        }
-                    return {
+                        })
+                    return self._router(state, {
                         "task_status": "in_progress",
                         "tool_calls": state.tool_calls,
                         "hitl_response": None,
@@ -176,72 +176,74 @@ class ActionNode(Node):
                             self._build_tool_call_message(state.tool_calls)
                         ],
                         "step_count": state.step_count + 1,
-                    }
-        
+                    })
+
         print("[ReAct][action] no hitl response, continue to generate tool calls")
-        return {
+        return self._router(state, {
             "task_status": "in_progress",
             "tool_calls": state.tool_calls,
-        }
+        })
 
-    def _handle_no_tool_calls(self, state: ReActState) -> dict:
+    def _handle_no_tool_calls(self, state: ReActState) -> Command:
         """
         处理没有工具调用的情况
         """
-        return {
+        return self._router(state, {
             "task_status": "no_tool_calls",
             "step_count": state.step_count + 1,
             "retry_count": state.retry_count + 1,
-            "observations":[
+            "observations": [
                 "Action stage did not generate executable tool calls."
-            ]
-        }
+            ],
+        })
 
-    def _handle_invalid_tools(self, invalid_tools: list[str], state: ReActState) -> dict:
+    def _handle_invalid_tools(self, invalid_tools: list[str], state: ReActState) -> Command:
         """
         处理非法工具的情况
         """
-        return {
+        return self._router(state, {
             "task_status": "failed",
             "reasoning": f"Invalid tools selected: {', '.join(invalid_tools)}",
             "step_count": state.step_count + 1,
             "retry_count": state.retry_count + 1,
-        }
+            "tool_calls": [],
+        })
 
-    def _handle_ready(self, tool_calls: list[ToolCall], state: ReActState) -> dict:
+    def _handle_ready(self, tool_calls: list[ToolCall], state: ReActState) -> Command:
         """
         处理ready状态
         """
-        return {
+        return self._router(state, {
             "task_status": "in_progress",
             "tool_calls": tool_calls,
             "messages": [
                 self._build_tool_call_message(tool_calls)
             ],
             "step_count": state.step_count + 1,
-        }
+        })
 
     def _handle_missing_parameters(
-        self, 
-        tool_calls: list[ToolCall], 
-        missing_parameters_map: dict[str, list[str]], 
-        state: ReActState
-    ) -> dict:
+        self,
+        tool_calls: list[ToolCall],
+        missing_parameters_map: dict[str, list[str]],
+        state: ReActState,
+    ) -> Command:
         """
         处理缺少参数状态
         """
         updated_tool_calls = self._mark_missing_parameters(tool_calls, missing_parameters_map)
         print(f"[ReAct][action] updated tool_calls={updated_tool_calls}")
 
-        # 构建 HITL 请求
+        # 构建 HITL 请求（fields / resume values 均按 tool_call_id 分组，避免多工具同名缺参串写）
+        fields_by_call = self._build_fields(updated_tool_calls, missing_parameters_map)
         request = HITLInput(
             type=HITLType.INPUT,
             description="Please provide the missing parameters. ",
             payload={
-                    "fields": [
-                    field.model_dump()
-                    for field in self._build_fields(updated_tool_calls, missing_parameters_map)
-                ],
+                "fields": {
+                    tool_call_id: [field.model_dump() for field in fields]
+                    for tool_call_id, fields in fields_by_call.items()
+                },
                 "tool_calls": [
                     {
                         "tool_call_id": tc.tool_call_id,
@@ -253,17 +255,14 @@ class ActionNode(Node):
             },
         )
 
-        return Command(
-            update={
-                "task_status": "human_in_the_loop",
-                "tool_calls": updated_tool_calls,
-                "hitl_request": request,
-                "hitl_response": None,  # 清空 HITL 响应
-            },
-            goto="HITL",
-        )
+        return self._router(state, {
+            "task_status": "human_in_the_loop",
+            "tool_calls": updated_tool_calls,
+            "hitl_request": request,
+            "hitl_response": None,  # 清空 HITL 响应
+        })
 
-    def _handle_approval(self, tool_calls: list[ToolCall], state: ReActState) -> dict:
+    def _handle_approval(self, tool_calls: list[ToolCall], state: ReActState) -> Command:
         """
         处理人工审核状态
         """
@@ -281,15 +280,27 @@ class ActionNode(Node):
                 ],
             },
         )
-        return Command(
-            update={
-                "task_status": "human_in_the_loop",
-                "tool_calls": tool_calls,
-                "hitl_request": request,
-                "hitl_response": None,  # 清空 HITL 响应
-            },
-            goto="HITL",
-        )
+        return self._router(state, {
+            "task_status": "human_in_the_loop",
+            "tool_calls": tool_calls,
+            "hitl_request": request,
+            "hitl_response": None,  # 清空 HITL 响应
+        })
+
+    def _router(self, state: ReActState, update_state: dict) -> Command:
+        next_node = self._select_node(state, update_state)
+        print(f"[ReAct][route] action -> {next_node}")
+        return Command(update=update_state, goto=next_node)
+
+    def _select_node(self, state: ReActState, update_state: dict) -> Literal["HITL", "tool", "reason"]:
+        task_status = update_state.get("task_status", state.task_status)
+        tool_calls = update_state.get("tool_calls", state.tool_calls)
+
+        if task_status == "human_in_the_loop":
+            return "HITL"
+        if tool_calls:
+            return "tool"
+        return "reason"
 
     def _build_tool_call_message(self, tool_calls: list[ToolCall]) -> AIMessage:
         """
@@ -327,22 +338,32 @@ class ActionNode(Node):
             for tool in self._tool_list
         }
 
-    def _build_fields(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> list[InterruptField]:
+    def _build_fields(
+        self,
+        tool_calls: list[ToolCall],
+        missing_parameters_map: dict[str, list[str]],
+    ) -> dict[str, list[InterruptField]]:
         """
-        构建信息补全字段
+        按 tool_call_id 构建信息补全字段，避免多工具同名缺参互相覆盖。
         """
-        fields = []
+        fields_by_call: dict[str, list[InterruptField]] = {}
         for tool_call in tool_calls:
             missing_parameters = missing_parameters_map.get(tool_call.tool_call_id, [])
-            # 获取工具定义
+            if not missing_parameters:
+                continue
             tool_definition = get_tool_definition(self._tool_list, tool_call.name)
-            for param in missing_parameters:
-                fields.append(InterruptField(
-                    name=param, 
-                    description=tool_definition.get_parameter_description(param)
-                    if tool_definition else param
-                ))
-        return fields
+            fields_by_call[tool_call.tool_call_id] = [
+                InterruptField(
+                    name=param,
+                    description=(
+                        tool_definition.get_parameter_description(param)
+                        if tool_definition
+                        else param
+                    ),
+                )
+                for param in missing_parameters
+            ]
+        return fields_by_call
 
     def _mark_missing_parameters(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> list[ToolCall]: 
         """
@@ -354,15 +375,19 @@ class ActionNode(Node):
 
     def _fill_tool_calls(self, tool_calls: list[ToolCall], response: HITLOutput) -> list[ToolCall]:
         """
-        使用 interrupt 返回值填充工具参数
+        使用 interrupt 返回值按 tool_call_id 填充工具参数。
+
+        resume 协议：{"values": {tool_call_id: {param: value, ...}, ...}}
         """
-        values = response.result.get("values", {})
+        values = response.result.get("values") or {}
         updated_tool_calls = []
         for tool_call in tool_calls:
-            for key, value in values.items():
-                if key in tool_call.missing_args:
-                    tool_call.args[key] = value
-            
+            per_call = values.get(tool_call.tool_call_id)
+            if isinstance(per_call, dict):
+                for key in tool_call.missing_args:
+                    if key in per_call:
+                        tool_call.args[key] = per_call[key]
+
             tool_call.missing_args = []
             updated_tool_calls.append(tool_call)
         return updated_tool_calls

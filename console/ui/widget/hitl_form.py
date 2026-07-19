@@ -51,8 +51,9 @@ class HITLForm(QWidget):
         payload = request.get("payload") or {}
 
         if hitl_type == "input":
-            fields = payload.get("fields") or []
-            self.input_form.load(description, fields)
+            fields = payload.get("fields") or {}
+            tool_calls = payload.get("tool_calls") or []
+            self.input_form.load(description, fields, tool_calls)
             self.stack.setCurrentWidget(self.input_form)
         elif hitl_type == "approval":
             self.approval_form.load(description)
