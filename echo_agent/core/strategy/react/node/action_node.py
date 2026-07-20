@@ -14,51 +14,6 @@ from ....tool.utils import get_tool_definition
 from ..schema import ReActContext, ReActState
 
 
-class ActionResult(BaseModel):
-    """
-    Action节点结构化输出
-
-    参数：
-        status: 状态
-            ready: 可执行工具调用已生成
-            missing_parameters: 缺少参数
-        missing_parameters: 缺失的参数名称列表，当 status 为 missing_parameters 时有效，否则为空列表
-    """
-    status: Literal["ready", "missing_parameters"] = Field(
-        description=(
-            "Validation result of the generated native tool calls.\n\n"
-
-            "'ready': "
-            "All generated tool calls contain all required arguments "
-            "and are ready for immediate execution.\n\n"
-
-            "'missing_parameters': "
-            "One or more generated tool calls are missing required "
-            "arguments and cannot be executed until additional information "
-            "is provided."
-        )
-    )
-    missing_parameters: dict[str, list[str]] = Field(
-        default_factory=dict,
-        description=(
-            "Missing required arguments grouped by tool_call_id.\n\n"
-
-            "The key is the identifier of the generated tool call "
-            "(tool_call_id).\n"
-
-            "The value is a list of missing argument names for that "
-            "specific tool call.\n\n"
-
-            "Example:\n"
-            "{\n"
-            "  \"call_xxx\": [\"order_id\", \"reason\"]\n"
-            "}\n\n"
-
-            "Return an empty object when status is 'ready'."
-        ),
-    )
-
-
 class ActionNode(Node):
     """
     Action Node：动作节点
