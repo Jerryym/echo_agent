@@ -4,6 +4,7 @@ from typing import Any, Literal, Optional, Sequence
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
+from langchain.chat_models import init_chat_model
 from langchain_openai import ChatOpenAI
 
 from echo_agent.prompt import PromptLoader
@@ -166,6 +167,29 @@ class LLMClient:
 
     def _initialize_model(self):
         """初始化模型"""
+        # Responses API 模型初始化
+        if self._config.use_responses_api:
+            print("Initializing model with Responses API")
+            return self._initialize_model_with_responses_api()
+            
+        # 非 Responses API 模型初始化
+        print("Initializing model with Completion API")
+        model_kwargs: dict[str, Any] = {
+            "model": self._config.model_name,
+            "api_key": self._config.api_key,
+            "model_provider": self._config.model_provider,
+            "base_url": self._config.base_url,
+            "temperature": self._config.temperature,
+            "max_tokens": self._config.max_tokens,
+            "timeout": self._config.timeout,
+            "max_retries": self._config.max_retries,
+        }
+        if self._config.extra_body:
+            model_kwargs["extra_body"] = self._config.extra_body
+        return init_chat_model(**model_kwargs)
+
+    def _initialize_model_with_responses_api(self):
+        """初始化 Responses API 模型"""
         if self._config.model_provider == "openai":
             model_kwargs: dict[str, Any] = {
                 "model": self._config.model_name,
@@ -176,9 +200,12 @@ class LLMClient:
                 "timeout": self._config.timeout,
                 "max_retries": self._config.max_retries,
                 "use_responses_api": self._config.use_responses_api,
+
             }
-            if self._config.use_responses_api and self._config.output_version:
+            # output_version
+            if self._config.output_version:
                 model_kwargs["output_version"] = self._config.output_version
+            # extra_body
             if self._config.extra_body:
                 model_kwargs["extra_body"] = self._config.extra_body
             # 初始化模型
