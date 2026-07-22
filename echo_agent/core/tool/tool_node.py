@@ -17,12 +17,11 @@ class ToolNode(Node):
 
     def run(self, state: BaseState, context: BaseContext | None = None) -> dict:
         """
-        Run the node
+        同步运行（适用于支持 sync invoke 的工具）
         """
         print(f"[ReAct][tool] enter | calls={[tc.name for tc in state.tool_calls]}")
 
         tool_results: list[ToolResult] = []
-        # 执行工具
         for tool_call in state.tool_calls:
             print(f"[ReAct][tool] executing {tool_call.name} args:")
             print(format_debug(tool_call.args))
@@ -31,13 +30,32 @@ class ToolNode(Node):
             print(format_debug(result.result))
             tool_results.append(result)
 
+        return self._build_result(tool_results)
+
+    async def arun(self, state: BaseState, context: BaseContext | None = None) -> dict:
+        """
+        异步运行（适用于 MCP 等仅支持 ainvoke 的工具）
+        """
+        print(f"[ReAct][tool] enter | calls={[tc.name for tc in state.tool_calls]}")
+
+        tool_results: list[ToolResult] = []
+        for tool_call in state.tool_calls:
+            print(f"[ReAct][tool] executing {tool_call.name} args:")
+            print(format_debug(tool_call.args))
+            result = await self._tool_executor.aexecute(tool_call)
+            print(f"[ReAct][tool] result name={result.name} success={result.success}")
+            print(format_debug(result.result))
+            tool_results.append(result)
+
+        return self._build_result(tool_results)
+
+    def _build_result(self, tool_results: list[ToolResult]) -> dict:
         tool_messages = self._build_tool_messages(tool_results)
         print(f"[ReAct][tool] appended {len(tool_messages)} ToolMessage(s) to messages")
         for tm in tool_messages:
             print(f"[ReAct][tool] ToolMessage id={tm.tool_call_id}")
             print(format_debug(tm.content))
 
-        # 更新状态
         return {
             "tool_results": tool_results,
             "tool_calls": [],
