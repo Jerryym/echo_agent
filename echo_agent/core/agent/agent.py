@@ -2,6 +2,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import Command
 
 from ..graph import BaseInput, RootGraph
+from ..mcp import MCPClient
 from ..model import UserInput
 from ..runtime import RuntimeConfig
 from .agent_config import AgentConfig
@@ -16,12 +17,24 @@ class Agent:
         runtime_config: Runtime 配置
         graph: RootGraph 根图
         compiled_graph: 编译后的图
+        mcp_client: MCP 客户端（由 AgentConfig.mcp_servers 在构造时内部创建；
+            默认含内置 Fetch / Filesystem；列表为空则为 None）
     """
     def __init__(self, agent_config: AgentConfig, runtime_config: RuntimeConfig, graph: RootGraph):
         self._agent_config = agent_config
         self._runtime_config = runtime_config
         self._graph = graph
         self._compiled_graph = self._graph.compile(runtime_config)
+        self._mcp_client = (
+            MCPClient(list(agent_config.mcp_servers))
+            if agent_config.mcp_servers
+            else None
+        )
+
+    @property
+    def mcp_client(self) -> MCPClient | None:
+        """Agent 持有的 MCPClient；mcp_servers 为空时为 None。"""
+        return self._mcp_client
 
     def invoke(self, session_id: str, input: UserInput | type[BaseInput]):
         """

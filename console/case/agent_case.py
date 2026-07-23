@@ -65,6 +65,7 @@ def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
         description=name,
         llm_config=config,
         system_prompt=system_prompt,
+        enable_builtin_mcp=False,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)

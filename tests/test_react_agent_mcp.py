@@ -1,15 +1,23 @@
 """
 ReAct Agent + MCP 工具 手动验证脚本
 
-与 test_react_agent.py 类似，工具来源改为 MCP Server（stdio / http）。
+与 test_react_agent.py 类似，工具来源改为 MCP Server。
+固定同时启用：
+  - builtin：Fetch + Filesystem（AgentConfig.enable_builtin_mcp）
+  - stdio：@modelcontextprotocol/server-everything
+  - http：本地 streamable HTTP（默认 http://localhost:8000/mcp）
+
 含 MCP 时走异步轨：ainvoke / astream。
-不含 HITL（MCP HITL 需后续按 LangChain Tool interceptors 设计）。
+
+装配对齐：
+  AgentConfig.mcp_servers → Agent 内部构造 MCPClient → register_tools
 
 运行：
-  uv run python tests/test_react_agent_mcp.py
+  # 可选：终端 1 起本地 http MCP
+  uv run python tests/mcp_server.py
 
-http 默认连接：
-  http://localhost:8000/mcp
+  # 终端 2
+  uv run python tests/test_react_agent_mcp.py
 """
 
 from __future__ import annotations
@@ -24,7 +32,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
 from echo_agent.core.graph import END_NODE, START_NODE
-from echo_agent.core.mcp import MCPClient, MCPConnectionConfig
+from echo_agent.core.mcp import MCPConnectionConfig
 from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolRegistry
@@ -37,79 +45,68 @@ warnings.filterwarnings(
 
 MCP_HTTP_URL = "http://localhost:8000/mcp"
 
-MCP_TOOL_SETS: dict[str, tuple[str, MCPConnectionConfig]] = {
-    "0": (
-        "stdio",
-        MCPConnectionConfig(
-            name="everything",
-            type="stdio",
-            command="npx",
-            args=["-y", "@modelcontextprotocol/server-everything"],
-        ),
+MCP_SERVERS: list[MCPConnectionConfig] = [
+    MCPConnectionConfig(
+        name="everything",
+        type="stdio",
+        command="npx",
+        args=["-y", "@modelcontextprotocol/server-everything"],
     ),
-    "1": (
-        "http",
-        MCPConnectionConfig(
-            name="remote",
-            type="http",
-            url=MCP_HTTP_URL,
-        ),
+    MCPConnectionConfig(
+        name="remote",
+        type="http",
+        url=MCP_HTTP_URL,
     ),
-}
+]
 
 
 class State(BaseState):
     pass
 
 
-def select_mcp_tool_set() -> tuple[str, MCPConnectionConfig]:
-    print("Available MCP tool sets:")
-    for key, (name, config) in MCP_TOOL_SETS.items():
-        detail = config.url if config.type == "http" else f"{config.command} {' '.join(config.args or [])}"
-        print(f"  {key}: {name} ({config.type}) -> {detail}")
-    choice = input("Choose MCP tool set (stdio=0 / http=1): ").strip()
-    if choice not in MCP_TOOL_SETS:
-        print(f"Unknown choice {choice!r}, fallback to stdio.")
-        choice = "0"
-    return MCP_TOOL_SETS[choice]
+async def build_react_agent(
+    name: str,
+    llm_config: LLMConfig,
+) -> tuple[Agent, ToolRegistry]:
+    """
+    AgentConfig → 内置 MCP + stdio/http → Agent 内部 MCPClient → register_tools。
 
+    因 Strategy 构建需要已注册工具，先用占位图创建 Agent 拿到 mcp_client，
+    注册后再构建 ReAct 图并重新编译到同一 Agent。
+    """
+    agent_config = AgentConfig(
+        name=name,
+        description=name,
+        llm_config=llm_config,
+        enable_builtin_mcp=True,
+        mcp_servers=MCP_SERVERS,
+    )
+    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
+    tool_registry = ToolRegistry()
 
-async def build_mcp_tool_registry(
-    config: MCPConnectionConfig,
-) -> tuple[MCPClient, ToolRegistry]:
-    """注册 MCP 工具；返回 client 以保持连接/子进程存活。"""
-    client = MCPClient([config])
-    registry = ToolRegistry()
-    definitions = await client.register_tools(registry)
+    placeholder = RootGraph(state_schema=State)
+    placeholder.add_edge(START_NODE, END_NODE)
+    agent = Agent(agent_config, runtime_config, placeholder)
+    assert agent.mcp_client is not None
+
+    definitions = await agent.mcp_client.register_tools(tool_registry)
     print(f"Registered {len(definitions)} MCP tools:")
     for definition in definitions:
         print(f"  - {definition.name} ({definition.type})")
-    return client, registry
 
-
-def build_react_agent(
-    name: str,
-    config: LLMConfig,
-    tool_registry: ToolRegistry,
-) -> Agent:
     react_subgraph = StrategyFactory.create_as_subgraph(
         StrategyType.REACT,
-        llm_config=config,
+        llm_config=llm_config,
         tool_registry=tool_registry,
     )
-
     graph = RootGraph(state_schema=State)
     graph.add_subgraph("ReAct", react_subgraph)
     graph.add_edge(START_NODE, "ReAct")
     graph.add_edge("ReAct", END_NODE)
 
-    agent_config = AgentConfig(
-        name=name,
-        description=name,
-        llm_config=config,
-    )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    return Agent(agent_config, runtime_config, graph)
+    agent._graph = graph
+    agent._compiled_graph = graph.compile(runtime_config)
+    return agent, tool_registry
 
 
 def _message_chunk_text(message: AIMessageChunk) -> str:
@@ -190,29 +187,19 @@ async def main() -> None:
     config = build_config()
     session_id = "react_mcp_test_session"
 
-    tool_set_name, mcp_config = select_mcp_tool_set()
-    # 保持 client 引用，避免 stdio MCP Server 子进程被回收
-    mcp_client, tool_registry = await build_mcp_tool_registry(mcp_config)
-
     mode = input("Choose mode (ainvoke=0 / astream=1): ").strip()
-    agent_name = (
-        f"react_mcp_astream_{tool_set_name}"
-        if mode == "1"
-        else f"react_mcp_ainvoke_{tool_set_name}"
-    )
-    agent = build_react_agent(agent_name, config, tool_registry)
+    agent_name = "react_mcp_astream" if mode == "1" else "react_mcp_ainvoke"
+    agent, tool_registry = await build_react_agent(agent_name, config)
     print(
-        f"Using MCP tool set: {tool_set_name} "
-        f"({len(tool_registry.list_definitions())} tools)"
+        "Using MCP: builtin + stdio(everything) + http(remote); "
+        f"{len(tool_registry.list_definitions())} tools; "
+        f"agent.mcp_client is set={agent.mcp_client is not None}"
     )
 
     if mode == "1":
         await chat_astream(agent, session_id)
     else:
         await chat_ainvoke(agent, session_id)
-
-    # 显式保留引用，避免被优化掉
-    _ = mcp_client
 
 
 if __name__ == "__main__":

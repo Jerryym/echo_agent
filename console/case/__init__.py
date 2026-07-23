@@ -5,6 +5,8 @@ from case.hitl_case import HITLCase
 from case.llm_client_case import LLMClientCase
 from case.react_agent_case import ReactAgentCase
 from case.react_agent_hitl_case import ReactAgentHITLCase
+from case.react_agent_hitl_mcp_case import ReactAgentHITLMCPCase
+from case.react_agent_mcp_case import ReactAgentMCPCase
 
 
 CASES = [
@@ -12,6 +14,8 @@ CASES = [
     AgentCase(),
     ReactAgentCase(),
     ReactAgentHITLCase(),
+    ReactAgentMCPCase(),
+    ReactAgentHITLMCPCase(),
     HITLCase(),
 ]
 

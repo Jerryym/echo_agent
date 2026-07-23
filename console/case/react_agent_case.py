@@ -48,6 +48,7 @@ def build_react_agent(
         name=name,
         description=name,
         llm_config=config,
+        enable_builtin_mcp=False,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)

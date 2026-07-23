@@ -66,6 +66,7 @@ def build_hitl_agent() -> Agent:
         name="console_hitl_only",
         description="HITLSubgraph harness (no LLM)",
         llm_config=placeholder_config(),
+        enable_builtin_mcp=False,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)

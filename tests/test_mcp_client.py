@@ -76,6 +76,8 @@ def _assert_tools(tools) -> None:
 def _assert_registered(
     definitions: list[ToolDefinition],
     registry: ToolRegistry,
+    *,
+    server_name: str,
 ) -> None:
     assert definitions, "register_tools() returned empty definitions"
     assert len(definitions) == len(registry.list_definitions())
@@ -85,15 +87,24 @@ def _assert_registered(
         )
         assert registry.get(definition.name).type == ToolType.MCP
         assert registry.get_handler(definition.name) is not None
+        assert definition.meta_data.get("mcp_server") == server_name
+        original = definition.meta_data.get("original_name")
+        assert original, f"missing original_name for {definition.name}"
+        assert definition.name == f"{server_name}_{original}", (
+            f"expected prefixed name {server_name}_{original}, got {definition.name}"
+        )
 
 
 def _pick_execute_case(
     definitions: list[ToolDefinition],
 ) -> tuple[ToolDefinition, dict]:
-    by_name = {d.name: d for d in definitions}
+    # tool_name_prefix 后 definition.name 为 {server}_{original}，按 original_name 匹配
+    by_original = {
+        (d.meta_data.get("original_name") or d.name): d for d in definitions
+    }
     for name, args in PREFERRED_EXECUTE_CASES.items():
-        if name in by_name:
-            return by_name[name], args
+        if name in by_original:
+            return by_original[name], args
 
     definition = definitions[0]
     return definition, {}
@@ -132,7 +143,9 @@ async def _run_transport_case(
     if config.type == "http":
         print(f"url: {config.url}")
 
-    client = MCPClient([config])
+    # 与 AgentConfig.mcp_servers 同形态：list[MCPConnectionConfig]
+    mcp_servers = [config]
+    client = MCPClient(mcp_servers)
 
     # 1) get_tools
     tools = await client.get_tools()
@@ -146,7 +159,7 @@ async def _run_transport_case(
     definitions = await client.register_tools(registry)
     print("\n--- register_tools ---")
     _print_definitions(definitions)
-    _assert_registered(definitions, registry)
+    _assert_registered(definitions, registry, server_name=config.name)
     print("PASS: register_tools")
 
     # 3) aexecute
@@ -181,21 +194,9 @@ async def test_http() -> None:
 
 
 async def main() -> None:
-    print("Choose mode:")
-    print("  0 = stdio")
-    print("  1 = http")
-    print("  2 = both")
-    mode = input("mode: ").strip()
-
-    if mode == "0":
-        await test_stdio()
-    elif mode == "1":
-        await test_http()
-    elif mode == "2":
-        await test_stdio()
-        await test_http()
-    else:
-        raise ValueError(f"unknown mode: {mode!r}")
+    # 固定同时跑 stdio + http，无需选择
+    await test_stdio()
+    await test_http()
 
 
 if __name__ == "__main__":
