@@ -45,6 +45,24 @@ class Agent:
         runnable_config = self._build_runnable_config(session_id)
         return self._compiled_graph.invoke(graph_input, runnable_config)
 
+    async def ainvoke(self, session_id: str, input: UserInput | type[BaseInput]):
+        """
+        调用 Agent 执行（异步）
+        """
+        # 构建输入
+        input_schema = self._graph.input_schema
+        if input_schema is None: # 无输入类型时，直接使用UserInput
+            graph_input = {"input": input}
+        else: # 输入有类型时，使用input_schema进行类型检查，如果类型不匹配，则抛出TypeError
+            if isinstance(input, input_schema):
+                graph_input = input
+            else:
+                raise TypeError(f"输入类型错误，期望 {input_schema}，实际 {type(input)}")
+
+        # 构建RunnableConfig
+        runnable_config = self._build_runnable_config(session_id)
+        return await self._compiled_graph.ainvoke(graph_input, runnable_config)
+
     def stream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
         """
         流式调用 Agent 执行
@@ -68,6 +86,25 @@ class Agent:
         runnable_config = self._build_runnable_config(session_id)
         return self._compiled_graph.stream(graph_input, runnable_config, stream_mode="messages", subgraphs=True, version=version)
 
+    async def astream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
+        """
+        流式调用 Agent 执行（异步）
+        """
+        # 构建输入
+        input_schema = self._graph.input_schema
+        if input_schema is None: # 无输入类型时，直接使用UserInput
+            graph_input = {"input": input}
+        else: # 输入有类型时，使用input_schema进行类型检查，如果类型不匹配，则抛出TypeError
+            if isinstance(input, input_schema):
+                graph_input = input
+            else:
+                raise TypeError(f"输入类型错误，期望 {input_schema}，实际 {type(input)}")
+
+        # 构建RunnableConfig
+        runnable_config = self._build_runnable_config(session_id)
+        # 返回 async iterator，由调用方 async for / await 消费
+        return self._compiled_graph.astream(graph_input, runnable_config, stream_mode="messages", subgraphs=True, version=version)
+
     def resume(self, session_id: str, values: dict):
         """
         恢复 Agent 执行
@@ -78,6 +115,13 @@ class Agent:
         """
         runnable_config = self._build_runnable_config(session_id)
         return self._compiled_graph.invoke(Command(resume=values), runnable_config)
+
+    async def aresume(self, session_id: str, values: dict):
+        """
+        恢复 Agent 执行（异步）
+        """
+        runnable_config = self._build_runnable_config(session_id)
+        return await self._compiled_graph.ainvoke(Command(resume=values), runnable_config)
 
     def stream_resume(self, session_id: str, values: dict, version: str = "v2"):
         """
@@ -90,6 +134,13 @@ class Agent:
         """
         runnable_config = self._build_runnable_config(session_id)
         return self._compiled_graph.stream(Command(resume=values), runnable_config, stream_mode="messages", subgraphs=True, version=version)
+
+    async def astream_resume(self, session_id: str, values: dict, version: str = "v2"):
+        """
+        流式恢复 Agent 执行（异步）
+        """
+        runnable_config = self._build_runnable_config(session_id)
+        return self._compiled_graph.astream(Command(resume=values), runnable_config, stream_mode="messages", subgraphs=True, version=version)
 
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
         """

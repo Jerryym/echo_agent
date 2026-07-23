@@ -47,6 +47,9 @@ class PrepareHITLNode(Node):
             )
         return {"hitl_request": request}
 
+    async def arun(self, state: State, context: BaseContext | None = None, config=None) -> dict:
+        raise NotImplementedError("PrepareHITLNode is sync-only")
+
 
 def build_hitl_agent() -> Agent:
     prepare = PrepareHITLNode("prepare_hitl")

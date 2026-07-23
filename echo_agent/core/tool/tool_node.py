@@ -12,7 +12,7 @@ class ToolNode(Node):
     Tool Node：工具执行节点
     """
     def __init__(self, name: str, tool_executor: ToolExecutor):
-        super().__init__(name)
+        super().__init__(name, is_async=True)
         self._tool_executor = tool_executor
 
     def run(self, state: BaseState, context: BaseContext | None = None) -> dict:

@@ -39,4 +39,3 @@ class MCPClient:
             registry.register(definition, tool)
             definitions.append(definition)
         return definitions
-

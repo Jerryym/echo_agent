@@ -76,6 +76,43 @@ class LLMClient:
         except Exception as e:
             raise LLMInvokeError(message="LLM invoke failed", detail=str(e))
 
+    async def ainvoke(
+        self,
+        prompt: str,
+        user_input: UserInput | dict | str,
+        history: Optional[Sequence[BaseMessage]] = None,
+        tool_list: Optional[list[dict[str, Any]]] = None,
+        config: RunnableConfig | None = None,
+    ):
+        """
+        调用模型（异步）
+        
+        参数:
+            prompt: 提示语
+            user_input: 用户输入
+            history: 历史记录
+            tool_list: 工具列表
+            config: 配置
+        """
+        try:
+            # 构建 Messages
+            messages = self._build_messages(
+                prompt=prompt,
+                user_input=user_input,
+                history=history or [],
+                tool_list=tool_list,
+            )
+            # 配置模型
+            model = self._configure_model(tool_list=tool_list)
+            # 调用模型
+            response = await model.ainvoke(messages, config=config)
+            # 解析响应
+            return self._parse_response(response)
+        except LLMException:
+            raise
+        except Exception as e:
+            raise LLMInvokeError(message="LLM async invoke failed", detail=str(e))
+
     def invoke_structured(
         self,
         schema: type[BaseModel] | dict[str, Any],
@@ -127,6 +164,57 @@ class LLMClient:
                 detail=str(e),
             )
 
+    async def ainvoke_structured(
+        self,
+        schema: type[BaseModel] | dict[str, Any],
+        prompt: str,
+        user_input: UserInput | dict | str,
+        history: Optional[Sequence[BaseMessage]] = None,
+        *,
+        method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
+        strict: bool | None = None,
+        config: RunnableConfig | None = None,
+    ):
+        """
+        结构化输出调用模型（异步）
+
+        ⚠️ 注意：本方法不支持工具调用，若需要工具调用请使用 ainvoke / astream 方法
+
+        参数:
+            schema: 输出 schema（Pydantic 类或 JSON Schema dict）
+            prompt: 提示语
+            user_input: 用户输入
+            history: 历史记录
+            method: 结构化输出方式
+            strict: 是否严格匹配 schema
+            config: 配置
+        """
+        try:
+            # 构建 Messages
+            messages = self._build_messages(
+                prompt=prompt,
+                user_input=user_input,
+                history=history or [],
+            )
+            # 配置模型
+            model = self._configure_model(
+                structured=True,
+                schema=schema,
+                method=method,
+                strict=strict,
+            )
+            # 调用模型
+            response = await model.ainvoke(messages, config=config)
+            # 解析响应
+            return self._parse_structured_response(response)
+        except LLMException:
+            raise
+        except Exception as e:
+            raise LLMInvokeError(
+                message="LLM async structured invoke failed",
+                detail=str(e),
+            )
+
     def stream(
         self, prompt: str, 
         user_input: UserInput | dict | str, 
@@ -162,6 +250,45 @@ class LLMClient:
         except Exception as e:
             raise LLMInvokeError(
                 message="LLM stream invoke failed",
+                detail=str(e)
+            )
+
+    async def astream(
+        self,
+        prompt: str,
+        user_input: UserInput | dict | str,
+        history: Optional[Sequence[BaseMessage]] = None,
+        tool_list: Optional[list[dict[str, Any]]] = None,
+        config: RunnableConfig | None = None,
+    ):
+        """
+        流式调用模型（异步）
+
+        参数:
+            prompt: 提示语
+            user_input: 用户输入
+            history: 历史记录
+            tool_list: 工具列表
+            config: 配置
+        """
+        try:
+            # 构建 Messages
+            messages = self._build_messages(
+                prompt=prompt,
+                user_input=user_input,
+                history=history or [],
+                tool_list=tool_list,
+            )
+            # 配置模型
+            model = self._configure_model(tool_list=tool_list)
+            # 解析响应
+            async for chunk in model.astream(messages, config=config):
+                yield self._parse_response(chunk)
+        except LLMException:
+            raise
+        except Exception as e:
+            raise LLMInvokeError(
+                message="LLM async stream invoke failed",
                 detail=str(e)
             )
 

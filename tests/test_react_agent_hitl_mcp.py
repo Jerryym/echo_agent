@@ -1,15 +1,23 @@
 """
-ReAct Agent + MCP 工具 手动验证脚本
+ReAct Agent + MCP 工具 + HITL 手动验证脚本
 
-与 test_react_agent.py 类似，工具来源改为 MCP Server（stdio / http）。
-含 MCP 时走异步轨：ainvoke / astream。
-不含 HITL（MCP HITL 需后续按 LangChain Tool interceptors 设计）。
+组合 test_react_agent_mcp（MCP 异步轨）与 test_react_agent_hitl（interrupt / resume）。
+HITL 由 ReAct ActionNode 触发（缺参 → INPUT，required_approval → APPROVAL），
+与 LangChain Tool Interceptor 无关。
 
 运行：
-  uv run python tests/test_react_agent_mcp.py
+  # 终端 1：本地 MCP（含 business / it_operations 工具，可测 APPROVAL）
+  uv run python tests/mcp_server.py
+
+  # 终端 2：
+  uv run python tests/test_react_agent_hitl_mcp.py
 
 http 默认连接：
   http://localhost:8000/mcp
+
+提示：
+  - INPUT：省略必填参数即可触发（stdio / http 均可）
+  - APPROVAL：需 http + mcp_server（含 create_refund），话术参数齐全
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import warnings
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessageChunk
@@ -36,6 +45,11 @@ warnings.filterwarnings(
 )
 
 MCP_HTTP_URL = "http://localhost:8000/mcp"
+
+# 写操作需人工审批；测 APPROVAL 时用参数齐全的话术，避免先进 INPUT
+APPROVAL_REQUIRED_TOOLS = {
+    "create_refund",
+}
 
 MCP_TOOL_SETS: dict[str, tuple[str, MCPConnectionConfig]] = {
     "0": (
@@ -65,25 +79,39 @@ class State(BaseState):
 def select_mcp_tool_set() -> tuple[str, MCPConnectionConfig]:
     print("Available MCP tool sets:")
     for key, (name, config) in MCP_TOOL_SETS.items():
-        detail = config.url if config.type == "http" else f"{config.command} {' '.join(config.args or [])}"
+        detail = (
+            config.url
+            if config.type == "http"
+            else f"{config.command} {' '.join(config.args or [])}"
+        )
         print(f"  {key}: {name} ({config.type}) -> {detail}")
     choice = input("Choose MCP tool set (stdio=0 / http=1): ").strip()
     if choice not in MCP_TOOL_SETS:
-        print(f"Unknown choice {choice!r}, fallback to stdio.")
-        choice = "0"
+        print(f"Unknown choice {choice!r}, fallback to http.")
+        choice = "1"
     return MCP_TOOL_SETS[choice]
+
+
+def _apply_approval_flags(registry: ToolRegistry) -> None:
+    """在 MCP 注册结果上标记需审批工具（HITL APPROVAL 依赖 meta_data）。"""
+    for definition in registry.list_definitions():
+        if definition.name in APPROVAL_REQUIRED_TOOLS:
+            definition.meta_data["required_approval"] = True
 
 
 async def build_mcp_tool_registry(
     config: MCPConnectionConfig,
 ) -> tuple[MCPClient, ToolRegistry]:
-    """注册 MCP 工具；返回 client 以保持连接/子进程存活。"""
+    """注册 MCP 工具并打审批标记；返回 client 以保持连接/子进程存活。"""
     client = MCPClient([config])
     registry = ToolRegistry()
     definitions = await client.register_tools(registry)
+    _apply_approval_flags(registry)
+
     print(f"Registered {len(definitions)} MCP tools:")
-    for definition in definitions:
-        print(f"  - {definition.name} ({definition.type})")
+    for definition in registry.list_definitions():
+        approval = " [approval]" if definition.requires_approval else ""
+        print(f"  - {definition.name} ({definition.type}){approval}")
     return client, registry
 
 
@@ -147,9 +175,68 @@ def extract_stream_text(chunk, *, node: str | None = "final") -> str:
     return _message_chunk_text(message)
 
 
+def _get_pending_interrupt(agent: Agent, session_id: str) -> dict | None:
+    """从 checkpoint 读取挂起的 interrupt payload。"""
+    state = agent.get_state(session_id)
+    interrupts = getattr(state, "interrupts", None) or ()
+    if not interrupts:
+        for task in getattr(state, "tasks", ()) or ():
+            task_interrupts = getattr(task, "interrupts", None) or ()
+            if task_interrupts:
+                interrupts = task_interrupts
+                break
+    if not interrupts:
+        return None
+    value = interrupts[0].value
+    return value if isinstance(value, dict) else None
+
+
+def _collect_hitl_response(request: dict) -> dict:
+    """按 HITLSubgraph interrupt payload 交互收集 resume 值。"""
+    hitl_type = request.get("type")
+    payload = request.get("payload", {})
+    print(f"\n[HITL] {request.get('description', 'Human input required')}")
+    print(f"[HITL] payload={payload}")
+
+    if hitl_type == "input":
+        fields = payload.get("fields") or {}
+        tool_calls = payload.get("tool_calls") or []
+        tool_name_by_id = {
+            tc.get("tool_call_id"): tc.get("name") or tc.get("tool_call_id")
+            for tc in tool_calls
+            if tc.get("tool_call_id")
+        }
+        # 新协议：fields = {tool_call_id: [{name, description}, ...]}
+        if isinstance(fields, dict):
+            values: dict[str, Any] = {}
+            for tool_call_id, call_fields in fields.items():
+                tool_name = tool_name_by_id.get(tool_call_id) or tool_call_id
+                print(f"  [{tool_name} / {tool_call_id}]")
+                per_call: dict[str, Any] = {}
+                for field in call_fields or []:
+                    name = field["name"]
+                    desc = field.get("description") or name
+                    per_call[name] = input(f"    {name} ({desc}): ").strip()
+                values[tool_call_id] = per_call
+            return {"values": values}
+        # 旧扁平 list 兜底
+        flat_values: dict[str, Any] = {}
+        for field in fields:
+            name = field["name"]
+            desc = field.get("description") or name
+            flat_values[name] = input(f"  {name} ({desc}): ").strip()
+        return {"values": flat_values}
+
+    if hitl_type == "approval":
+        approved = input("  approve? (y/n): ").strip().lower() == "y"
+        return {"approved": approved}
+
+    raise ValueError(f"unsupported HITL interrupt type: {hitl_type!r}")
+
+
 async def chat_ainvoke(agent: Agent, session_id: str) -> None:
     print("\n==============================")
-    print("TEST: REACT AGENT MCP AINVOKE")
+    print("TEST: REACT AGENT HITL MCP AINVOKE")
     print("==============================\n")
 
     while True:
@@ -158,8 +245,21 @@ async def chat_ainvoke(agent: Agent, session_id: str) -> None:
             break
 
         result = await agent.ainvoke(session_id, UserInput(text=user_text))
+
+        while True:
+            request = _get_pending_interrupt(agent, session_id)
+            if request is None:
+                break
+            try:
+                resume_values = _collect_hitl_response(request)
+            except ValueError as exc:
+                print(f"[HITL] {exc}")
+                break
+
+            result = await agent.aresume(session_id, resume_values)
+
         print("\nAssistant:")
-        print(result.get("response", result))
+        print(result.get("response", result) if isinstance(result, dict) else result)
         state = agent.get_state(session_id)
         print(f"[DEBUG] state values: {state.values}")
         print("\n------------------------------\n")
@@ -167,7 +267,7 @@ async def chat_ainvoke(agent: Agent, session_id: str) -> None:
 
 async def chat_astream(agent: Agent, session_id: str) -> None:
     print("\n==============================")
-    print("TEST: REACT AGENT MCP ASTREAM")
+    print("TEST: REACT AGENT HITL MCP ASTREAM")
     print("==============================\n")
 
     while True:
@@ -180,6 +280,23 @@ async def chat_astream(agent: Agent, session_id: str) -> None:
             text = extract_stream_text(chunk, node="final")
             if text:
                 print(text, end="", flush=True)
+
+        while True:
+            request = _get_pending_interrupt(agent, session_id)
+            if request is None:
+                break
+            try:
+                resume_values = _collect_hitl_response(request)
+            except ValueError as exc:
+                print(f"\n[HITL] {exc}")
+                break
+
+            print("\nAssistant: ", end="", flush=True)
+            async for chunk in await agent.astream_resume(session_id, resume_values):
+                text = extract_stream_text(chunk, node="final")
+                if text:
+                    print(text, end="", flush=True)
+
         state = agent.get_state(session_id)
         print(f"\n[DEBUG] state values: {state.values}")
         print("\n------------------------------\n")
@@ -188,7 +305,7 @@ async def chat_astream(agent: Agent, session_id: str) -> None:
 async def main() -> None:
     load_dotenv(Path(__file__).resolve().parent / ".env")
     config = build_config()
-    session_id = "react_mcp_test_session"
+    session_id = "react_hitl_mcp_test_session"
 
     tool_set_name, mcp_config = select_mcp_tool_set()
     # 保持 client 引用，避免 stdio MCP Server 子进程被回收
@@ -196,15 +313,16 @@ async def main() -> None:
 
     mode = input("Choose mode (ainvoke=0 / astream=1): ").strip()
     agent_name = (
-        f"react_mcp_astream_{tool_set_name}"
+        f"react_hitl_mcp_astream_{tool_set_name}"
         if mode == "1"
-        else f"react_mcp_ainvoke_{tool_set_name}"
+        else f"react_hitl_mcp_ainvoke_{tool_set_name}"
     )
     agent = build_react_agent(agent_name, config, tool_registry)
     print(
         f"Using MCP tool set: {tool_set_name} "
         f"({len(tool_registry.list_definitions())} tools)"
     )
+    print(f"Approval-required tools: {sorted(APPROVAL_REQUIRED_TOOLS)}")
 
     if mode == "1":
         await chat_astream(agent, session_id)

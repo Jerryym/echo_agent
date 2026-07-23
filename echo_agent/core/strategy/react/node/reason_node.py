@@ -70,7 +70,7 @@ class ReasonNode(Node):
         3. 工具执行
     """
     def __init__(self, name: str, llm_config: LLMConfig):
-        super().__init__(name)
+        super().__init__(name, is_async=True)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
 
@@ -92,6 +92,39 @@ class ReasonNode(Node):
         input = self._build_input(state)
         # 调用llm-结构化输出
         response = self._llm_client.invoke_structured(
+            prompt=self._prompt,
+            user_input=input,
+            history=state.messages,
+            schema=ReasonStructuredOutput,
+        )
+        result = response.structured
+        print(
+            "[ReAct][reason] "
+            f"thought={result.thought} \n"
+            f"reasoning={result.reasoning} \n"
+            f"task_status={result.task_status}"
+        )
+
+        return self._handle_result(result, state, context)
+
+    async def arun(self, state: ReActState, context: ReActContext | None = None) -> Command:
+        """
+        异步运行
+        """
+        print(f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} ")
+        debug_print_messages("[ReAct][reason]", state.messages)
+
+        # 检查工具执行失败
+        if self._has_tool_error(state):
+            return self._handle_tool_error(
+                state,
+                context,
+            )
+
+        # 构建输入
+        input = self._build_input(state)
+        # 调用llm-结构化输出
+        response = await self._llm_client.ainvoke_structured(
             prompt=self._prompt,
             user_input=input,
             history=state.messages,

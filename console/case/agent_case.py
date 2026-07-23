@@ -49,6 +49,9 @@ class LLMInvokeNode(Node):
             ],
         }
 
+    async def arun(self, state: State, context: BaseContext | None = None, config=None) -> dict:
+        raise NotImplementedError("LLMInvokeNode is sync-only")
+
 
 def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
     graph = RootGraph(state_schema=State)

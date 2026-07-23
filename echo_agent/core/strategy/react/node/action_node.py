@@ -19,7 +19,7 @@ class ActionNode(Node):
     Action Node：动作节点
     """
     def __init__(self, name: str, llm_config: LLMConfig, tool_list: list[ToolDefinition] | None = None):
-        super().__init__(name)
+        super().__init__(name, is_async=True)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
         self._tool_list = tool_list or []
@@ -52,6 +52,53 @@ class ActionNode(Node):
         }
         # 选择工具
         response = self._llm_client.invoke(
+            prompt=self._prompt,
+            user_input=input,
+            history=state.messages,
+            tool_list=self._tool_json_schema,
+        )
+        print(f"[ReAct][action] tool_selection_response={response}")
+        print(f"[ReAct][action] tool_selection_response.tool_calls={response.tool_calls}")
+
+        # 没有工具调用，则返回 no_tool_calls 状态
+        if not response.tool_calls:
+            return self._handle_no_tool_calls(state)
+
+        tool_calls = response.tool_calls
+        # 工具合法性校验
+        invalid_tools = self._get_invalid_tools(tool_calls)
+        if invalid_tools:
+            return self._handle_invalid_tools(invalid_tools, state)
+        # 参数校验
+        missing_parameters_map = self._get_missing_parameters(tool_calls)
+
+        # 参数缺失，需要收集信息
+        if missing_parameters_map:
+            return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
+
+        # 人工审核
+        if self._need_approval(tool_calls):
+            return self._handle_approval(tool_calls, state)
+
+        return self._handle_ready(tool_calls, state)
+
+    async def arun(self, state: ReActState, context: ReActContext | None = None, config: RunnableConfig | None = None) -> Command:
+        """
+        异步运行
+        """
+        print(f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}")
+
+        # 如果存在工具调用，则跳过工具选择
+        print(f"[ReAct][action] state.tool_calls={state.tool_calls}")
+        if state.tool_calls:
+            return self._handle_existing_tool_calls(state)
+
+        # 构建输入
+        input = {
+            "reasoning": state.reasoning,
+        }
+        # 选择工具
+        response = await self._llm_client.ainvoke(
             prompt=self._prompt,
             user_input=input,
             history=state.messages,

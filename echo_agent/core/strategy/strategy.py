@@ -61,6 +61,7 @@ class BaseStrategy(ABC):
         """
         pass
 
+    @abstractmethod
     def to_strategy_context(self, context: BaseContext | None = None) -> BaseContext | None:
         """
         将 Parent Context 映射为 Strategy Context
@@ -81,6 +82,18 @@ class BaseStrategy(ABC):
         input = self.to_strategy_input(state, context)
         strategy_context  = self.to_strategy_context(context)
         output = self.compiled_graph.invoke(input, context=strategy_context)
+        # 构建成输出模型
+        if self.output_schema is not None and isinstance(output, dict):
+            output = self.output_schema(**output)
+        return self.to_parent_state(output)
+
+    async def ainvoke(self, state: BaseState, context: BaseContext | None = None) -> dict:
+        """
+        异步调用策略
+        """
+        input = self.to_strategy_input(state, context)
+        strategy_context  = self.to_strategy_context(context)
+        output = await self.compiled_graph.ainvoke(input, context=strategy_context)
         # 构建成输出模型
         if self.output_schema is not None and isinstance(output, dict):
             output = self.output_schema(**output)

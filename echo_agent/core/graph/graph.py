@@ -82,7 +82,10 @@ class Graph(ABC):
 
         # 注册节点
         for node in self._nodes.values():
-            builder.add_node(node.name, node.run)
+            if node.is_async:
+                builder.add_node(node.name, node.arun)
+            else:
+                builder.add_node(node.name, node.run)
 
         # 注册子图
         for name, subgraph in self._subgraphs.items():

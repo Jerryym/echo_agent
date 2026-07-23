@@ -119,3 +119,6 @@ class HITLNode(Node):
             raise ValueError("hitl_request is required")
 
         return self._hitl.invoke(state.hitl_request, context, config)
+
+    async def arun(self, state: BaseState, context: BaseContext | None = None, config=None) -> dict:
+        raise NotImplementedError("HITLNode is sync-only")

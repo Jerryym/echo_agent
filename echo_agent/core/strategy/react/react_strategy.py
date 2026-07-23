@@ -93,24 +93,13 @@ class ReActStrategy(BaseStrategy):
             "messages": output.messages or [AIMessage(content=output.response)],
         }
 
-    def invoke(self, state: BaseState, context: BaseContext | None = None) -> dict:
-        input = self.to_strategy_input(state, context)
-        strategy_context = self.to_strategy_context(context)
-        output = self.compiled_graph.invoke(input, context=strategy_context)
-
-        if self.output_schema is not None and isinstance(output, dict):
-            output = self.output_schema(**output)
-
-        parent_state = self.to_parent_state(output)
-        return parent_state
-
 
 class ReActNode(Node):
     """
     ReActStrategy Node: ReAct策略子图节点
     """
     def __init__(self, name: str, strategy: ReActStrategy):
-        super().__init__(name)
+        super().__init__(name, is_async=True)
         self._strategy = strategy
 
     def run(self, state: BaseState, context: BaseContext | None = None) -> dict:
@@ -119,3 +108,6 @@ class ReActNode(Node):
         result = self._strategy.invoke(state, context)
         # print(f"[ReAct] ===== 结束 ===== response={result.get('response', '')!r}\n")
         return result
+
+    async def arun(self, state: BaseState, context: BaseContext | None = None, config=None) -> dict:
+        return await self._strategy.ainvoke(state, context)

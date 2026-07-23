@@ -36,6 +36,14 @@ class InputFlow(Node):
             "result": result,
         }
 
+    async def arun(
+        self,
+        state: HITLState,
+        context: BaseContext | None = None,
+        config: RunnableConfig | None = None,
+    ) -> dict:
+        raise NotImplementedError("InputFlow is sync-only")
+
     def _resolve_status(self, response: Any) -> Literal["completed", "cancelled"]:
         """
         INPUT resume 协议：
