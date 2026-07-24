@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseContext, BaseState, Node, RootGraph, UserInput
@@ -66,7 +68,7 @@ def build_hitl_agent() -> Agent:
         name="console_hitl_only",
         description="HITLSubgraph harness (no LLM)",
         llm_config=placeholder_config(),
-        enable_builtin_mcp=False,
+        mcp_allowed_directories=str(Path(__file__).resolve().parents[2]),
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)

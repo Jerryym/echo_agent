@@ -6,7 +6,7 @@ HITL 由 ReAct ActionNode 触发（缺参 → INPUT，required_approval → APPR
 与 LangChain Tool Interceptor 无关。
 
 固定同时启用：
-  - builtin：Fetch + Filesystem（AgentConfig.enable_builtin_mcp）
+  - builtin：Fetch + Filesystem（目录由 mcp_allowed_directories 传入）
   - stdio：@modelcontextprotocol/server-everything
   - http：本地 streamable HTTP（默认 http://localhost:8000/mcp）
 
@@ -100,7 +100,7 @@ async def build_react_agent(
         name=name,
         description=name,
         llm_config=llm_config,
-        enable_builtin_mcp=True,
+        mcp_allowed_directories=str(Path(__file__).resolve().parents[1]),
         mcp_servers=MCP_SERVERS,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())

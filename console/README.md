@@ -33,7 +33,7 @@ uv run --project .. python app.py
 
 固定同时启用：
 
-- **builtin**：Fetch + Filesystem（`AgentConfig.enable_builtin_mcp`）
+- **builtin**：Fetch + Filesystem（`mcp_allowed_directories` 由调用方传入）
 - **stdio**：`@modelcontextprotocol/server-everything`
 - **http**：`http://localhost:8000/mcp`（需另开终端）
 

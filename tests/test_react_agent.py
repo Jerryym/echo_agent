@@ -87,6 +87,7 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
         name=name,
         description=name,
         llm_config=config,
+        mcp_allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)

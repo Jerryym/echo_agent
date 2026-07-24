@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -33,14 +32,13 @@ def builtin_fetch_config() -> MCPConnectionConfig:
 
 
 def builtin_filesystem_config(
-    allowed_directories: str | list[str] | None = None,
+    allowed_directories: str | list[str],
 ) -> MCPConnectionConfig:
     """
     内置 Filesystem MCP Server 配置（stdio / npx）。
 
     Args:
-        allowed_directories: 允许访问的目录；为 None 时使用当前工作目录。
-            Filesystem server 至少需要一个 allowed directory。
+        allowed_directories: 允许访问的目录（由调用方传入，至少一个）。
     """
     roots = _normalize_directories(allowed_directories)
     package = "@modelcontextprotocol/server-filesystem"
@@ -64,7 +62,7 @@ def builtin_filesystem_config(
 
 def builtin_mcp_servers(
     *,
-    allowed_directories: str | list[str] | None = None,
+    allowed_directories: str | list[str],
     enable_fetch: bool = True,
     enable_filesystem: bool = True,
 ) -> list[MCPConnectionConfig]:
@@ -72,7 +70,7 @@ def builtin_mcp_servers(
     返回 Agent 默认内置的 MCP Server 配置列表。
 
     Args:
-        allowed_directories: Filesystem 允许访问的目录；为 None 时使用 cwd。
+        allowed_directories: Filesystem 允许访问的目录（由调用方传入）。
         enable_fetch: 是否包含 Fetch。
         enable_filesystem: 是否包含 Filesystem。
     """
@@ -85,11 +83,9 @@ def builtin_mcp_servers(
 
 
 def _normalize_directories(
-    allowed_directories: str | list[str] | None,
+    allowed_directories: str | list[str],
 ) -> list[str]:
-    if allowed_directories is None:
-        roots = [os.getcwd()]
-    elif isinstance(allowed_directories, str):
+    if isinstance(allowed_directories, str):
         roots = [allowed_directories]
     else:
         roots = list(allowed_directories)

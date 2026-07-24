@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -14,6 +15,7 @@ from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolRegistry
 
+REPO_ROOT = str(Path(__file__).resolve().parents[2])
 MCP_HTTP_URL = "http://localhost:8000/mcp"
 
 MCP_SERVERS: list[MCPConnectionConfig] = [
@@ -103,7 +105,7 @@ async def _abuild_react_mcp_agent(
         name=name,
         description=name,
         llm_config=llm_config,
-        enable_builtin_mcp=True,
+        mcp_allowed_directories=REPO_ROOT,
         mcp_servers=list(MCP_SERVERS),
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
@@ -113,9 +115,10 @@ async def _abuild_react_mcp_agent(
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(agent_config, runtime_config, placeholder)
     if agent.mcp_client is None:
-        raise RuntimeError("MCPClient 未创建：检查 AgentConfig.mcp_servers / enable_builtin_mcp")
+        raise RuntimeError("MCPClient 未创建：检查 AgentConfig.mcp_servers")
 
     await agent.mcp_client.register_tools(tool_registry)
+    await agent.setup_skills(tool_registry)
     apply_approval_flags(tool_registry, approval_required)
 
     react_subgraph = StrategyFactory.create_as_subgraph(

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
+
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
 from echo_agent.core.graph import START_NODE, END_NODE
 from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
-
 from case.base import BaseCase, CaseResult
 from case.common import (
     build_tool_registry,
@@ -14,6 +16,8 @@ from case.common import (
     extract_reply,
     get_pending_interrupt,
 )
+
+REPO_ROOT = str(Path(__file__).resolve().parents[2])
 
 
 class State(BaseState):
@@ -25,14 +29,49 @@ def build_react_agent(
     config: LLMConfig,
     *,
     approval_required: set[str] | None = None,
+    skill_list: dict | None = None,
 ) -> Agent:
     ensure_tests_tools_path()
     from tools.business_tools import BUSINESS_TOOLS
 
+    return asyncio.run(
+        _abuild_react_agent(
+            name,
+            config,
+            approval_required=approval_required,
+            skill_list=skill_list,
+            business_tools=BUSINESS_TOOLS,
+        )
+    )
+
+
+async def _abuild_react_agent(
+    name: str,
+    config: LLMConfig,
+    *,
+    approval_required: set[str] | None,
+    skill_list: dict | None,
+    business_tools,
+) -> Agent:
     tool_registry = build_tool_registry(
-        BUSINESS_TOOLS,
+        business_tools,
         approval_required=approval_required,
     )
+    agent_config = AgentConfig(
+        name=name,
+        description=name,
+        llm_config=config,
+        mcp_allowed_directories=REPO_ROOT,
+        skill_list=skill_list or {},
+    )
+    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
+
+    placeholder = RootGraph(state_schema=State)
+    placeholder.add_edge(START_NODE, END_NODE)
+    agent = Agent(agent_config, runtime_config, placeholder)
+
+    await agent.setup_skills(tool_registry)
+
     react_subgraph = StrategyFactory.create_as_subgraph(
         StrategyType.REACT,
         llm_config=config,
@@ -44,14 +83,9 @@ def build_react_agent(
     graph.add_edge(START_NODE, "ReAct")
     graph.add_edge("ReAct", END_NODE)
 
-    agent_config = AgentConfig(
-        name=name,
-        description=name,
-        llm_config=config,
-        enable_builtin_mcp=False,
-    )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    return Agent(agent_config, runtime_config, graph)
+    agent._graph = graph
+    agent._compiled_graph = graph.compile(runtime_config)
+    return agent
 
 
 class ReactAgentCase(BaseCase):

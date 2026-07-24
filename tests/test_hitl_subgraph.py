@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
@@ -66,6 +67,7 @@ def build_hitl_agent(hitl_type: HITLType) -> Agent:
             api_key="unused",
             model_name="unused",
         ),
+        mcp_allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)

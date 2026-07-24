@@ -386,6 +386,16 @@ class LLMClient:
             if tool_call_policy_prompt:
                 system_prompts.append(tool_call_policy_prompt)
 
+        # skill usage policy prompt: 当已绑定可用 Skill 时注入
+        from ..capability.skill.context import build_skill_usage_prompt
+        from ..capability.skill.resolve import get_active_catalog
+
+        catalog = get_active_catalog()
+        if catalog:
+            skill_prompt = build_skill_usage_prompt(catalog)
+            if skill_prompt:
+                system_prompts.append(skill_prompt)
+
         if prompt:
             system_prompts.append(prompt)
 

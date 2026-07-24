@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -19,6 +21,8 @@ from echo_agent.core.runtime import RuntimeConfig
 
 from case.base import BaseCase, CaseResult
 from case.common import extract_reply
+
+REPO_ROOT = str(Path(__file__).resolve().parents[2])
 
 
 class State(BaseState):
@@ -65,7 +69,7 @@ def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
         description=name,
         llm_config=config,
         system_prompt=system_prompt,
-        enable_builtin_mcp=False,
+        mcp_allowed_directories=REPO_ROOT,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
     return Agent(agent_config, runtime_config, graph)
