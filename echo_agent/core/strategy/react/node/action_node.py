@@ -195,7 +195,11 @@ class ActionNode(Node):
             "step_count": state.step_count + 1,
             "retry_count": state.retry_count + 1,
             "observations": [
-                "Action stage did not generate executable tool calls."
+                {
+                    "name": "action",
+                    "success": False,
+                    "error": "Action stage did not generate executable tool calls.",
+                }
             ],
         })
 
