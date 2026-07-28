@@ -66,6 +66,8 @@ Harness Runtime 是位于 Application 和 Agent Framework 之间的运行控制�
 
 Harness Engineering 的核心主张：Harness 是大语言模型与真实执行环境之间的系统工程框架——它不替代模型推理，而是把模型的意图转化为可验证、可授权、可执行的操作，并将结果反馈给模型。Framework 解决"如何执行"，Harness 解决"如何控制"；其首要目标不是扩展智能体的能力，而是让智能体的行为可控、可见、可持续。
 
+**引入原则**：引入 Harness Engineering 的目的是完善项目 Runtime，而非推翻 LangGraph 作为底层 Runtime Framework 与当前设计；相关参考资料（如《智能体 Harness 工程指南》）用于学习、借鉴，而非照搬。
+
 本设计提炼五条原则：前三条为管理主线，第四条为反馈回路，第五条贯穿全局。
 
 ### 原则 1：上下文按调用组装，而非按历史堆积
