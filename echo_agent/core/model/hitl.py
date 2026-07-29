@@ -28,3 +28,15 @@ class HITLOutput(BaseModel):
     id: str
     status: Literal["completed", "cancelled"]
     result: dict[str, Any] = Field(default_factory=dict)
+
+
+class HITLState(BaseModel):
+    """
+    HITL状态
+
+    Args:
+        request: Human-in-the-loop 请求
+        response: Human-in-the-loop 响应
+    """
+    request: HITLInput | None = None
+    response: HITLOutput | None = None

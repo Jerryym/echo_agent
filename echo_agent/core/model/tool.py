@@ -34,3 +34,15 @@ class ToolResult(BaseModel):
     result: Any = None
     error: str | None = None
     tool_call_id: str
+
+
+class ToolState(BaseModel):
+    """
+    工具状态
+
+    Args:
+        tool_calls: 工具调用列表
+        tool_results: 工具执行结果列表
+    """
+    tool_calls: list[ToolCall] = Field(default_factory=list)
+    tool_results: list[ToolResult] = Field(default_factory=list)
