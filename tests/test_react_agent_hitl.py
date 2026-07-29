@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Any, Sequence
 import warnings
@@ -201,7 +202,7 @@ def _collect_hitl_response(request: dict) -> dict:
     raise ValueError(f"unsupported HITL interrupt type: {hitl_type!r}")
 
 
-def chat_invoke(agent: Agent, session_id: str) -> None:
+async def chat_invoke(agent: Agent, session_id: str) -> None:
     print("\n==============================")
     print("TEST: REACT AGENT INVOKE")
     print("==============================\n")
@@ -211,7 +212,7 @@ def chat_invoke(agent: Agent, session_id: str) -> None:
         if user_text.lower() in ["exit", "quit"]:
             break
 
-        result = agent.invoke(session_id, UserInput(text=user_text))
+        result = await agent.ainvoke(session_id, UserInput(text=user_text))
 
         while True:
             request = _get_pending_interrupt(agent, session_id)
@@ -223,7 +224,7 @@ def chat_invoke(agent: Agent, session_id: str) -> None:
                 print(f"[HITL] {exc}")
                 break
 
-            result = agent.resume(session_id, resume_values)
+            result = await agent.aresume(session_id, resume_values)
 
         print("\nAssistant:")
         print(result.get("response", result) if isinstance(result, dict) else result)
@@ -232,7 +233,7 @@ def chat_invoke(agent: Agent, session_id: str) -> None:
         print("\n------------------------------\n")
 
 
-def chat_stream(agent: Agent, session_id: str) -> None:
+async def chat_stream(agent: Agent, session_id: str) -> None:
     print("\n==============================")
     print("TEST: REACT AGENT STREAM")
     print("==============================\n")
@@ -243,7 +244,8 @@ def chat_stream(agent: Agent, session_id: str) -> None:
             break
 
         print("\nAssistant: ", end="", flush=True)
-        for chunk in agent.stream(session_id, UserInput(text=user_text)):
+        stream = await agent.astream(session_id, UserInput(text=user_text))
+        async for chunk in stream:
             text = extract_stream_text(chunk, node="final")
             if text:
                 print(text, end="", flush=True)
@@ -259,7 +261,8 @@ def chat_stream(agent: Agent, session_id: str) -> None:
                 break
 
             print("\nAssistant: ", end="", flush=True)
-            for chunk in agent.stream_resume(session_id, resume_values):
+            stream = await agent.astream_resume(session_id, resume_values)
+            async for chunk in stream:
                 text = extract_stream_text(chunk, node="final")
                 if text:
                     print(text, end="", flush=True)
@@ -294,6 +297,6 @@ if __name__ == "__main__":
     print(f"Approval-required tools: {sorted(APPROVAL_REQUIRED_TOOLS)}")
 
     if mode == "1":
-        chat_stream(agent, session_id)
+        asyncio.run(chat_stream(agent, session_id))
     else:
-        chat_invoke(agent, session_id)
+        asyncio.run(chat_invoke(agent, session_id))

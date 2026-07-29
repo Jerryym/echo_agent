@@ -1,11 +1,9 @@
-from typing import Annotated, Any, Literal, Sequence
+from typing import Annotated, Literal, Sequence
 
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
 from pydantic import Field
 
 from ...graph import BaseContext, BaseInput, BaseOutput, BaseState
-from ...model import UserInput
+from ...model import Message, append_messages
 
 
 class ReActInput(BaseInput):
@@ -15,7 +13,7 @@ class ReActInput(BaseInput):
     参数:
         messages: 消息列表
     """
-    messages: Sequence[BaseMessage] = []
+    messages: Sequence[Message] = Field(default_factory=list)
 
 
 class ReActState(BaseState):
@@ -51,7 +49,7 @@ class ReActOutput(BaseOutput):
         messages: 消息列表
     """
     response: str
-    messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
+    messages: list[Message] = Field(default_factory=list)
 
 
 class ReActContext(BaseContext):

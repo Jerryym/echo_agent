@@ -1,10 +1,10 @@
-from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
+from .....common import debug_print_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from .....common import debug_print_messages
+from ....model import Message, Role
 from ..schema import ReActContext, ReActState
 
 
@@ -34,7 +34,7 @@ class FinalNode(Node):
         print(f"[ReAct][final] response={preview}{suffix}")
         return {
             "response": response.content,
-            "messages": [AIMessage(content=response.content)],
+            "messages": [Message(role=Role.ASSISTANT, content=response.content)],
         }
 
     async def arun(self, state: ReActState, context: ReActContext | None = None, config: RunnableConfig | None = None) -> dict:
@@ -54,7 +54,7 @@ class FinalNode(Node):
         print(f"[ReAct][final] response={preview}{suffix}")
         return {
             "response": response.content,
-            "messages": [AIMessage(content=response.content)],
+            "messages": [Message(role=Role.ASSISTANT, content=response.content)],
         }
 
     def _build_input(self, state: ReActState) -> dict:

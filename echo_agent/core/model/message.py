@@ -1,7 +1,8 @@
 from enum import Enum
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
+
+from .tool import ToolCall
 
 
 class Role(Enum):
@@ -21,23 +22,27 @@ class Message(BaseModel):
     参数:
         role: 消息角色
         content: 消息内容
+        tool_call_id: 工具调用ID
+        tool_calls: 工具调用列表
     """
     role: Role
-    content: str
+    content: str = Field(default="")
+    tool_call_id: str | None = None
+    tool_calls: list[ToolCall] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_message(self):
+        if self.role == Role.TOOL and not self.tool_call_id:
+            raise ValueError("Tool message requires tool_call_id")
+        if self.tool_calls and self.role != Role.ASSISTANT:
+            raise ValueError("Only assistant messages may contain tool calls")
+        if self.tool_call_id and self.role != Role.TOOL:
+            raise ValueError("Only tool messages may contain tool_call_id")
+        return self
 
 
-def to_langchain_message(message: Message) -> BaseMessage:
-    """转换为 LangChain Message"""
-    if message.role == Role.USER:
-        return HumanMessage(content=message.content)
-    if message.role == Role.SYSTEM:
-        return SystemMessage(content=message.content)
-    if message.role == Role.ASSISTANT:
-        return AIMessage(content=message.content)
-    raise NotImplementedError(
-        f"Role '{message.role.value}' is not supported yet."
-    )
-
-def to_langchain_messages(messages: list[Message]) -> list[BaseMessage]:
-    """批量转换为 LangChain Message"""
-    return [to_langchain_message(msg) for msg in messages]
+def append_messages(messages: list[Message], new_messages: list[Message]) -> list[Message]:
+    """
+    追加消息
+    """
+    return messages + new_messages

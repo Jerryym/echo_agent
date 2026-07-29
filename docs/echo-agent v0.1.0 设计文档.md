@@ -32,8 +32,6 @@ echo-agent 采用 Runtime First 的设计思想。整个框架围绕 Runtime 构
 - Tool 负责工具接口定义与调用。
 - Capability 负责可扩展能力抽象。
 
-
-
 ### 3.2 模块划分
 
 ```text
@@ -50,11 +48,7 @@ echo-agent
     └── agent
 ```
 
-
-
 ### 3.3 模块职责
-
-
 
 #### Model
 
@@ -88,8 +82,6 @@ Runtime 不负责：
 - session 管理
 - thread 生命周期管理
 - 额外运行时能力建模
-
-
 
 #### Graph
 
@@ -197,8 +189,6 @@ Agent 本身不实现推理逻辑，而负责组织 Runtime、Strategy 与 Workf
 
 ---
 
-
-
 ## 4. 模块关系
 
 ```text
@@ -235,8 +225,6 @@ Agent 本身不实现推理逻辑，而负责组织 Runtime、Strategy 与 Workf
 
 ---
 
-
-
 ## 5. Common 模块
 
 Common 提供整个框架统一基础能力。当前版本负责统一异常体系，用于统一错误语义与异常处理机制。包括：
@@ -253,8 +241,6 @@ AgentException
 ```
 
 ---
-
-
 
 ## 6. v0.1.0 交付范围
 

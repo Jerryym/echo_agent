@@ -1,12 +1,11 @@
-from langchain_core.messages import AIMessage
-
 from ...graph import BaseContext, BaseState, Node, START_NODE, END_NODE, SubGraph
 from ...llm import LLMConfig
+from ...model import Message, Role
+from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
 from .node import ActionNode, FinalNode, ReasonNode
 from .schema import ReActContext, ReActInput, ReActOutput, ReActState
-from ...runtime.human_in_the_loop import HITLSubgraph
 
 
 class ReActStrategy(BaseStrategy):
@@ -90,7 +89,7 @@ class ReActStrategy(BaseStrategy):
         """
         return {
             "response": output.response,
-            "messages": output.messages or [AIMessage(content=output.response)],
+            "messages": output.messages or [Message(role=Role.ASSISTANT, content=output.response)],
         }
 
 

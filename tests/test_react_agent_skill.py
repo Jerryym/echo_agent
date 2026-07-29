@@ -34,9 +34,10 @@ from langgraph.checkpoint.memory import InMemorySaver
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
 from echo_agent.core.capability.skill import get_active_catalog, set_active_catalog
 from echo_agent.core.graph import END_NODE, START_NODE
+from echo_agent.core.model import ToolCall
 from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
-from echo_agent.core.tool import ToolCall, ToolDefinition, ToolExecutor, ToolRegistry
+from echo_agent.core.tool import ToolDefinition, ToolExecutor, ToolRegistry
 
 warnings.filterwarnings(
     "ignore",

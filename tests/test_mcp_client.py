@@ -21,8 +21,8 @@ import asyncio
 import uuid
 
 from echo_agent.core.mcp import MCPClient, MCPConnectionConfig
+from echo_agent.core.model import ToolCall
 from echo_agent.core.tool import (
-    ToolCall,
     ToolDefinition,
     ToolExecutor,
     ToolRegistry,

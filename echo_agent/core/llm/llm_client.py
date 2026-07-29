@@ -1,22 +1,22 @@
 import json
 from typing import Any, Literal, Optional, Sequence
 
+from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel
-from langchain.chat_models import init_chat_model
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
-from echo_agent.prompt import PromptLoader
+from ..utils.adapter.message_adapter import MessageAdapter
+from ...prompt import PromptLoader
 
-from ..model import UserInput
+from ..model import Message, ToolCall, UserInput
 from .exception import (
     LLMException,
     LLMInitializeError,
     LLMInvokeError,
     LLMResponseDecodeError,
 )
-from ..tool import ToolCall
 from .llm_config import LLMConfig
 from .llm_result import LLMResult
 
@@ -43,7 +43,7 @@ class LLMClient:
         self, 
         prompt: str, 
         user_input: UserInput | dict | str, 
-        history: Optional[Sequence[BaseMessage]] = None, 
+        history: Optional[Sequence[Message]] = None, 
         tool_list: Optional[list[dict[str, Any]]] = None,
         config: RunnableConfig | None = None,
     ):
@@ -80,7 +80,7 @@ class LLMClient:
         self,
         prompt: str,
         user_input: UserInput | dict | str,
-        history: Optional[Sequence[BaseMessage]] = None,
+        history: Optional[Sequence[Message]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
         config: RunnableConfig | None = None,
     ):
@@ -118,7 +118,7 @@ class LLMClient:
         schema: type[BaseModel] | dict[str, Any],
         prompt: str,
         user_input: UserInput | dict | str,
-        history: Optional[Sequence[BaseMessage]] = None,
+        history: Optional[Sequence[Message]] = None,
         *,
         method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
         strict: bool | None = None,
@@ -169,7 +169,7 @@ class LLMClient:
         schema: type[BaseModel] | dict[str, Any],
         prompt: str,
         user_input: UserInput | dict | str,
-        history: Optional[Sequence[BaseMessage]] = None,
+        history: Optional[Sequence[Message]] = None,
         *,
         method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
         strict: bool | None = None,
@@ -218,7 +218,7 @@ class LLMClient:
     def stream(
         self, prompt: str, 
         user_input: UserInput | dict | str, 
-        history: Optional[Sequence[BaseMessage]] = None, 
+        history: Optional[Sequence[Message]] = None, 
         tool_list: Optional[list[dict[str, Any]]] = None,
         config: RunnableConfig | None = None,
     ):
@@ -257,7 +257,7 @@ class LLMClient:
         self,
         prompt: str,
         user_input: UserInput | dict | str,
-        history: Optional[Sequence[BaseMessage]] = None,
+        history: Optional[Sequence[Message]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
         config: RunnableConfig | None = None,
     ):
@@ -351,7 +351,7 @@ class LLMClient:
         self, 
         prompt: str, 
         user_input: UserInput | dict | str, 
-        history: Optional[Sequence[BaseMessage]] = None, 
+        history: Optional[Sequence[Message]] = None, 
         tool_list: Optional[list[dict[str, Any]]] = None,
     ):
         """
@@ -363,10 +363,10 @@ class LLMClient:
         system_prompt = self._build_prompt(prompt, tool_list)
         messages.append(SystemMessage(content=system_prompt))
         # 添加历史记录
-        messages.extend(history)
+        messages.extend(MessageAdapter.to_langchain_messages(history or []))
         # 添加用户输入
         if isinstance(user_input, UserInput):
-            messages.append(user_input.to_human_message())
+            messages.append(HumanMessage(content=user_input.text))
         elif isinstance(user_input, str):
             messages.append(HumanMessage(content=user_input))
         elif isinstance(user_input, dict):

@@ -1,11 +1,16 @@
 from typing import Annotated, Any
 
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
-from ..model import HITLInput, HITLOutput, UserInput
-from ..tool import ToolCall, ToolResult
+from ..model import (
+    HITLInput,
+    HITLOutput,
+    Message,
+    ToolCall,
+    ToolResult,
+    UserInput,
+    append_messages,
+)
 
 
 class BaseInput(BaseModel):
@@ -39,7 +44,7 @@ class BaseState(BaseModel):
         response: 响应
     """
     input: UserInput | dict[str, Any] | str | None = None
-    messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
+    messages: Annotated[list[Message], append_messages] = Field(default_factory=list)
     tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_results: list[ToolResult] = Field(default_factory=list)
     hitl_request: HITLInput | None = None

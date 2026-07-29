@@ -1,9 +1,8 @@
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, BaseMessage
 
-from echo_agent import LLMClient, UserInput
+from echo_agent import LLMClient, Message, Role, UserInput
 
 from env_config import build_config
 
@@ -12,7 +11,7 @@ def test_llm_invoke():
     config = build_config()
     llm = LLMClient(config)
 
-    history: list[BaseMessage] = []
+    history: list[Message] = []
 
     print("\n==============================")
     print("TEST: LLM INVOKE")
@@ -32,8 +31,8 @@ def test_llm_invoke():
         print("\nAssistant:")
         print(result.content)
 
-        history.append(UserInput(text=user_text).to_human_message())
-        history.append(AIMessage(content=result.content))
+        history.append(Message(role=Role.USER, content=user_text))
+        history.append(Message(role=Role.ASSISTANT, content=result.content))
 
         print("\n------------------------------\n")
 
@@ -42,7 +41,7 @@ def test_llm_stream():
     config = build_config()
     llm = LLMClient(config)
 
-    history: list[BaseMessage] = []
+    history: list[Message] = []
 
     print("\n==============================")
     print("TEST: LLM STREAM")
@@ -68,8 +67,8 @@ def test_llm_stream():
 
         print("\n")
 
-        history.append(UserInput(text=user_text).to_human_message())
-        history.append(AIMessage(content=full_text))
+        history.append(Message(role=Role.USER, content=user_text))
+        history.append(Message(role=Role.ASSISTANT, content=full_text))
 
         print("\n------------------------------\n")
 

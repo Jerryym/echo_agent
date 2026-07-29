@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import (
@@ -15,7 +15,7 @@ from echo_agent import (
 )
 from echo_agent.core.agent import AgentConfig
 from echo_agent.core.graph import START_NODE, END_NODE
-from echo_agent.core.model import UserInput
+from echo_agent.core.model import Message, Role, UserInput
 from echo_agent.core.runtime import RuntimeConfig
 from env_config import build_config
 
@@ -42,8 +42,8 @@ class LLMInvokeNode(Node):
         return {
             "response": result.content,
             "messages": [
-                user_input.to_human_message(),
-                AIMessage(content=result.content),
+                Message(role=Role.USER, content=user_input.text),
+                Message(role=Role.ASSISTANT, content=result.content),
             ],
         }
 

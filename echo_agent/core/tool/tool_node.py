@@ -1,9 +1,8 @@
 import json
-from langchain_core.messages import ToolMessage
 
-from ..graph import BaseContext, BaseState, Node
 from ...common import format_debug
-from .schema import ToolResult
+from ..graph import BaseContext, BaseState, Node
+from ..model import Message, Role, ToolResult
 from .tool_executor import ToolExecutor
 
 
@@ -62,16 +61,17 @@ class ToolNode(Node):
             "messages": tool_messages,
         }
 
-    def _build_tool_messages(self, tool_results: list[ToolResult]) -> list[ToolMessage]:
-        tool_messages: list[ToolMessage] = []
+    def _build_tool_messages(self, tool_results: list[ToolResult]) -> list[Message]:
+        tool_messages: list[Message] = []
         if tool_results:
             for tool_result in tool_results:
                 if tool_result.success:# 执行成功, 将结果转换为字符串
                     content = json.dumps(tool_result.result, ensure_ascii=False, default=str)
                 else:# 执行失败, 将错误信息转换为字符串
                     content = tool_result.error or "unknown error"
-                # 构建 ToolMessage
-                tool_messages.append(ToolMessage(
+                # 构建 Message
+                tool_messages.append(Message(
+                    role=Role.TOOL,
                     content=content,
                     tool_call_id=tool_result.tool_call_id,
                 ))

@@ -1,7 +1,7 @@
 from typing import Any
 from pydantic import BaseModel, Field
 
-from ..tool import ToolCall
+from ..model import ToolCall
 
 
 class LLMResult(BaseModel):

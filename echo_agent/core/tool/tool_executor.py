@@ -1,4 +1,4 @@
-from .schema import ToolCall, ToolResult
+from ..model import ToolCall, ToolResult
 from .tool_registry import ToolRegistry
 
 

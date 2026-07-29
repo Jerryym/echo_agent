@@ -23,3 +23,11 @@ dev = [
     "grpcio-tools>=1.83.0",
     "pyside6>=6.11.1",
 ]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["echo_agent*"]
+exclude = ["console*", "tests*"]

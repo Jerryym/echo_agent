@@ -1,15 +1,13 @@
 from typing import Any, Literal
 
-from langchain_core.messages import AIMessage
 from langgraph.types import Command, RunnableConfig
-from pydantic import BaseModel, Field
 
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model import HITLInput, HITLOutput, HITLType
+from ....model import HITLInput, HITLOutput, HITLType, Message, Role, ToolCall
 from ....runtime.interrupt import InterruptField
-from ....tool import ToolCall, ToolDefinition
+from ....tool import ToolDefinition
 from ....tool.utils import get_tool_definition
 from ..schema import ReActContext, ReActState
 
@@ -308,20 +306,13 @@ class ActionNode(Node):
             return "tool"
         return "reason"
 
-    def _build_tool_call_message(self, tool_calls: list[ToolCall]) -> AIMessage:
+    def _build_tool_call_message(self, tool_calls: list[ToolCall]) -> Message:
         """
-        构建包含 tool_calls 的 AIMessage
+        构建包含 tool_calls 的 Message
         """
-        return AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "name": tool_call.name,
-                    "args": tool_call.args,
-                    "id": tool_call.tool_call_id,
-                }
-                for tool_call in tool_calls
-            ],
+        return Message(
+            role=Role.ASSISTANT,
+            tool_calls=tool_calls,
         )
 
     def _get_invalid_tools(self, tool_calls: list[ToolCall]) -> list[str]:
