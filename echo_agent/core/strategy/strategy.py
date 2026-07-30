@@ -80,8 +80,9 @@ class BaseStrategy(ABC):
         调用策略
         """
         input = self.to_strategy_input(state, context)
+        print(f"[Strategy] invoke | input={input}")
         strategy_context  = self.to_strategy_context(context)
-        output = self.compiled_graph.invoke(input, context=strategy_context)
+        output = self.compiled_graph.invoke(input.model_dump(), context=strategy_context)
         # 构建成输出模型
         if self.output_schema is not None and isinstance(output, dict):
             output = self.output_schema(**output)
@@ -93,7 +94,7 @@ class BaseStrategy(ABC):
         """
         input = self.to_strategy_input(state, context)
         strategy_context  = self.to_strategy_context(context)
-        output = await self.compiled_graph.ainvoke(input, context=strategy_context)
+        output = await self.compiled_graph.ainvoke(input.model_dump(), context=strategy_context)
         # 构建成输出模型
         if self.output_schema is not None and isinstance(output, dict):
             output = self.output_schema(**output)

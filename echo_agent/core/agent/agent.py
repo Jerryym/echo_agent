@@ -316,7 +316,7 @@ class Agent:
     @staticmethod
     def _input_text(input: UserInput | type[BaseInput]) -> str:
         """将 Agent 输入转换为会话消息文本。"""
-        value = input.input if isinstance(input, BaseInput) else input
+        value = getattr(input, "input", input)
         if isinstance(value, UserInput):
             return value.text
         if isinstance(value, str):

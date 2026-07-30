@@ -77,7 +77,6 @@ class FinalNode(Node):
         if context is None:
             raise ValueError("ReActContext is required for FinalNode")
         return [
-            *context.agent_state.conversation.messages,
             *state.trajectory,
         ]
 
@@ -86,7 +85,7 @@ class FinalNode(Node):
         Build the input
         """
         return {
-            "input": state.input,
+            "task": state.task.model_dump(),
             "trajectory": state.trajectory,
             "reasoning": state.reasoning,
             "observations": state.observations,

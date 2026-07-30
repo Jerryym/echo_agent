@@ -135,7 +135,6 @@ class ActionNode(Node):
         if context is None:
             raise ValueError("ReActContext is required for ActionNode")
         return [
-            *context.agent_state.conversation.messages,
             *state.trajectory,
         ]
 

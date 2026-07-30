@@ -3,6 +3,8 @@ from ...llm import LLMConfig
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
+from ..strategy_task import StrategyTask
+from ...model import UserInput
 from .node import ActionNode, FinalNode, ReasonNode
 from .schema import ReActContext, ReActInput, ReActOutput, ReActState
 
@@ -68,9 +70,14 @@ class ReActStrategy(BaseStrategy):
         """
         将 Parent State 映射为 Strategy Input
         """
-        return ReActInput(
-            input=state.input,
+        text = state.input.text if isinstance(state.input, UserInput) else str(state.input or "")
+        task = StrategyTask(
+            name="react",
+            description=text,
+            goal=text,
         )
+        print(f"[ReAct] to_strategy_input | task={task}")
+        return ReActInput(task=task)
 
     def to_strategy_context(self, context: BaseContext | None = None) -> ReActContext | None:
         """

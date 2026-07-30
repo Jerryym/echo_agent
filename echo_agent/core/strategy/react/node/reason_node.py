@@ -86,10 +86,7 @@ class ReasonNode(Node):
 
         # 检查工具执行失败
         if self._has_tool_error(state):
-            return self._handle_tool_error(
-                state,
-                runtime,
-            )
+            return self._handle_tool_error(state, runtime.context)
 
         # 构建输入
         input = self._build_input(state)
@@ -152,7 +149,6 @@ class ReasonNode(Node):
         if context is None:
             raise ValueError("ReActContext is required for ReasonNode")
         return [
-            *context.agent_state.conversation.messages,
             *state.trajectory,
         ]
 
@@ -161,7 +157,7 @@ class ReasonNode(Node):
         构建输入
         """
         return {
-            "input": state.input,
+            "task": state.task.model_dump(),
             "trajectory": state.trajectory,
             "observations": state.observations + self._build_observations(state),
         }

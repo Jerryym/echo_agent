@@ -13,11 +13,8 @@ from ..model import (
 class BaseInput(BaseModel):
     """
     Graph 输入模型
-
-    参数:
-        input: 输入
     """
-    input: UserInput | dict[str, Any] | str
+    pass
 
 
 class BaseOutput(BaseModel):

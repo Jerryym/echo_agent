@@ -4,13 +4,14 @@ from pydantic import Field
 
 from ...graph import BaseContext, BaseInput, BaseOutput, BaseState
 from ...model import Message, append_messages
+from ..strategy_task import StrategyTask
 
 
 class ReActInput(BaseInput):
     """
     ReAct 输入模型
     """
-    pass
+    task: StrategyTask = Field(description="任务")
 
 
 class ReActState(BaseState):
@@ -31,6 +32,7 @@ class ReActState(BaseState):
         step_count: 步数
         retry_count: 重试次数
     """
+    task: StrategyTask = Field(default_factory=StrategyTask)
     reasoning: str = ""
     task_status: Literal["in_progress", "human_in_the_loop", "no_tool_calls", "completed", "cancelled", "failed"] = "in_progress"
     observations: list[dict] = Field(default_factory=list)
