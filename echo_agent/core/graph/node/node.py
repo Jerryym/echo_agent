@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.runtime import Runtime
 
 from ..schema import BaseContext, BaseState
 
@@ -32,7 +33,7 @@ class Node(ABC):
         return self._is_async
     
     @abstractmethod
-    def run(self, state: BaseState, context: BaseContext | None = None, config: RunnableConfig | None = None,) -> dict:
+    def run(self, state: BaseState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None,) -> dict:
         """
         运行
 
@@ -47,7 +48,7 @@ class Node(ABC):
         pass
 
     @abstractmethod
-    async def arun(self, state: BaseState, context: BaseContext | None = None, config: RunnableConfig | None = None,) -> dict:
+    async def arun(self, state: BaseState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None,) -> dict:
         """
         异步运行
 

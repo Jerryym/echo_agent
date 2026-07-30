@@ -119,15 +119,15 @@ async def build_react_agent(
         approval = " [approval]" if definition.requires_approval else ""
         print(f"  - {definition.name} ({definition.type}){approval}")
 
-    react_subgraph = StrategyFactory.create_as_subgraph(
+    react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,
         llm_config=llm_config,
         tool_registry=tool_registry,
     )
     graph = RootGraph(state_schema=State)
-    graph.add_subgraph("ReAct", react_subgraph)
-    graph.add_edge(START_NODE, "ReAct")
-    graph.add_edge("ReAct", END_NODE)
+    graph.add_node(react_subgraph)
+    graph.add_edge(START_NODE, react_subgraph.name)
+    graph.add_edge(react_subgraph.name, END_NODE)
 
     agent._graph = graph
     agent._compiled_graph = graph.compile(runtime_config)

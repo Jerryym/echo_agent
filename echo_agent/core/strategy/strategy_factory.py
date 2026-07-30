@@ -10,6 +10,7 @@ class StrategyFactory:
     """
     策略工厂
     """
+    # TODO: v0.1.0发版前删除 create_as_subgraph 方法
     @staticmethod
     def create_as_subgraph(strategy_type: StrategyType, **kwargs) -> CompiledStateGraph:
         """

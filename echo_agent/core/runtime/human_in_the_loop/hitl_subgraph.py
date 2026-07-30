@@ -2,6 +2,7 @@ from functools import cached_property
 import uuid
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.runtime import Runtime
 
 from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE
 from ...model import HITLInput, HITLOutput, HITLType, HITLInteraction
@@ -114,11 +115,11 @@ class HITLNode(Node):
         super().__init__(name)
         self._hitl = hitl
 
-    def run(self, state: BaseState, context: BaseContext | None = None, config=None) -> dict:
+    def run(self, state: BaseState, runtime: Runtime[BaseContext], config=None) -> dict:
         if state.hitl_state.request is None:
             raise ValueError("HITL request is required")
 
-        result = self._hitl.invoke(state.hitl_state.request, context, config)
+        result = self._hitl.invoke(state.hitl_state.request, runtime.context, config)
         interaction = result["hitl_state"]
         return {
             "hitl_state": HITLInteraction(
@@ -127,5 +128,5 @@ class HITLNode(Node):
             )
         }
 
-    async def arun(self, state: BaseState, context: BaseContext | None = None, config=None) -> dict:
+    async def arun(self, state: BaseState, runtime: Runtime[BaseContext], config=None) -> dict:
         raise NotImplementedError("HITLNode is sync-only")

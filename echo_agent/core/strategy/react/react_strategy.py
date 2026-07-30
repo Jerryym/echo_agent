@@ -1,10 +1,12 @@
+from langgraph.runtime import Runtime
+
 from ...graph import BaseContext, BaseState, Node, START_NODE, END_NODE, SubGraph
 from ...llm import LLMConfig
+from ...model import UserInput
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
 from ..strategy_task import StrategyTask
-from ...model import UserInput
 from .node import ActionNode, FinalNode, ReasonNode
 from .schema import ReActContext, ReActInput, ReActOutput, ReActState
 
@@ -108,12 +110,12 @@ class ReActNode(Node):
         super().__init__(name, is_async=True)
         self._strategy = strategy
 
-    def run(self, state: BaseState, context: BaseContext | None = None) -> dict:
+    def run(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
         # user_text = getattr(state.input, "text", state.input)
         # print(f"\n[ReAct] ===== 开始 ===== input={user_text!r}")
-        result = self._strategy.invoke(state, context)
+        result = self._strategy.invoke(state, runtime.context)
         # print(f"[ReAct] ===== 结束 ===== response={result.get('response', '')!r}\n")
         return result
 
-    async def arun(self, state: BaseState, context: BaseContext | None = None, config=None) -> dict:
-        return await self._strategy.ainvoke(state, context)
+    async def arun(self, state: BaseState, runtime: Runtime[BaseContext], config=None) -> dict:
+        return await self._strategy.ainvoke(state, runtime.context)

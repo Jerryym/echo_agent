@@ -82,16 +82,16 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
     tool_registry = build_tool_registry(tools)
 
     # 创建 ReAct 策略子图
-    react_subgraph = StrategyFactory.create_as_subgraph(
+    react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,
         llm_config=config,
         tool_registry=tool_registry,
     )
 
     graph = RootGraph(state_schema=State)
-    graph.add_subgraph("ReAct", react_subgraph)
-    graph.add_edge(START_NODE, "ReAct")
-    graph.add_edge("ReAct", END_NODE)
+    graph.add_node(react_subgraph)
+    graph.add_edge(START_NODE, react_subgraph.name)
+    graph.add_edge(react_subgraph.name, END_NODE)
 
     agent_config = AgentConfig(
         name=name,

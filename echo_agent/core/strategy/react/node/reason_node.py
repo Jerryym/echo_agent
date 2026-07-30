@@ -138,11 +138,7 @@ class ReasonNode(Node):
 
         return self._handle_result(result, state, runtime.context)
 
-    def _build_history(
-        self,
-        state: ReActState,
-        context: ReActContext | None,
-    ) -> list[Message]:
+    def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """
         构建跨轮会话历史与本轮执行轨迹。
         """
