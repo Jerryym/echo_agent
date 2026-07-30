@@ -2,6 +2,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ....graph import Node
@@ -16,8 +17,8 @@ class ApprovalFlow(Node):
     def __init__(self, name: str):
         super().__init__(name)
 
-    def run(self, state: HITLState, context: BaseContext | None = None, config: RunnableConfig | None = None) -> dict:
-        hitl_id = state.id or str(uuid4())
+    def run(self, state: HITLState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None) -> dict:
+        hitl_id = state.id or str(uuid4())  
         # 中断并等待用户批准或拒绝
         response = interrupt(
             {
@@ -36,12 +37,7 @@ class ApprovalFlow(Node):
             "result": result,
         }
 
-    async def arun(
-        self,
-        state: HITLState,
-        context: BaseContext | None = None,
-        config: RunnableConfig | None = None,
-    ) -> dict:
+    async def arun(self, state: HITLState, runtime: Runtime[BaseContext]) -> dict:
         raise NotImplementedError("ApprovalFlow is sync-only")
 
     def _resolve_status(self, response: Any) -> Literal["completed", "cancelled"]:

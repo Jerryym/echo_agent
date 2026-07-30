@@ -2,6 +2,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
 from ....graph import Node
@@ -16,7 +17,7 @@ class InputFlow(Node):
     def __init__(self, name: str):
         super().__init__(name)
 
-    def run(self, state: HITLState, context: BaseContext | None = None, config: RunnableConfig | None = None) -> dict:
+    def run(self, state: HITLState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None) -> dict:
         hitl_id = state.id or str(uuid4())
         # 中断并等待用户输入
         response = interrupt(
@@ -36,12 +37,7 @@ class InputFlow(Node):
             "result": result,
         }
 
-    async def arun(
-        self,
-        state: HITLState,
-        context: BaseContext | None = None,
-        config: RunnableConfig | None = None,
-    ) -> dict:
+    async def arun(self, state: HITLState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None) -> dict:
         raise NotImplementedError("InputFlow is sync-only")
 
     def _resolve_status(self, response: Any) -> Literal["completed", "cancelled"]:

@@ -1,4 +1,4 @@
-from typing import Annotated, Literal, Sequence
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -9,11 +9,8 @@ from ...model import Message, append_messages
 class ReActInput(BaseInput):
     """
     ReAct 输入模型
-
-    参数:
-        messages: 消息列表
     """
-    messages: Sequence[Message] = Field(default_factory=list)
+    pass
 
 
 class ReActState(BaseState):
@@ -30,12 +27,14 @@ class ReActState(BaseState):
             cancelled: 取消
             failed: 失败
         observations: 观察
+        trajectory: 轨迹列表
         step_count: 步数
         retry_count: 重试次数
     """
     reasoning: str = ""
     task_status: Literal["in_progress", "human_in_the_loop", "no_tool_calls", "completed", "cancelled", "failed"] = "in_progress"
     observations: list[dict] = Field(default_factory=list)
+    trajectory: Annotated[list[Message], append_messages] = Field(default_factory=list)
     step_count: int = Field(default=0)
     retry_count: int = Field(default=0)
 
@@ -46,10 +45,8 @@ class ReActOutput(BaseOutput):
 
     参数:
         response: 响应
-        messages: 消息列表
     """
     response: str
-    messages: list[Message] = Field(default_factory=list)
 
 
 class ReActContext(BaseContext):

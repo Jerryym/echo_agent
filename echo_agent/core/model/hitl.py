@@ -30,9 +30,9 @@ class HITLOutput(BaseModel):
     result: dict[str, Any] = Field(default_factory=dict)
 
 
-class HITLState(BaseModel):
+class HITLInteraction(BaseModel):
     """
-    HITL状态
+    HITL交互上下文
 
     Args:
         request: Human-in-the-loop 请求

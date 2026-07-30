@@ -1,11 +1,12 @@
 from typing import Any, Literal
 
+from langgraph.runtime import Runtime
 from langgraph.types import Command, RunnableConfig
 
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model import HITLInput, HITLOutput, HITLType, Message, Role, ToolCall
+from ....model import HITLInput, HITLOutput, HITLType, HITLInteraction, Message, Role, ToolCall, ToolState
 from ....runtime.interrupt import InterruptField
 from ....tool import ToolDefinition
 from ....tool.utils import get_tool_definition
@@ -33,16 +34,16 @@ class ActionNode(Node):
             for tool in self._tool_list
         ]
 
-    def run(self, state: ReActState, context: ReActContext | None = None, config: RunnableConfig | None = None) -> Command:
+    def run(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
         Run the node
         """
         print(f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}")
 
         # 如果存在工具调用，则跳过工具选择
-        print(f"[ReAct][action] state.tool_calls={state.tool_calls}")
-        if state.tool_calls:
-            return self._handle_existing_tool_calls(state)
+        print(f"[ReAct][action] state.tool_calls={state.tool_state.tool_calls}")
+        if state.tool_state.tool_calls:
+            return self._handle_tool_calls(state)
 
         # 构建输入
         input = {
@@ -52,7 +53,7 @@ class ActionNode(Node):
         response = self._llm_client.invoke(
             prompt=self._prompt,
             user_input=input,
-            history=state.messages,
+            history=self._build_history(state, runtime.context),
             tool_list=self._tool_json_schema,
         )
         print(f"[ReAct][action] tool_selection_response={response}")
@@ -80,16 +81,16 @@ class ActionNode(Node):
 
         return self._handle_ready(tool_calls, state)
 
-    async def arun(self, state: ReActState, context: ReActContext | None = None, config: RunnableConfig | None = None) -> Command:
+    async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
         异步运行
         """
         print(f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}")
 
         # 如果存在工具调用，则跳过工具选择
-        print(f"[ReAct][action] state.tool_calls={state.tool_calls}")
-        if state.tool_calls:
-            return self._handle_existing_tool_calls(state)
+        print(f"[ReAct][action] state.tool_calls={state.tool_state.tool_calls}")
+        if state.tool_state.tool_calls:
+            return self._handle_tool_calls(state)
 
         # 构建输入
         input = {
@@ -99,7 +100,7 @@ class ActionNode(Node):
         response = await self._llm_client.ainvoke(
             prompt=self._prompt,
             user_input=input,
-            history=state.messages,
+            history=self._build_history(state, runtime.context),
             tool_list=self._tool_json_schema,
         )
         print(f"[ReAct][action] tool_selection_response={response}")
@@ -127,53 +128,62 @@ class ActionNode(Node):
 
         return self._handle_ready(tool_calls, state)
 
-    def _handle_existing_tool_calls(self, state: ReActState) -> Command:
+    def _build_history(self, state: ReActState, context: Runtime[ReActContext]) -> list[Message]:
         """
-        处理存在工具调用的情况
+        构建跨轮会话历史与本轮执行轨迹。
         """
-        if state.hitl_response:
+        if context is None:
+            raise ValueError("ReActContext is required for ActionNode")
+        return [
+            *context.agent_state.conversation.messages,
+            *state.trajectory,
+        ]
+
+    def _handle_tool_calls(self, state: ReActState) -> Command:
+        """
+        处理工具调用的情况
+        """
+        hitl_state = state.hitl_state
+        if hitl_state.response:
             print("[ReAct][action] applying hitl response to tool_calls")
             # HITL 被取消
-            if state.hitl_response.status == "cancelled":
+            if hitl_state.response.status == "cancelled":
                 return self._router(state, {
                     "task_status": "cancelled",
-                    "tool_calls": [],
+                    "tool_state": ToolState(tool_calls=[]),
                     "step_count": state.step_count + 1,
                 })
 
-            if state.hitl_request:
-                if state.hitl_request.type == HITLType.INPUT:# INPUT 类型
-                    tool_calls = self._fill_tool_calls(state.tool_calls, state.hitl_response)
+            if hitl_state.request:
+                if hitl_state.request.type == HITLType.INPUT:# INPUT 类型
+                    tool_calls = self._fill_tool_calls(state.tool_state.tool_calls, hitl_state.response)
                     # 判断是否需要人工审核
                     if self._need_approval(tool_calls):
                         return self._handle_approval(tool_calls, state)
                     return self._router(state, {
                         "task_status": "in_progress",
-                        "tool_calls": tool_calls,
-                        "hitl_response": None,
-                        "hitl_request": None,
-                        "messages": [
+                        "tool_state": ToolState(tool_calls=tool_calls),
+                        "hitl_state": HITLInteraction(request=None, response=None),
+                        "trajectory": [
                             self._build_tool_call_message(tool_calls)
                         ],
                         "step_count": state.step_count + 1,
                     })
-                if state.hitl_request.type == HITLType.APPROVAL:# APPROVAL 类型
-                    approved = (state.hitl_response.result or {}).get("approved")
+                if hitl_state.request.type == HITLType.APPROVAL:# APPROVAL 类型
+                    approved = (hitl_state.response.result or {}).get("approved")
                     if approved is not True:
                         return self._router(state, {
                             "task_status": "cancelled",
-                            "tool_calls": [],
-                            "hitl_response": None,
-                            "hitl_request": None,
+                            "tool_state": ToolState(tool_calls=[]),
+                            "hitl_state": HITLInteraction(request=None, response=None),
                             "step_count": state.step_count + 1,
                         })
                     return self._router(state, {
                         "task_status": "in_progress",
-                        "tool_calls": state.tool_calls,
-                        "hitl_response": None,
-                        "hitl_request": None,
-                        "messages": [
-                            self._build_tool_call_message(state.tool_calls)
+                        "tool_state": ToolState(tool_calls=state.tool_state.tool_calls),
+                        "hitl_state": HITLInteraction(request=None, response=None),
+                        "trajectory": [
+                            self._build_tool_call_message(state.tool_state.tool_calls)
                         ],
                         "step_count": state.step_count + 1,
                     })
@@ -181,7 +191,10 @@ class ActionNode(Node):
         print("[ReAct][action] no hitl response, continue to generate tool calls")
         return self._router(state, {
             "task_status": "in_progress",
-            "tool_calls": state.tool_calls,
+            "tool_state": ToolState(tool_calls=state.tool_state.tool_calls),
+            "trajectory": [
+                self._build_tool_call_message(state.tool_state.tool_calls)
+            ],
         })
 
     def _handle_no_tool_calls(self, state: ReActState) -> Command:
@@ -208,9 +221,9 @@ class ActionNode(Node):
         return self._router(state, {
             "task_status": "failed",
             "reasoning": f"Invalid tools selected: {', '.join(invalid_tools)}",
+            "tool_state": ToolState(tool_calls=[]),
             "step_count": state.step_count + 1,
             "retry_count": state.retry_count + 1,
-            "tool_calls": [],
         })
 
     def _handle_ready(self, tool_calls: list[ToolCall], state: ReActState) -> Command:
@@ -219,8 +232,8 @@ class ActionNode(Node):
         """
         return self._router(state, {
             "task_status": "in_progress",
-            "tool_calls": tool_calls,
-            "messages": [
+            "tool_state": ToolState(tool_calls=tool_calls),
+            "trajectory": [
                 self._build_tool_call_message(tool_calls)
             ],
             "step_count": state.step_count + 1,
@@ -259,12 +272,14 @@ class ActionNode(Node):
             },
         )
 
-        return self._router(state, {
+        # 更新状态
+        update_state = {
             "task_status": "human_in_the_loop",
-            "tool_calls": updated_tool_calls,
-            "hitl_request": request,
-            "hitl_response": None,  # 清空 HITL 响应
-        })
+            "tool_state": ToolState(tool_calls=updated_tool_calls),
+            "hitl_state": HITLInteraction(request=request, response=None),
+        }
+
+        return self._router(state, update_state)
 
     def _handle_approval(self, tool_calls: list[ToolCall], state: ReActState) -> Command:
         """
@@ -284,12 +299,15 @@ class ActionNode(Node):
                 ],
             },
         )
-        return self._router(state, {
+
+        # 更新状态
+        update_state = {
             "task_status": "human_in_the_loop",
-            "tool_calls": tool_calls,
-            "hitl_request": request,
-            "hitl_response": None,  # 清空 HITL 响应
-        })
+            "tool_state": ToolState(tool_calls=tool_calls),
+            "hitl_state": HITLInteraction(request=request, response=None),
+        }
+
+        return self._router(state, update_state)
 
     def _router(self, state: ReActState, update_state: dict) -> Command:
         next_node = self._select_node(state, update_state)
@@ -298,7 +316,7 @@ class ActionNode(Node):
 
     def _select_node(self, state: ReActState, update_state: dict) -> Literal["HITL", "tool", "reason"]:
         task_status = update_state.get("task_status", state.task_status)
-        tool_calls = update_state.get("tool_calls", state.tool_calls)
+        tool_calls = update_state.get("tool_state", state.tool_state).tool_calls
 
         if task_status == "human_in_the_loop":
             return "HITL"

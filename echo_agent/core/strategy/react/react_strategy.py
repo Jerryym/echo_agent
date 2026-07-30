@@ -1,6 +1,5 @@
 from ...graph import BaseContext, BaseState, Node, START_NODE, END_NODE, SubGraph
 from ...llm import LLMConfig
-from ...model import Message, Role
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
@@ -38,7 +37,7 @@ class ReActStrategy(BaseStrategy):
             llm_config=self._llm_config,
             tool_list=self._tool_registry.list_definitions(),
         )
-        tool_node = ToolNode(name="tool", tool_executor=self._tool_executor)
+        tool_node = ToolNode(name="tool", tool_executor=self._tool_executor, message_field="trajectory")
         final_node = FinalNode(name="final", llm_config=self._llm_config)
         hitl_node = HITLSubgraph().as_node()
 
@@ -71,14 +70,16 @@ class ReActStrategy(BaseStrategy):
         """
         return ReActInput(
             input=state.input,
-            messages=state.messages
         )
 
     def to_strategy_context(self, context: BaseContext | None = None) -> ReActContext | None:
         """
         将 Parent Context 映射为 Strategy Context
         """
+        if context is None:
+            raise ValueError("BaseContext is required for ReAct strategy")
         return ReActContext(
+            agent_state=context.agent_state,
             max_steps=self._max_steps,
             retry_max_count=self._retry_max_count,
         )
@@ -89,7 +90,6 @@ class ReActStrategy(BaseStrategy):
         """
         return {
             "response": output.response,
-            "messages": output.messages or [Message(role=Role.ASSISTANT, content=output.response)],
         }
 
 

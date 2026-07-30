@@ -27,7 +27,7 @@ class Graph(ABC):
     """
     def __init__(self, state_schema: type[BaseState], context_schema: type[BaseContext] | None = None, input_schema: type[BaseInput] | None = None, output_schema: type[BaseOutput] | None = None):
         self._state_schema = state_schema
-        self._context_schema = context_schema
+        self._context_schema = context_schema if context_schema is not None else BaseContext
         self._input_schema = input_schema
         self._output_schema = output_schema
 
@@ -70,10 +70,9 @@ class Graph(ABC):
         """
         kwargs: dict = {
             "state_schema": self._state_schema,
+            "context_schema": self._context_schema, # 默认使用 BaseContext
         }
 
-        if self._context_schema is not None:
-            kwargs["context_schema"] = self._context_schema
         if self._input_schema is not None:
             kwargs["input_schema"] = self._input_schema
         if self._output_schema is not None:

@@ -1,5 +1,6 @@
 from typing import Literal
 
+from langgraph.runtime import Runtime
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
@@ -7,6 +8,7 @@ from .....common import debug_print_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
+from ....model import Message, ToolState
 from ..schema import ReActContext, ReActState
 
 
@@ -74,18 +76,19 @@ class ReasonNode(Node):
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
 
-    def run(self, state: ReActState, context: ReActContext | None = None) -> Command:
+    def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
         Run the node
         """
         print(f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} ")
-        debug_print_messages("[ReAct][reason]", state.messages)
+        history = self._build_history(state, runtime.context)
+        debug_print_messages("[ReAct][reason]", history)
 
         # 检查工具执行失败
         if self._has_tool_error(state):
             return self._handle_tool_error(
                 state,
-                context,
+                runtime,
             )
 
         # 构建输入
@@ -94,7 +97,7 @@ class ReasonNode(Node):
         response = self._llm_client.invoke_structured(
             prompt=self._prompt,
             user_input=input,
-            history=state.messages,
+            history=history,
             schema=ReasonStructuredOutput,
         )
         result = response.structured
@@ -105,21 +108,19 @@ class ReasonNode(Node):
             f"task_status={result.task_status}"
         )
 
-        return self._handle_result(result, state, context)
+        return self._handle_result(result, state, runtime.context)
 
-    async def arun(self, state: ReActState, context: ReActContext | None = None) -> Command:
+    async def arun(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
         异步运行
         """
         print(f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} ")
-        debug_print_messages("[ReAct][reason]", state.messages)
+        history = self._build_history(state, runtime.context)
+        debug_print_messages("[ReAct][reason]", history)
 
         # 检查工具执行失败
         if self._has_tool_error(state):
-            return self._handle_tool_error(
-                state,
-                context,
-            )
+            return self._handle_tool_error(state, runtime.context)
 
         # 构建输入
         input = self._build_input(state)
@@ -127,7 +128,7 @@ class ReasonNode(Node):
         response = await self._llm_client.ainvoke_structured(
             prompt=self._prompt,
             user_input=input,
-            history=state.messages,
+            history=history,
             schema=ReasonStructuredOutput,
         )
         result = response.structured
@@ -138,7 +139,22 @@ class ReasonNode(Node):
             f"task_status={result.task_status}"
         )
 
-        return self._handle_result(result, state, context)
+        return self._handle_result(result, state, runtime.context)
+
+    def _build_history(
+        self,
+        state: ReActState,
+        context: ReActContext | None,
+    ) -> list[Message]:
+        """
+        构建跨轮会话历史与本轮执行轨迹。
+        """
+        if context is None:
+            raise ValueError("ReActContext is required for ReasonNode")
+        return [
+            *context.agent_state.conversation.messages,
+            *state.trajectory,
+        ]
 
     def _build_input(self, state: ReActState) -> dict:
         """
@@ -146,7 +162,7 @@ class ReasonNode(Node):
         """
         return {
             "input": state.input,
-            "messages": state.messages,
+            "trajectory": state.trajectory,
             "observations": state.observations + self._build_observations(state),
         }
 
@@ -155,7 +171,7 @@ class ReasonNode(Node):
         构建观察结果
         """
         observations = []
-        for tool_result in state.tool_results:
+        for tool_result in state.tool_state.tool_results:
             observation = {
                 "name": tool_result.name,
                 "success": tool_result.success,
@@ -172,20 +188,19 @@ class ReasonNode(Node):
         """
         判断是否存在工具执行失败错误
         """
-        return any(not result.success for result in state.tool_results)
+        return any(not result.success for result in state.tool_state.tool_results)
 
     def _handle_tool_error(self, state: ReActState, context: ReActContext | None) -> Command:
         """
         处理工具错误
         """
-        failed_tools = [r.name for r in state.tool_results if r.error]
+        failed_tools = [r.name for r in state.tool_state.tool_results if r.error]
         print(f"[ReAct][reason] tool error detected: {failed_tools}")
 
         retry_count = state.retry_count + 1
         result = {
             "retry_count": retry_count,
-            "tool_calls": [], # 清空工具调用
-            "tool_results": [], # 清空工具执行结果
+            "tool_state": ToolState(tool_calls=[], tool_results=[]), # 清空工具调用和执行结果
             "observations": self._build_observations(state), # 包含工具执行失败的结果
         }
 
@@ -218,8 +233,8 @@ class ReasonNode(Node):
         task_status = update_state.get("task_status", state.task_status)
         step_count = update_state.get("step_count", state.step_count)
         retry_count = update_state.get("retry_count", state.retry_count)
-        max_steps = context.max_steps if context else 10
-        retry_max = context.retry_max_count if context else 3
+        max_steps = getattr(context, "max_steps", 10)
+        retry_max = getattr(context, "retry_max_count", 3)
 
         if task_status in ("completed", "cancelled", "failed"):
             return "final"

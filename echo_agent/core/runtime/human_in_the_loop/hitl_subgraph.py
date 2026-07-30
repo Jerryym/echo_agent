@@ -4,7 +4,7 @@ import uuid
 from langchain_core.runnables import RunnableConfig
 
 from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE
-from ...model import HITLInput, HITLOutput, HITLType
+from ...model import HITLInput, HITLOutput, HITLType, HITLInteraction
 from .node import ApprovalFlow, InputFlow, NormalizeResultNode
 from .schema import HITLState
 
@@ -90,7 +90,7 @@ class HITLSubgraph:
         将 HITL Output 映射为 Parent State 更新内容
         """
         return {
-            "hitl_response": output,
+            "hitl_state": HITLInteraction(response=output),
         }
 
     def _type_router(self, state: HITLState) -> str:
@@ -115,10 +115,17 @@ class HITLNode(Node):
         self._hitl = hitl
 
     def run(self, state: BaseState, context: BaseContext | None = None, config=None) -> dict:
-        if state.hitl_request is None:
-            raise ValueError("hitl_request is required")
+        if state.hitl_state.request is None:
+            raise ValueError("HITL request is required")
 
-        return self._hitl.invoke(state.hitl_request, context, config)
+        result = self._hitl.invoke(state.hitl_state.request, context, config)
+        interaction = result["hitl_state"]
+        return {
+            "hitl_state": HITLInteraction(
+                request=state.hitl_state.request,
+                response=interaction.response,
+            )
+        }
 
     async def arun(self, state: BaseState, context: BaseContext | None = None, config=None) -> dict:
         raise NotImplementedError("HITLNode is sync-only")

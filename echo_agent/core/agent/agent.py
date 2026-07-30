@@ -1,10 +1,12 @@
+import json
+
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import Command
 
 from ..capability.skill import SkillCatalog, setup_skills
-from ..graph import BaseInput, RootGraph
+from ..graph import BaseContext, BaseInput, RootGraph
 from ..mcp import MCPClient
-from ..model import UserInput
+from ..model import AgentState, Message, Role, UserInput
 from ..runtime import RuntimeConfig
 from ..tool import ToolRegistry
 from .agent_config import AgentConfig
@@ -34,6 +36,8 @@ class Agent:
             else None
         )
         self._skill_catalog: SkillCatalog | None = None
+        self._agent_state_map: dict[str, AgentState] = {} # 会话ID -> 智能体状态
+        self._pending_inputs: dict[str, UserInput | type[BaseInput]] = {}
 
     @property
     def mcp_client(self) -> MCPClient | None:
@@ -80,7 +84,12 @@ class Agent:
 
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
-        return self._compiled_graph.invoke(graph_input, runnable_config)
+        context = self._build_context(session_id)
+        self._pending_inputs[session_id] = input
+        result = self._compiled_graph.invoke(graph_input, runnable_config, context=context)
+        # 写回历史记录
+        self._append_conversation(session_id, result)
+        return result
 
     async def ainvoke(self, session_id: str, input: UserInput | type[BaseInput]):
         """
@@ -98,7 +107,12 @@ class Agent:
 
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
-        return await self._compiled_graph.ainvoke(graph_input, runnable_config)
+        context = self._build_context(session_id)
+        self._pending_inputs[session_id] = input
+        result = await self._compiled_graph.ainvoke(graph_input, runnable_config, context=context)
+        # 写回历史记录
+        self._append_conversation(session_id, result)
+        return result
 
     def stream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
         """
@@ -121,7 +135,9 @@ class Agent:
 
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
-        return self._compiled_graph.stream(graph_input, runnable_config, stream_mode="messages", subgraphs=True, version=version)
+        context = self._build_context(session_id)
+        self._pending_inputs[session_id] = input
+        return self._stream_iterator(graph_input, runnable_config, context, version, session_id)
 
     async def astream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
         """
@@ -139,8 +155,9 @@ class Agent:
 
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
-        # 返回 async iterator，由调用方 async for / await 消费
-        return self._compiled_graph.astream(graph_input, runnable_config, stream_mode="messages", subgraphs=True, version=version)
+        context = self._build_context(session_id)
+        self._pending_inputs[session_id] = input
+        return self._astream_iterator(graph_input, runnable_config, context, session_id, version)
 
     def resume(self, session_id: str, values: dict):
         """
@@ -151,14 +168,20 @@ class Agent:
             values: 输入
         """
         runnable_config = self._build_runnable_config(session_id)
-        return self._compiled_graph.invoke(Command(resume=values), runnable_config)
+        context = self._build_context(session_id)
+        result = self._compiled_graph.invoke(Command(resume=values), runnable_config, context=context)
+        self._append_conversation(session_id, result)
+        return result
 
     async def aresume(self, session_id: str, values: dict):
         """
         恢复 Agent 执行（异步）
         """
         runnable_config = self._build_runnable_config(session_id)
-        return await self._compiled_graph.ainvoke(Command(resume=values), runnable_config)
+        context = self._build_context(session_id)
+        result = await self._compiled_graph.ainvoke(Command(resume=values), runnable_config, context=context)
+        self._append_conversation(session_id, result)
+        return result
 
     def stream_resume(self, session_id: str, values: dict, version: str = "v2"):
         """
@@ -170,14 +193,16 @@ class Agent:
             version: 版本
         """
         runnable_config = self._build_runnable_config(session_id)
-        return self._compiled_graph.stream(Command(resume=values), runnable_config, stream_mode="messages", subgraphs=True, version=version)
+        context = self._build_context(session_id)
+        return self._stream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
     async def astream_resume(self, session_id: str, values: dict, version: str = "v2"):
         """
         流式恢复 Agent 执行（异步）
         """
         runnable_config = self._build_runnable_config(session_id)
-        return self._compiled_graph.astream(Command(resume=values), runnable_config, stream_mode="messages", subgraphs=True, version=version)
+        context = self._build_context(session_id)
+        return self._astream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
         """
@@ -222,3 +247,78 @@ class Agent:
                 "thread_id": session_id,
             }
         )
+
+    def _build_context(self, session_id: str) -> BaseContext:
+        """
+        构建上下文
+        """
+        agent_state = self._get_agent_state(session_id)
+        if agent_state.session_id != session_id:
+            raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
+        return BaseContext(agent_state=agent_state)
+
+    def _get_agent_state(self, session_id: str) -> AgentState:
+        """
+        获取智能体状态
+        """
+        return self._agent_state_map.setdefault(session_id, AgentState(session_id=session_id))
+
+    def _stream_iterator(self, graph_input: dict | Command, runnable_config: RunnableConfig, context: BaseContext, session_id: str,version: str):
+        yield from self._compiled_graph.stream(graph_input, runnable_config, context=context, stream_mode="messages", subgraphs=True, version=version)
+        self._append_conversation(session_id)
+
+    async def _astream_iterator(self, graph_input: dict | Command, runnable_config: RunnableConfig, context: BaseContext, session_id: str, version: str):
+        async for event in self._compiled_graph.astream(graph_input, runnable_config, context=context, stream_mode="messages", subgraphs=True, version=version):
+            yield event
+        self._append_conversation(session_id)
+
+    def _append_conversation(self, session_id: str, result=None) -> None:
+        """
+        追加会话历史
+        """
+        snapshot = self.get_state(session_id)
+
+        # Graph 处于 HITL 等中断状态
+        if snapshot.next:
+            return
+
+        if result is None:
+            result = snapshot.values
+
+        pending_input = self._pending_inputs.get(session_id)
+        if pending_input is None:
+            return
+
+        response = (
+            result.get("response")
+            if isinstance(result, dict)
+            else getattr(result, "response", None)
+        )
+        if not response:
+            return
+
+        agent_state = self._get_agent_state(session_id)
+        if agent_state.session_id != session_id:
+            raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
+
+        agent_state.conversation.append(
+            Message(
+                role=Role.USER,
+                content=self._input_text(pending_input),
+            ),
+            Message(
+                role=Role.ASSISTANT,
+                content=str(response),
+            ),
+        )
+        self._pending_inputs.pop(session_id, None)
+
+    @staticmethod
+    def _input_text(input: UserInput | type[BaseInput]) -> str:
+        """将 Agent 输入转换为会话消息文本。"""
+        value = input.input if isinstance(input, BaseInput) else input
+        if isinstance(value, UserInput):
+            return value.text
+        if isinstance(value, str):
+            return value
+        return json.dumps(value, ensure_ascii=False, default=str)

@@ -1,6 +1,7 @@
 from typing import Any, Literal
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.runtime import Runtime
 
 from ....graph import Node
 from ....graph.schema import BaseContext
@@ -18,7 +19,7 @@ class NormalizeResultNode(Node):
     def __init__(self, name: str):
         super().__init__(name)
 
-    def run(self, state: HITLState, context: BaseContext | None = None, config: RunnableConfig | None = None) -> dict:
+    def run(self, state: HITLState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None) -> dict:
         result = state.result if isinstance(state.result, dict) else {}
         return {
             "id": state.id,
@@ -26,12 +27,7 @@ class NormalizeResultNode(Node):
             "result": result,
         }
 
-    async def arun(
-        self,
-        state: HITLState,
-        context: BaseContext | None = None,
-        config: RunnableConfig | None = None,
-    ) -> dict:
+    async def arun(self, state: HITLState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None) -> dict:
         raise NotImplementedError("NormalizeResultNode is sync-only")
 
     def _resolve_status(
