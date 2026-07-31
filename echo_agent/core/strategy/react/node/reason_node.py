@@ -9,6 +9,8 @@ from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model import Message, ToolState
+from ....trace import TokenUsage
+from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState
 
 
@@ -97,6 +99,7 @@ class ReasonNode(Node):
             history=history,
             schema=ReasonStructuredOutput,
         )
+        self._accumulate_token_usage(runtime.context, response.token_usage)
         result = response.structured
         print(
             "[ReAct][reason] "
@@ -128,6 +131,7 @@ class ReasonNode(Node):
             history=history,
             schema=ReasonStructuredOutput,
         )
+        self._accumulate_token_usage(runtime.context, response.token_usage)
         result = response.structured
         print(
             "[ReAct][reason] "
@@ -145,8 +149,15 @@ class ReasonNode(Node):
         if context is None:
             raise ValueError("ReActContext is required for ReasonNode")
         return [
+            *state.conversation,
             *state.trajectory,
         ]
+
+    @staticmethod
+    def _accumulate_token_usage(context: ReActContext | None, token_usage: TokenUsage) -> None:
+        if context is None or context.trace is None:
+            return
+        context.trace.token_usage = context.trace.token_usage.add(token_usage)
 
     def _build_input(self, state: ReActState) -> dict:
         """
@@ -158,21 +169,13 @@ class ReasonNode(Node):
             "observations": state.observations + self._build_observations(state),
         }
 
-    def _build_observations(self, state: ReActState) -> list[dict]:
+    def _build_observations(self, state: ReActState) -> list[Observation]:
         """
         构建观察结果
         """
         observations = []
         for tool_result in state.tool_state.tool_results:
-            observation = {
-                "name": tool_result.name,
-                "success": tool_result.success,
-                "tool_call_id": tool_result.tool_call_id,
-            }
-            if tool_result.success:
-                observation["result"] = tool_result.result
-            else:
-                observation["error"] = tool_result.error or "unknown error"
+            observation = ObservationBuilder.build(tool_result)
             observations.append(observation)
         return observations
 

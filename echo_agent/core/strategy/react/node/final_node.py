@@ -6,6 +6,7 @@ from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model import Message, Role
+from ....trace import TokenUsage
 from ..schema import ReActContext, ReActState
 
 
@@ -35,6 +36,7 @@ class FinalNode(Node):
             history=history,
             config=config,
         )
+        self._accumulate_token_usage(runtime.context, response.token_usage)
         # 更新状态
         preview = response.content[:300]
         suffix = "..." if len(response.content) > 300 else ""
@@ -61,6 +63,7 @@ class FinalNode(Node):
             history=history,
             config=config,
         )
+        self._accumulate_token_usage(runtime.context, response.token_usage)
         # 更新状态
         preview = response.content[:300]
         suffix = "..." if len(response.content) > 300 else ""
@@ -77,8 +80,15 @@ class FinalNode(Node):
         if context is None:
             raise ValueError("ReActContext is required for FinalNode")
         return [
+            *state.conversation,
             *state.trajectory,
         ]
+
+    @staticmethod
+    def _accumulate_token_usage(context: ReActContext | None, token_usage: TokenUsage) -> None:
+        if context is None or context.trace is None:
+            return
+        context.trace.token_usage = context.trace.token_usage.add(token_usage)
 
     def _build_input(self, state: ReActState) -> dict:
         """

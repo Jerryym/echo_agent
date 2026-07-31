@@ -6,10 +6,22 @@ from langgraph.types import Command, RunnableConfig
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model import HITLInput, HITLOutput, HITLType, HITLInteraction, Message, Role, ToolCall, ToolState
+from ....model import (
+    HITLInput,
+    HITLInteraction,
+    HITLOutput,
+    HITLType,
+    Message,
+    Role,
+    ToolCall,
+    ToolResult,
+    ToolState,
+)
 from ....runtime.interrupt import InterruptField
 from ....tool import ToolDefinition
 from ....tool.utils import get_tool_definition
+from ....trace import TokenUsage
+from ..observation import ObservationBuilder
 from ..schema import ReActContext, ReActState
 
 
@@ -56,6 +68,7 @@ class ActionNode(Node):
             history=self._build_history(state, runtime.context),
             tool_list=self._tool_json_schema,
         )
+        self._accumulate_token_usage(runtime.context, response.token_usage)
         print(f"[ReAct][action] tool_selection_response={response}")
         print(f"[ReAct][action] tool_selection_response.tool_calls={response.tool_calls}")
 
@@ -103,6 +116,7 @@ class ActionNode(Node):
             history=self._build_history(state, runtime.context),
             tool_list=self._tool_json_schema,
         )
+        self._accumulate_token_usage(runtime.context, response.token_usage)
         print(f"[ReAct][action] tool_selection_response={response}")
         print(f"[ReAct][action] tool_selection_response.tool_calls={response.tool_calls}")
 
@@ -135,8 +149,15 @@ class ActionNode(Node):
         if context is None:
             raise ValueError("ReActContext is required for ActionNode")
         return [
+            *state.conversation,
             *state.trajectory,
         ]
+
+    @staticmethod
+    def _accumulate_token_usage(context: ReActContext | None, token_usage: TokenUsage) -> None:
+        if context is None or context.trace is None:
+            return
+        context.trace.token_usage = context.trace.token_usage.add(token_usage)
 
     def _handle_tool_calls(self, state: ReActState) -> Command:
         """
@@ -205,11 +226,13 @@ class ActionNode(Node):
             "step_count": state.step_count + 1,
             "retry_count": state.retry_count + 1,
             "observations": [
-                {
-                    "name": "action",
-                    "success": False,
-                    "error": "Action stage did not generate executable tool calls.",
-                }
+                ObservationBuilder.build(ToolResult(
+                    name="",
+                    success=False,
+                    result=None,
+                    error="Action stage did not generate executable tool calls.",
+                    tool_call_id="",
+                ))
             ],
         })
 

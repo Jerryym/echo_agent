@@ -54,15 +54,15 @@ async def build_default_react_agent(
 
     await agent.setup_skills(tool_registry)
 
-    react_subgraph = StrategyFactory.create_as_subgraph(
+    react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,
         llm_config=config.llm_config,
         tool_registry=tool_registry,
     )
     graph = RootGraph(state_schema=_AdapterState)
-    graph.add_subgraph("ReAct", react_subgraph)
-    graph.add_edge(START_NODE, "ReAct")
-    graph.add_edge("ReAct", END_NODE)
+    graph.add_node(react_subgraph)
+    graph.add_edge(START_NODE, react_subgraph.name)
+    graph.add_edge(react_subgraph.name, END_NODE)
 
     agent._graph = graph
     agent._compiled_graph = graph.compile(runtime_config)

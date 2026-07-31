@@ -1,7 +1,9 @@
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 from ..model import ToolCall
+from ..trace import TokenUsage
 
 
 class LLMResult(BaseModel):
@@ -14,9 +16,11 @@ class LLMResult(BaseModel):
         raw: 原始响应
         structured: 结构化响应
         response_metadata: 响应元数据
+        token_usage: 词元使用情况
     """
     content: str = Field(default="")
     tool_calls: list[ToolCall] | None = Field(default_factory=list)
     raw: Any = None
     structured: BaseModel | dict[str, Any] | None = None
     response_metadata: dict[str, Any] | None = None
+    token_usage: TokenUsage

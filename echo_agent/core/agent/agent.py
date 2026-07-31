@@ -9,6 +9,7 @@ from ..mcp import MCPClient
 from ..model import AgentState, Message, Role, UserInput
 from ..runtime import RuntimeConfig
 from ..tool import ToolRegistry
+from ..trace import AgentTrace
 from .agent_config import AgentConfig
 
 
@@ -89,6 +90,7 @@ class Agent:
         result = self._compiled_graph.invoke(graph_input, runnable_config, context=context)
         # 写回历史记录
         self._append_conversation(session_id, result)
+        self._print_token_usage(context)
         return result
 
     async def ainvoke(self, session_id: str, input: UserInput | type[BaseInput]):
@@ -112,6 +114,7 @@ class Agent:
         result = await self._compiled_graph.ainvoke(graph_input, runnable_config, context=context)
         # 写回历史记录
         self._append_conversation(session_id, result)
+        self._print_token_usage(context)
         return result
 
     def stream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
@@ -171,6 +174,7 @@ class Agent:
         context = self._build_context(session_id)
         result = self._compiled_graph.invoke(Command(resume=values), runnable_config, context=context)
         self._append_conversation(session_id, result)
+        self._print_token_usage(context)
         return result
 
     async def aresume(self, session_id: str, values: dict):
@@ -181,6 +185,7 @@ class Agent:
         context = self._build_context(session_id)
         result = await self._compiled_graph.ainvoke(Command(resume=values), runnable_config, context=context)
         self._append_conversation(session_id, result)
+        self._print_token_usage(context)
         return result
 
     def stream_resume(self, session_id: str, values: dict, version: str = "v2"):
@@ -255,7 +260,10 @@ class Agent:
         agent_state = self._get_agent_state(session_id)
         if agent_state.session_id != session_id:
             raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
-        return BaseContext(agent_state=agent_state)
+        return BaseContext(
+            agent_state=agent_state,
+            trace=AgentTrace(session_id=session_id),
+        )
 
     def _get_agent_state(self, session_id: str) -> AgentState:
         """
@@ -263,14 +271,29 @@ class Agent:
         """
         return self._agent_state_map.setdefault(session_id, AgentState(session_id=session_id))
 
+    @staticmethod
+    def _print_token_usage(context: BaseContext) -> None:
+        """打印本轮 AgentTrace 的 token 使用情况。"""
+        if context.trace is None:
+            return
+        usage = context.trace.token_usage
+        print(
+            f"[AgentTrace] token_usage | "
+            f"input={usage.input_tokens} "
+            f"output={usage.output_tokens} "
+            f"total={usage.total_tokens}"
+        )
+
     def _stream_iterator(self, graph_input: dict | Command, runnable_config: RunnableConfig, context: BaseContext, session_id: str,version: str):
         yield from self._compiled_graph.stream(graph_input, runnable_config, context=context, stream_mode="messages", subgraphs=True, version=version)
         self._append_conversation(session_id)
+        self._print_token_usage(context)
 
     async def _astream_iterator(self, graph_input: dict | Command, runnable_config: RunnableConfig, context: BaseContext, session_id: str, version: str):
         async for event in self._compiled_graph.astream(graph_input, runnable_config, context=context, stream_mode="messages", subgraphs=True, version=version):
             yield event
         self._append_conversation(session_id)
+        self._print_token_usage(context)
 
     def _append_conversation(self, session_id: str, result=None) -> None:
         """

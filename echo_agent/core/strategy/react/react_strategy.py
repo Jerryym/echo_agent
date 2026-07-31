@@ -3,6 +3,7 @@ from langgraph.runtime import Runtime
 from ...graph import BaseContext, BaseState, Node, START_NODE, END_NODE, SubGraph
 from ...llm import LLMConfig
 from ...model import UserInput
+from ...runtime.algorithm import trim_conversation
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
@@ -78,8 +79,12 @@ class ReActStrategy(BaseStrategy):
             description=text,
             goal=text,
         )
-        print(f"[ReAct] to_strategy_input | task={task}")
-        return ReActInput(task=task)
+        messages = context.agent_state.conversation.messages if context else []
+        print(f"[ReAct] to_strategy_input | task={task}, messages={len(messages)}")
+        return ReActInput(
+            task=task,
+            conversation=trim_conversation(messages),
+        )
 
     def to_strategy_context(self, context: BaseContext | None = None) -> ReActContext | None:
         """
@@ -89,6 +94,7 @@ class ReActStrategy(BaseStrategy):
             raise ValueError("BaseContext is required for ReAct strategy")
         return ReActContext(
             agent_state=context.agent_state,
+            trace=context.trace,
             max_steps=self._max_steps,
             retry_max_count=self._retry_max_count,
         )

@@ -59,10 +59,6 @@ class ToolNode(Node):
     def _build_result(self, tool_results: list[ToolResult]) -> dict:
         tool_messages = self._build_tool_messages(tool_results)
         print(f"[ReAct][tool] appended {len(tool_messages)} ToolMessage(s) to messages")
-        for tm in tool_messages:
-            print(f"[ReAct][tool] ToolMessage id={tm.tool_call_id}")
-            print(format_debug(tm.content))
-
         result = {
             "tool_state": ToolState(tool_calls=[], tool_results=tool_results),
         }

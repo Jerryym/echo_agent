@@ -11,6 +11,7 @@ from ..utils.adapter.message_adapter import MessageAdapter
 from ...prompt import PromptLoader
 
 from ..model import Message, ToolCall, UserInput
+from ..trace import TokenUsage
 from .exception import (
     LLMException,
     LLMInitializeError,
@@ -447,6 +448,10 @@ class LLMClient:
                     tool_calls=self._normalize_tool_calls(getattr(response, "tool_calls", None)),
                     raw=response,
                     response_metadata=getattr(response, "response_metadata", None),
+                    token_usage=TokenUsage(
+                        input_tokens=getattr(response, "usage_metadata", {}).get("input_tokens", 0),
+                        output_tokens=getattr(response, "usage_metadata", {}).get("output_tokens", 0),
+                    )
                 )
         except Exception as e:
             raise LLMResponseDecodeError(
@@ -477,6 +482,10 @@ class LLMClient:
                 raw=raw,
                 structured=parsed,
                 response_metadata=getattr(raw, "response_metadata", {}),
+                token_usage=TokenUsage(
+                    input_tokens=getattr(raw, "usage_metadata", {}).get("input_tokens", 0),
+                    output_tokens=getattr(raw, "usage_metadata", {}).get("output_tokens", 0),
+                )
             )
         except Exception as e:
             raise LLMResponseDecodeError(

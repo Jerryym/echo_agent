@@ -8,6 +8,7 @@ from ..model import (
     UserInput,
     AgentState,
 )
+from ..trace import AgentTrace
 
 
 class BaseInput(BaseModel):
@@ -57,5 +58,7 @@ class BaseContext(BaseModel):
 
     参数:
         agent_state: 智能体状态
+        trace: 智能体跟踪
     """
     agent_state: AgentState
+    trace: AgentTrace | None = None
