@@ -9,7 +9,8 @@ class MCPClient:
     """
     MCP 客户端
     """
-    def __init__(self, mcp_server_configs: list[MCPConnectionConfig]):
+    def __init__(self, tool_registry: ToolRegistry, mcp_server_configs: list[MCPConnectionConfig]):
+        self._tool_registry = tool_registry
         servers = {
             config.name: config.to_adapter_config()
             for config in mcp_server_configs
@@ -33,7 +34,7 @@ class MCPClient:
             self._mcp_tools = await self._client.get_tools()
         return self._mcp_tools
 
-    async def register_tools(self, registry: ToolRegistry) -> list[ToolDefinition]:
+    async def register_tools(self) -> list[ToolDefinition]:
         """注册 MCP 工具"""
         tool_definitions: list[ToolDefinition] = []
         tools = []
@@ -53,7 +54,7 @@ class MCPClient:
                         },
                     }
                 )
-                registry.register(definition, tool)
+                self._tool_registry.register(definition, tool)
                 tool_definitions.append(definition)
         self._mcp_tools = tools
         return tool_definitions

@@ -6,7 +6,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseContext, BaseState, Node, RootGraph, UserInput
 from echo_agent.core.graph import START_NODE, END_NODE
-from echo_agent.core.model import HITLInput, HITLType
+from echo_agent.core.model.hitl import HITLInput, HITLType
 from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.runtime.human_in_the_loop import HITLSubgraph
 

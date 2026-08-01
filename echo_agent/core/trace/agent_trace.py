@@ -3,8 +3,8 @@ import uuid
 
 from pydantic import BaseModel, Field
 
-from ..model import Message
-from ..model import ToolCall, ToolResult
+from ..model.message import Message
+from ..model.tool import ToolCall, ToolResult
 from .token_usage import TokenUsage
 
 

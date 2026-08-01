@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 from ...graph import BaseContext, BaseInput, BaseOutput, BaseState
-from ...model import Message, append_messages
+from ...model.message import Message, append_messages
 from ..strategy_task import StrategyTask
 from .observation import Observation
 

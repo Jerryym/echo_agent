@@ -13,7 +13,6 @@ from echo_agent.core.graph import END_NODE, START_NODE
 from echo_agent.core.mcp import MCPConnectionConfig
 from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
-from echo_agent.core.tool import ToolRegistry
 
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
 MCP_HTTP_URL = "http://localhost:8000/mcp"
@@ -109,7 +108,6 @@ async def _abuild_react_mcp_agent(
         mcp_servers=list(MCP_SERVERS),
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    tool_registry = ToolRegistry()
 
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
@@ -117,14 +115,13 @@ async def _abuild_react_mcp_agent(
     if agent.mcp_client is None:
         raise RuntimeError("MCPClient 未创建：检查 AgentConfig.mcp_servers")
 
-    await agent.mcp_client.register_tools(tool_registry)
-    await agent.setup_skills(tool_registry)
-    apply_approval_flags(tool_registry, approval_required)
+    await agent.register_mcp_tools()
+    apply_approval_flags(agent.tool_registry, approval_required)
 
     react_subgraph = StrategyFactory.create_as_subgraph(
         StrategyType.REACT,
         llm_config=llm_config,
-        tool_registry=tool_registry,
+        tool_registry=agent.tool_registry,
     )
     graph = RootGraph(state_schema=State)
     graph.add_subgraph("ReAct", react_subgraph)
@@ -134,7 +131,7 @@ async def _abuild_react_mcp_agent(
     agent._graph = graph
     agent._compiled_graph = graph.compile(runtime_config)
 
-    tool_names = [d.name for d in tool_registry.list_definitions()]
+    tool_names = [d.name for d in agent.tool_registry.list_definitions()]
     return agent, tool_names
 
 

@@ -7,7 +7,8 @@ from .llm import (
     LLMResponseDecodeError,
     LLMResult,
 )
-from .model import Attachment, Message, Role, UserInput
+from .model.input import Attachment, UserInput
+from .model.message import Message, Role
 from .graph import Graph, RootGraph, Node, SubGraph, BaseInput, BaseOutput, BaseState, BaseContext
 from .agent import Agent, AgentConfig
 

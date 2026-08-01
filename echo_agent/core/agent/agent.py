@@ -3,12 +3,17 @@ import json
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import Command
 
-from ..capability.skill import SkillCatalog, setup_skills
+from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseInput, RootGraph
 from ..mcp import MCPClient
-from ..model import AgentState, Message, Role, UserInput
+from ..model.agent_state import AgentState
+from ..model.input import UserInput
+from ..model.message import Message, Role
+from ..model.skill import SkillRuntimeContext
 from ..runtime import RuntimeConfig
-from ..tool import ToolRegistry
+from ..tool import ToolDefinition, ToolRegistry
+from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_tool
+from ..tool.utils import to_tool_definition
 from ..trace import AgentTrace
 from .agent_config import AgentConfig
 
@@ -22,23 +27,33 @@ class Agent:
         runtime_config: Runtime 配置
         graph: RootGraph 根图
         compiled_graph: 编译后的图
+        tool_registry: 工具注册器
+        skill_manager: Skill 管理器
         mcp_client: MCP 客户端（由 AgentConfig.mcp_servers 在构造时内部创建；
             始终含内置 Fetch / Filesystem，并与额外 mcp_servers 合并）
-        skill_catalog: Skill 只读映射（调用 setup_skills 后可用）
     """
     def __init__(self, agent_config: AgentConfig, runtime_config: RuntimeConfig, graph: RootGraph):
+        # 配置
         self._agent_config = agent_config
         self._runtime_config = runtime_config
+
+        # 图
         self._graph = graph
         self._compiled_graph = self._graph.compile(runtime_config)
+
+        self._tool_registry = ToolRegistry()
+        self._skill_manager = SkillManager(agent_config.skill_list)
         self._mcp_client = (
-            MCPClient(list(agent_config.mcp_servers))
+            MCPClient(self._tool_registry, list(agent_config.mcp_servers))
             if agent_config.mcp_servers
             else None
         )
-        self._skill_catalog: SkillCatalog | None = None
         self._agent_state_map: dict[str, AgentState] = {} # 会话ID -> 智能体状态
+        self._active_skills_map: dict[str, dict[str, SkillRuntimeContext]] = {}
         self._pending_inputs: dict[str, UserInput | type[BaseInput]] = {}
+        
+        # 注册工具
+        self._register_tools()
 
     @property
     def mcp_client(self) -> MCPClient | None:
@@ -46,24 +61,14 @@ class Agent:
         return self._mcp_client
 
     @property
-    def skill_catalog(self) -> SkillCatalog | None:
-        """已解析的 Skill 只读映射；未调用 setup_skills 时为 None。"""
-        return self._skill_catalog
+    def tool_registry(self) -> ToolRegistry:
+        """Agent 持有的工具注册表（内置 toolkit + MCP 共用）。"""
+        return self._tool_registry
 
-    async def setup_skills(self, registry: ToolRegistry) -> str | None:
-        """
-        根据 AgentConfig.skill_list 组装 Skill 能力。
-
-        - Resolve → 绑定 catalog（供 load_skill / read_skill_resource 与 LLMClient 注入 Skill Usage Prompt）
-        - 注册 load_skill、read_skill_resource 到 ToolRegistry
-        - 返回 Skill Usage Prompt（无 skill 时为 None）
-        """
-        catalog, skill_prompt = await setup_skills(
-            self._agent_config.skill_list,
-            registry,
-        )
-        self._skill_catalog = catalog
-        return skill_prompt
+    @property
+    def skill_manager(self) -> SkillManager:
+        """Agent 持有的 Skill 管理器。"""
+        return self._skill_manager
 
     def invoke(self, session_id: str, input: UserInput | type[BaseInput]):
         """
@@ -240,6 +245,26 @@ class Agent:
         runnable_config = RunnableConfig(configurable=configurable)
         return self._compiled_graph.get_state_history(runnable_config)
 
+    def _register_tools(self) -> None:
+        """
+        注册工具。
+        """
+        self._register_builtin_toolkit()
+
+    def _register_builtin_toolkit(self) -> None:
+        """注册内置 skill 工具到 self._tool_registry。"""
+        load_skill = create_load_skill_tool(self._skill_manager)
+        read_skill = create_read_skill_resource_tool(self._skill_manager)
+
+        self._tool_registry.register(to_tool_definition(load_skill), load_skill)
+        self._tool_registry.register(to_tool_definition(read_skill), read_skill)
+
+    async def register_mcp_tools(self) -> list[ToolDefinition]:
+        """组装期异步注册 MCP 工具（写入 Agent 持有的同一 registry）。"""
+        if self._mcp_client is None:
+            return []
+        return await self._mcp_client.register_tools()
+
     def _build_runnable_config(self, session_id: str) -> RunnableConfig:
         """
         构建 RunnableConfig
@@ -262,6 +287,7 @@ class Agent:
             raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
         return BaseContext(
             agent_state=agent_state,
+            active_skills=self._get_active_skills(session_id),
             trace=AgentTrace(session_id=session_id),
         )
 
@@ -270,6 +296,10 @@ class Agent:
         获取智能体状态
         """
         return self._agent_state_map.setdefault(session_id, AgentState(session_id=session_id))
+
+    def _get_active_skills(self, session_id: str) -> dict[str, SkillRuntimeContext]:
+        """获取会话级已加载 Skill（同 dict 引用，供 load_skill 写回）。"""
+        return self._active_skills_map.setdefault(session_id, {})
 
     @staticmethod
     def _print_token_usage(context: BaseContext) -> None:

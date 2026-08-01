@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from ...model import ToolResult
+from ...model.tool import ToolResult
 
 
 class Observation(BaseModel):

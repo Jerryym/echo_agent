@@ -15,7 +15,8 @@ from echo_agent import (
 )
 from echo_agent.core.agent import AgentConfig
 from echo_agent.core.graph import START_NODE, END_NODE
-from echo_agent.core.model import Message, Role, UserInput
+from echo_agent.core.model.message import Message, Role
+from echo_agent.core.model.input import UserInput
 from echo_agent.core.runtime import RuntimeConfig
 from env_config import build_config
 

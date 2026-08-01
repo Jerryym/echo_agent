@@ -2,7 +2,7 @@ from langgraph.runtime import Runtime
 
 from ...graph import BaseContext, BaseState, Node, START_NODE, END_NODE, SubGraph
 from ...llm import LLMConfig
-from ...model import UserInput
+from ...model.input import UserInput
 from ...runtime.algorithm import trim_conversation
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
@@ -94,6 +94,7 @@ class ReActStrategy(BaseStrategy):
             raise ValueError("BaseContext is required for ReAct strategy")
         return ReActContext(
             agent_state=context.agent_state,
+            active_skills=context.active_skills,
             trace=context.trace,
             max_steps=self._max_steps,
             retry_max_count=self._retry_max_count,

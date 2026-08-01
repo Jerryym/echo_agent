@@ -1,4 +1,4 @@
-from ...model import Message, Role
+from ...model.message import Message, Role
 
 
 def trim_conversation(messages: list[Message], max_rounds: int = 6) -> list[Message]:

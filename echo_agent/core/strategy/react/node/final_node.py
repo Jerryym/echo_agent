@@ -5,7 +5,7 @@ from .....common import debug_print_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model import Message, Role
+from ....model.message import Message, Role
 from ....trace import TokenUsage
 from ..schema import ReActContext, ReActState
 

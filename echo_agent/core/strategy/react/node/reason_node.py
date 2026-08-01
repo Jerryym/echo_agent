@@ -8,7 +8,8 @@ from .....common import debug_print_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model import Message, ToolState
+from ....model.message import Message
+from ....model.tool import ToolState
 from ....trace import TokenUsage
 from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState

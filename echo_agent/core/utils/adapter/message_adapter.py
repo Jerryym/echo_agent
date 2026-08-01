@@ -3,7 +3,7 @@ from typing import Sequence
 from langchain_core.messages import BaseMessage
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from ...model import Message, Role
+from ...model.message import Message, Role
 from .tool_adapter import ToolAdapter
 
 

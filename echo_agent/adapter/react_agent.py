@@ -8,7 +8,6 @@ from echo_agent import Agent, AgentConfig, BaseState, RootGraph
 from echo_agent.core.graph import END_NODE, START_NODE
 from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
-from echo_agent.core.tool import ToolRegistry
 
 from .schema import RuntimeOptions
 
@@ -39,25 +38,21 @@ async def build_default_react_agent(
     """
     固定组装默认 ReAct Agent：
 
-    ToolRegistry → MCP register_tools（若有）→ setup_skills
+    Agent 内置 toolkit → register_mcp_tools（若有）
     → StrategyFactory(REACT) → RootGraph START→ReAct→END
     """
     runtime_config = build_runtime_config(runtime_options)
-    tool_registry = ToolRegistry()
 
     placeholder = RootGraph(state_schema=_AdapterState)
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(config, runtime_config, placeholder)
 
-    if agent.mcp_client is not None:
-        await agent.mcp_client.register_tools(tool_registry)
-
-    await agent.setup_skills(tool_registry)
+    await agent.register_mcp_tools()
 
     react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,
         llm_config=config.llm_config,
-        tool_registry=tool_registry,
+        tool_registry=agent.tool_registry,
     )
     graph = RootGraph(state_schema=_AdapterState)
     graph.add_node(react_subgraph)

@@ -5,7 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE
-from ...model import HITLInput, HITLOutput, HITLType, HITLInteraction
+from ...model.hitl import HITLInput, HITLOutput, HITLType, HITLInteraction
 from .node import ApprovalFlow, InputFlow, NormalizeResultNode
 from .schema import HITLState
 

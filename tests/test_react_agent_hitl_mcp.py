@@ -91,9 +91,9 @@ async def build_react_agent(
     llm_config: LLMConfig,
 ) -> tuple[Agent, ToolRegistry]:
     """
-    AgentConfig → 内置 MCP + stdio/http → Agent 内部 MCPClient → register_tools。
+    AgentConfig → 内置 MCP + stdio/http → Agent.register_mcp_tools。
 
-    因 Strategy 构建需要已注册工具，先用占位图创建 Agent 拿到 mcp_client，
+    因 Strategy 构建需要已注册工具，先用占位图创建 Agent，
     注册后再构建 ReAct 图并重新编译到同一 Agent。
     """
     agent_config = AgentConfig(
@@ -104,25 +104,24 @@ async def build_react_agent(
         mcp_servers=MCP_SERVERS,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    tool_registry = ToolRegistry()
 
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(agent_config, runtime_config, placeholder)
     assert agent.mcp_client is not None
 
-    definitions = await agent.mcp_client.register_tools(tool_registry)
-    _apply_approval_flags(tool_registry)
+    definitions = await agent.register_mcp_tools()
+    _apply_approval_flags(agent.tool_registry)
 
     print(f"Registered {len(definitions)} MCP tools:")
-    for definition in tool_registry.list_definitions():
+    for definition in agent.tool_registry.list_definitions():
         approval = " [approval]" if definition.requires_approval else ""
         print(f"  - {definition.name} ({definition.type}){approval}")
 
     react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,
         llm_config=llm_config,
-        tool_registry=tool_registry,
+        tool_registry=agent.tool_registry,
     )
     graph = RootGraph(state_schema=State)
     graph.add_node(react_subgraph)
@@ -131,7 +130,7 @@ async def build_react_agent(
 
     agent._graph = graph
     agent._compiled_graph = graph.compile(runtime_config)
-    return agent, tool_registry
+    return agent, agent.tool_registry
 
 
 def _message_chunk_text(message: AIMessageChunk) -> str:

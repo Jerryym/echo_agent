@@ -5,7 +5,7 @@ from langgraph.runtime import Runtime
 
 from ....graph import Node
 from ....graph.schema import BaseContext
-from ....model import HITLType
+from ....model.hitl import HITLType
 from ..schema import HITLState
 
 

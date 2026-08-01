@@ -21,7 +21,7 @@ import asyncio
 import uuid
 
 from echo_agent.core.mcp import MCPClient, MCPConnectionConfig
-from echo_agent.core.model import ToolCall
+from echo_agent.core.model.tool import ToolCall
 from echo_agent.core.tool import (
     ToolDefinition,
     ToolExecutor,
@@ -145,7 +145,8 @@ async def _run_transport_case(
 
     # 与 AgentConfig.mcp_servers 同形态：list[MCPConnectionConfig]
     mcp_servers = [config]
-    client = MCPClient(mcp_servers)
+    registry = ToolRegistry()
+    client = MCPClient(registry, mcp_servers)
 
     # 1) get_tools
     tools = await client.get_tools()
@@ -155,8 +156,7 @@ async def _run_transport_case(
     print("PASS: get_tools")
 
     # 2) register_tools
-    registry = ToolRegistry()
-    definitions = await client.register_tools(registry)
+    definitions = await client.register_tools()
     print("\n--- register_tools ---")
     _print_definitions(definitions)
     _assert_registered(definitions, registry, server_name=config.name)

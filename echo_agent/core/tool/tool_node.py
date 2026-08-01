@@ -4,8 +4,10 @@ from langgraph.runtime import Runtime
 
 from ...common import format_debug
 from ..graph import BaseContext, BaseState, Node
-from ..model import Message, Role, ToolResult, ToolState
+from ..model.message import Message, Role
+from ..model.tool import ToolResult, ToolState
 from .tool_executor import ToolExecutor
+from .toolkit import reset_skill_runtime_context, set_skill_runtime_context
 
 
 class ToolNode(Node):
@@ -28,14 +30,18 @@ class ToolNode(Node):
         """
         print(f"[ReAct][tool] enter | calls={[tc.name for tc in state.tool_state.tool_calls]}")
 
-        tool_results: list[ToolResult] = []
-        for tool_call in state.tool_state.tool_calls:
-            print(f"[ReAct][tool] executing {tool_call.name} args:")
-            print(format_debug(tool_call.args))
-            result = self._tool_executor.execute(tool_call)
-            print(f"[ReAct][tool] result name={result.name} success={result.success}")
-            print(format_debug(result.result))
-            tool_results.append(result)
+        token = set_skill_runtime_context(runtime.context)
+        try:
+            tool_results: list[ToolResult] = []
+            for tool_call in state.tool_state.tool_calls:
+                print(f"[ReAct][tool] executing {tool_call.name} args:")
+                print(format_debug(tool_call.args))
+                result = self._tool_executor.execute(tool_call)
+                print(f"[ReAct][tool] result name={result.name} success={result.success}")
+                print(format_debug(result.result))
+                tool_results.append(result)
+        finally:
+            reset_skill_runtime_context(token)
 
         return self._build_result(tool_results)
 
@@ -45,14 +51,18 @@ class ToolNode(Node):
         """
         print(f"[ReAct][tool] enter | calls={[tc.name for tc in state.tool_state.tool_calls]}")
 
-        tool_results: list[ToolResult] = []
-        for tool_call in state.tool_state.tool_calls:
-            print(f"[ReAct][tool] executing {tool_call.name} args:")
-            print(format_debug(tool_call.args))
-            result = await self._tool_executor.aexecute(tool_call)
-            print(f"[ReAct][tool] result name={result.name} success={result.success}")
-            print(format_debug(result.result))
-            tool_results.append(result)
+        token = set_skill_runtime_context(runtime.context)
+        try:
+            tool_results: list[ToolResult] = []
+            for tool_call in state.tool_state.tool_calls:
+                print(f"[ReAct][tool] executing {tool_call.name} args:")
+                print(format_debug(tool_call.args))
+                result = await self._tool_executor.aexecute(tool_call)
+                print(f"[ReAct][tool] result name={result.name} success={result.success}")
+                print(format_debug(result.result))
+                tool_results.append(result)
+        finally:
+            reset_skill_runtime_context(token)
 
         return self._build_result(tool_results)
 
@@ -71,11 +81,14 @@ class ToolNode(Node):
         tool_messages: list[Message] = []
         if tool_results:
             for tool_result in tool_results:
-                if tool_result.success:# 执行成功, 将结果转换为字符串
-                    content = json.dumps(tool_result.result, ensure_ascii=False, default=str)
-                else:# 执行失败, 将错误信息转换为字符串
+                if tool_result.success:
+                    # 字符串结果直接作为 ToolMessage content，避免 json.dumps 多包一层引号
+                    if isinstance(tool_result.result, str):
+                        content = tool_result.result
+                    else:
+                        content = json.dumps(tool_result.result, ensure_ascii=False, default=str)
+                else:
                     content = tool_result.error or "unknown error"
-                # 构建 Message
                 tool_messages.append(Message(
                     role=Role.TOOL,
                     content=content,

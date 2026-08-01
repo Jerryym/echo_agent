@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from ...graph.schema import BaseState
-from ...model import HITLType
+from ...model.hitl import HITLType
 
 
 class HITLState(BaseState):

@@ -2,12 +2,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..model import (
-    HITLInteraction,
-    ToolState,
-    UserInput,
-    AgentState,
-)
+from ..model.agent_state import AgentState
+from ..model.hitl import HITLInteraction
+from ..model.input import UserInput
+from ..model.skill import SkillRuntimeContext
+from ..model.tool import ToolState
 from ..trace import AgentTrace
 
 
@@ -58,7 +57,9 @@ class BaseContext(BaseModel):
 
     参数:
         agent_state: 智能体状态
+        active_skills: 可用的Skill列表
         trace: 智能体跟踪
     """
     agent_state: AgentState
+    active_skills: dict[str, SkillRuntimeContext] = Field(default_factory=dict)
     trace: AgentTrace | None = None

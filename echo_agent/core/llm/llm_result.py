@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..model import ToolCall
+from ..model.tool import ToolCall
 from ..trace import TokenUsage
 
 

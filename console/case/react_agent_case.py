@@ -53,10 +53,6 @@ async def _abuild_react_agent(
     skill_list: dict | None,
     business_tools,
 ) -> Agent:
-    tool_registry = build_tool_registry(
-        business_tools,
-        approval_required=approval_required,
-    )
     agent_config = AgentConfig(
         name=name,
         description=name,
@@ -70,12 +66,18 @@ async def _abuild_react_agent(
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(agent_config, runtime_config, placeholder)
 
-    await agent.setup_skills(tool_registry)
+    # 业务工具挂到 Agent 同一份 registry（内置 skill 工具已在构造时注册）
+    business_registry = build_tool_registry(
+        business_tools,
+        approval_required=approval_required,
+    )
+    for definition in business_registry.list_definitions():
+        agent.tool_registry.register(definition, business_registry.get_handler(definition.name))
 
     react_subgraph = StrategyFactory.create_as_subgraph(
         StrategyType.REACT,
         llm_config=config,
-        tool_registry=tool_registry,
+        tool_registry=agent.tool_registry,
     )
 
     graph = RootGraph(state_schema=State)

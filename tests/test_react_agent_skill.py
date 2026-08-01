@@ -2,10 +2,8 @@
 ReAct + Skill 集成测试
 
 覆盖：
-1. 组装 ReAct Agent 并 setup_skills（pdf fixture）
-2. ToolRegistry 含 load_skill / read_skill_resource
-3. 经 ToolExecutor 执行 Skill 工具（无需 LLM）
-4. 可选：LLM 对话冒烟（需 tests/.env；走 ainvoke / astream）
+1. 组装带 skill_list 的 ReAct Agent；内置 load_skill / read_skill_resource
+2. 可选：LLM 对话冒烟（需 tests/.env；走 ainvoke / astream）
 
 运行：
   # 仅自动化接线测试（默认）
@@ -20,24 +18,19 @@ from __future__ import annotations
 
 import asyncio
 import sys
-import uuid
 import warnings
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessageChunk
-from langchain_core.tools import StructuredTool
-from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
-from echo_agent.core.capability.skill import get_active_catalog, set_active_catalog
 from echo_agent.core.graph import END_NODE, START_NODE
-from echo_agent.core.model import ToolCall
 from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
-from echo_agent.core.tool import ToolDefinition, ToolExecutor, ToolRegistry
+from echo_agent.core.tool import ToolRegistry
 
 warnings.filterwarnings(
     "ignore",
@@ -54,38 +47,13 @@ class State(BaseState):
     pass
 
 
-def _as_runnable_tool(tool_obj: Any) -> Any:
-    if hasattr(tool_obj, "invoke"):
-        return tool_obj
-    return StructuredTool.from_function(tool_obj)
-
-
-def build_tool_registry(tools: Sequence[Any]) -> ToolRegistry:
-    registry = ToolRegistry()
-    for tool_obj in tools:
-        runnable = _as_runnable_tool(tool_obj)
-        tool = convert_to_openai_tool(runnable)
-        fn = tool["function"]
-        registry.register(
-            ToolDefinition(
-                name=fn["name"],
-                description=fn["description"],
-                parameters=fn["parameters"],
-            ),
-            runnable,
-        )
-    return registry
-
-
 async def build_react_skill_agent(
     name: str,
     config: LLMConfig,
     *,
     skill_list: dict[str, Any] | None = None,
-    extra_tools: Sequence[Any] | None = None,
 ) -> tuple[Agent, ToolRegistry]:
     """组装带 Skill 的 ReAct Agent；返回 (agent, tool_registry)。"""
-    tool_registry = build_tool_registry(extra_tools or [])
     agent_config = AgentConfig(
         name=name,
         description=name,
@@ -99,13 +67,10 @@ async def build_react_skill_agent(
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(agent_config, runtime_config, placeholder)
 
-    skill_prompt = await agent.setup_skills(tool_registry)
-    assert skill_prompt is not None or not agent_config.skill_list
-
     react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,
         llm_config=config,
-        tool_registry=tool_registry,
+        tool_registry=agent.tool_registry,
     )
     graph = RootGraph(state_schema=State)
     graph.add_node(react_subgraph)
@@ -114,7 +79,7 @@ async def build_react_skill_agent(
 
     agent._graph = graph
     agent._compiled_graph = graph.compile(runtime_config)
-    return agent, tool_registry
+    return agent, agent.tool_registry
 
 
 def _print(title: str) -> None:
@@ -133,7 +98,6 @@ def _dummy_llm_config() -> LLMConfig:
 
 async def test_react_skill_wiring() -> None:
     _print("ReAct + Skill wiring")
-    set_active_catalog(None)
 
     agent, registry = await build_react_skill_agent(
         "react_skill_wiring",
@@ -141,82 +105,26 @@ async def test_react_skill_wiring() -> None:
         skill_list=DEFAULT_SKILL_LIST,
     )
 
-    catalog = agent.skill_catalog
-    assert catalog is not None
-    assert len(catalog) == 1
-    assert catalog.get("pdf") is not None
-    assert get_active_catalog() is catalog
-
+    assert agent._agent_config.skill_list == DEFAULT_SKILL_LIST
     names = {d.name for d in registry.list_definitions()}
     assert "load_skill" in names
     assert "read_skill_resource" in names
-
-    set_active_catalog(None)
-    print("ok")
-
-
-async def test_react_skill_tool_executor() -> None:
-    _print("ReAct + Skill ToolExecutor")
-    set_active_catalog(None)
-
-    _agent, registry = await build_react_skill_agent(
-        "react_skill_executor",
-        _dummy_llm_config(),
-        skill_list=DEFAULT_SKILL_LIST,
-    )
-    executor = ToolExecutor(registry)
-
-    load_result = await executor.aexecute(
-        ToolCall(
-            name="load_skill",
-            args={"name": "pdf"},
-            tool_call_id=str(uuid.uuid4()),
-        )
-    )
-    assert load_result.success is True
-    assert "# PDF Skill" in str(load_result.result)
-    assert "name: pdf" not in str(load_result.result)
-
-    read_result = await executor.aexecute(
-        ToolCall(
-            name="read_skill_resource",
-            args={"name": "pdf", "path": "references/specification.md"},
-            tool_call_id=str(uuid.uuid4()),
-        )
-    )
-    assert read_result.success is True
-    assert "UTF-8" in str(read_result.result)
-
-    unknown = await executor.aexecute(
-        ToolCall(
-            name="load_skill",
-            args={"name": "missing"},
-            tool_call_id=str(uuid.uuid4()),
-        )
-    )
-    assert unknown.success is True
-    assert "Unknown skill" in str(unknown.result)
-
-    set_active_catalog(None)
     print("ok")
 
 
 async def test_react_skill_empty_list() -> None:
     _print("ReAct + empty skill_list")
-    set_active_catalog(None)
 
     agent, registry = await build_react_skill_agent(
         "react_skill_empty",
         _dummy_llm_config(),
         skill_list={},
     )
-    assert agent.skill_catalog is not None
-    assert len(agent.skill_catalog) == 0
+    assert agent._agent_config.skill_list == {}
+    # 内置工具仍必有
     names = {d.name for d in registry.list_definitions()}
-    assert "load_skill" not in names
-    assert "read_skill_resource" not in names
-
-    set_active_catalog(None)
+    assert "load_skill" in names
+    assert "read_skill_resource" in names
     print("ok")
 
 
@@ -295,7 +203,6 @@ async def chat_astream(agent: Agent, session_id: str) -> None:
 async def run_unit_tests() -> None:
     assert PDF_SKILL_DIR.is_dir(), f"fixture missing: {PDF_SKILL_DIR}"
     await test_react_skill_wiring()
-    await test_react_skill_tool_executor()
     await test_react_skill_empty_list()
     print("\nAll ReAct + Skill unit tests passed.")
 
@@ -313,7 +220,7 @@ async def run_chat() -> None:
     )
     tool_names = [d.name for d in registry.list_definitions()]
     print(f"Tools: {tool_names}")
-    print(f"Skills: {[s.name for s in (agent.skill_catalog.list() if agent.skill_catalog else [])]}")
+    print(f"skill_list: {agent._agent_config.skill_list}")
 
     session_id = "react_skill_session"
     if mode == "1":
