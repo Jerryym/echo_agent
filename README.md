@@ -1,6 +1,7 @@
 # echo-agent
 
-| ![](https://img.shields.io/github/license/Jerryym/echo_agent.svg) | ![0.1.0](https://shields.io) |
+![](https://img.shields.io/github/license/Jerryym/echo_agent.svg) | [![v0.1.0](https://shields.io)](https://github.com/Jerryym/echo_agent)
+
 
 基于 LangChain / LangGraph 的 **Agent Harness Runtime**。
 
