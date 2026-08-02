@@ -1,0 +1,154 @@
+// echo-agent Runtime Adapter gRPC 契约（v0.1.0）
+// 对齐设计文档 §9：CreateAgent / Invoke / Stream / Resume / StreamResume
+syntax = "proto3";
+
+package echo_agent.v1;
+
+option java_multiple_files = true;
+option java_package = "com.echo_agent.v1";
+option csharp_namespace = "EchoAgent.V1";
+option go_package = "github.com/echo-agent/echo-agent/api/v1;echoagentv1";
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service EchoAgentService {
+  // 按 AgentConfig（+ 可选 RuntimeOptions）创建默认 ReAct Agent，返回 agent_id
+  rpc CreateAgent(CreateAgentRequest) returns (AgentHandle);
+
+  // 同步执行一轮（需 session_id）
+  rpc Invoke(InvokeRequest) returns (AgentResponse);
+
+  // 流式执行；事件由 Adapter 从 LangGraph messages 流映射
+  rpc Stream(InvokeRequest) returns (stream AgentEvent);
+
+  // HITL 恢复（对齐 Agent.resume）
+  rpc Resume(ResumeRequest) returns (AgentResponse);
+
+  // HITL 流式恢复（对齐 Agent.stream_resume）
+  rpc StreamResume(ResumeRequest) returns (stream AgentEvent);
+}
+
+// ---------------------------------------------------------------------------
+// CreateAgent
+// ---------------------------------------------------------------------------
+
+message CreateAgentRequest {
+  AgentConfig config = 1;
+  // 可选；缺省使用进程内 Memory checkpointer
+  RuntimeOptions runtime_options = 2;
+}
+
+message AgentHandle {
+  string id = 1;
+}
+
+message RuntimeOptions {
+  // v0.1：例如 "memory" | "sqlite"；具体取值实现期再定
+  string checkpointer_kind = 1;
+  // 可选，持久化 URI（如 sqlite 路径）
+  string checkpointer_uri = 2;
+}
+
+// ---------------------------------------------------------------------------
+// AgentConfig（对齐 Python AgentConfig / LLMConfig / MCPConnectionConfig）
+// ---------------------------------------------------------------------------
+
+message AgentConfig {
+  string name = 1;
+  string description = 2;
+  LLMConfig llm_config = 3;
+  string system_prompt = 4;
+  // 默认空；服务端忽略，不做 Knowledge 处理
+  repeated string kb_list = 5;
+  // name → path 或 url（对齐 Python dict[str, Any] 当前语义）
+  map<string, string> skill_list = 6;
+  // 对应 Python str | list[str]；单元素即等价单个 str
+  repeated string mcp_allowed_directories = 7;
+  repeated MCPConnectionConfig mcp_servers = 8;
+}
+
+message LLMConfig {
+  string base_url = 1;
+  string api_key = 2;
+  string model_name = 3;
+  // 默认 openai（空字符串时由 Adapter 填默认值）
+  string model_provider = 4;
+  double temperature = 5;
+  int32 max_tokens = 6;
+  int32 timeout = 7;
+  int32 max_retries = 8;
+  bool use_responses_api = 9;
+  string output_version = 10;
+  // builtin_tools / extra_body 等扩展，JSON 字符串
+  string extra_json = 11;
+}
+
+message MCPConnectionConfig {
+  string name = 1;
+  // "stdio" | "http"
+  string type = 2;
+  // stdio
+  string command = 3;
+  repeated string args = 4;
+  // http
+  string url = 5;
+  map<string, string> headers = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Invoke / Stream
+// ---------------------------------------------------------------------------
+
+message UserInput {
+  string text = 1;
+  // v0.1 可选；当前 HumanMessage 仅用 text
+  repeated Attachment attachments = 2;
+}
+
+message Attachment {
+  // image | audio | file
+  string type = 1;
+  // base64 或 url
+  string data = 2;
+}
+
+message InvokeRequest {
+  string agent_id = 1;
+  // 必填 → LangGraph thread_id
+  string session_id = 2;
+  UserInput input = 3;
+}
+
+message AgentResponse {
+  // 最终回复文本（从 state 提取）
+  string output = 1;
+  // 是否停在 HITL
+  bool interrupted = 2;
+  // interrupted=true 时的 interrupt payload（JSON）
+  string interrupt_json = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Resume
+// ---------------------------------------------------------------------------
+
+message ResumeRequest {
+  string agent_id = 1;
+  string session_id = 2;
+  // HITL resume 载荷，如 {"values":{...}} / {"cancelled":true}
+  string values_json = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Streaming 事件（Adapter 归一化；非 Agent 原生枚举）
+// ---------------------------------------------------------------------------
+
+message AgentEvent {
+  // message | interrupt | error | done
+  // 可选扩展：tool_call | tool_result（v0.1 最小集合不含强制要求）
+  string type = 1;
+  // UTF-8 JSON payload
+  bytes data = 2;
+}

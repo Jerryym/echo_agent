@@ -1,0 +1,279 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_user_profile",
+      "description": "根据用户ID查询用户基本信息。\n\nArgs:\n    user_id:\n        用户唯一ID，例如 u001。\n        必须由用户提供或通过其他工具查询获得。",
+      "parameters": {
+        "properties": {
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_order_detail",
+      "description": "查询订单详情。\n\nArgs:\n    order_id:\n        订单编号。",
+      "parameters": {
+        "properties": {
+          "order_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_inventory",
+      "description": "查询商品库存。\n\nArgs:\n    product_name:\n        商品名称。",
+      "parameters": {
+        "properties": {
+          "product_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_name"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_product_price",
+      "description": "查询商品价格。\n\nArgs:\n    product_name:\n        商品名称。",
+      "parameters": {
+        "properties": {
+          "product_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_name"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "create_refund",
+      "description": "创建退款申请。\n\nArgs:\n    order_id:\n        需要退款的订单编号。\n\n    reason:\n        退款原因。",
+      "parameters": {
+        "properties": {
+          "order_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "reason"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_refund_status",
+      "description": "查询退款状态。\n\nArgs:\n    refund_id:\n        退款编号。",
+      "parameters": {
+        "properties": {
+          "refund_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "refund_id"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_salary",
+      "description": "查询员工月薪。\n\nArgs:\n    user_id:\n        用户ID。",
+      "parameters": {
+        "properties": {
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "currency_exchange",
+      "description": "汇率转换。\n\nArgs:\n    amount:\n        金额。\n\n    from_currency:\n        原货币，例如 USD。\n\n    to_currency:\n        目标货币，例如 CNY。",
+      "parameters": {
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "from_currency": {
+            "type": "string"
+          },
+          "to_currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "from_currency",
+          "to_currency"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_weather",
+      "description": "查询城市天气。\n\nArgs:\n    city:\n        城市名称。",
+      "parameters": {
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "generate_business_report",
+      "description": "根据指标生成业务报告。\n\nArgs:\n    title:\n        报告标题。\n\n    metrics:\n        数据指标。\n        必须由用户提供。\n        不允许自动生成。",
+      "parameters": {
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "title",
+          "metrics"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_user_by_name",
+      "description": "根据用户姓名查询用户信息。\n\nThis tool should be used before querying user-related data\nwhen only the user's name is available.\n\nArgs:\n    name:\n        用户姓名，例如 张伟。",
+      "parameters": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "query_user_orders",
+      "description": "根据用户ID查询该用户所有订单。\n\nIMPORTANT:\nThe user_id must come from a previous user query result.\nDo not guess or infer user_id.\n\nArgs:\n    user_id:\n        用户唯一ID，例如 u001。",
+      "parameters": {
+        "properties": {
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "submit_purchase_request",
+      "description": "提交采购申请。\n\nArgs:\n    product_name:\n        商品名称。\n        必须由用户明确提供。\n        不允许推断。\n\n    quantity:\n        采购数量。\n        必须由用户明确提供。\n        不允许推断。\n\n    reason:\n        采购原因。\n        必须由用户明确说明。\n        不允许自动生成。",
+      "parameters": {
+        "properties": {
+          "product_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_name",
+          "quantity",
+          "reason"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_user_account",
+      "description": "删除用户账号。\n\nIMPORTANT:\nThis operation requires user confirmation before execution.\n\nArgs:\n    user_id:\n        用户ID。",
+      "parameters": {
+        "properties": {
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+]

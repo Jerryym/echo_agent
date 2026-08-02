@@ -1,0 +1,123 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_server_info",
+      "description": "查询服务器基础信息",
+      "parameters": {
+        "properties": {
+          "server_id": {
+            "description": "服务器 ID，例如 srv_001",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_service_status",
+      "description": "查询服务器上的服务状态",
+      "parameters": {
+        "properties": {
+          "server_id": {
+            "description": "服务器 ID，例如 srv_001",
+            "type": "string"
+          },
+          "service_name": {
+            "description": "服务名称，例如 nginx、mysql",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "service_name"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "restart_service",
+      "description": "重启服务器上的指定服务",
+      "parameters": {
+        "properties": {
+          "server_id": {
+            "description": "服务器 ID",
+            "type": "string"
+          },
+          "service_name": {
+            "description": "服务名称",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "service_name"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "create_incident_ticket",
+      "description": "创建故障工单",
+      "parameters": {
+        "properties": {
+          "title": {
+            "description": "故障标题",
+            "type": "string"
+          },
+          "description": {
+            "description": "故障描述",
+            "type": "string"
+          },
+          "severity": {
+            "description": "故障等级",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "severity"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_ticket_status",
+      "description": "查询故障工单状态",
+      "parameters": {
+        "properties": {
+          "ticket_id": {
+            "description": "工单编号，例如 INC-10001",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id"
+        ],
+        "type": "object"
+      }
+    }
+  }
+]
