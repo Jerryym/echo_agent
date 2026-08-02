@@ -59,6 +59,8 @@ class ActionNode(Node):
             user_input=input,
             history=self._build_history(state, runtime.context),
             tool_list=self._tool_json_schema,
+            context=runtime.context,
+            agent_prompt=runtime.context.agent_prompt,
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
         print(f"[ReAct][action] tool_selection_response={response}")
@@ -107,6 +109,8 @@ class ActionNode(Node):
             user_input=input,
             history=self._build_history(state, runtime.context),
             tool_list=self._tool_json_schema,
+            context=runtime.context,
+            agent_prompt=runtime.context.agent_prompt,
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
         print(f"[ReAct][action] tool_selection_response={response}")

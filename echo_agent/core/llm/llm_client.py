@@ -8,8 +8,9 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 from ..utils.adapter.message_adapter import MessageAdapter
-from ...prompt import PromptLoader
+from ...prompt import PromptAssembler, PromptLoader
 
+from ..graph.schema import BaseContext
 from ..model.input import UserInput
 from ..model.message import Message
 from ..model.tool import ToolCall
@@ -48,6 +49,8 @@ class LLMClient:
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
         tool_list: Optional[list[dict[str, Any]]] = None,
+        context: BaseContext | None = None,
+        agent_prompt: str | None = None,
         config: RunnableConfig | None = None,
     ):
         """
@@ -58,6 +61,8 @@ class LLMClient:
             user_input: 用户输入
             history: 历史记录
             tool_list: 工具列表
+            context: Runtime Context（含 active_skills）
+            agent_prompt: Agent 系统提示词（可空）
             config: 配置
         """
         try:
@@ -67,6 +72,8 @@ class LLMClient:
                 user_input=user_input,
                 history=history or [],
                 tool_list=tool_list,
+                context=context,
+                agent_prompt=agent_prompt,
             )
             # 配置模型
             model = self._configure_model(tool_list=tool_list)
@@ -85,6 +92,8 @@ class LLMClient:
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
+        context: BaseContext | None = None,
+        agent_prompt: str | None = None,
         config: RunnableConfig | None = None,
     ):
         """
@@ -95,6 +104,8 @@ class LLMClient:
             user_input: 用户输入
             history: 历史记录
             tool_list: 工具列表
+            context: Runtime Context（含 active_skills）
+            agent_prompt: Agent 系统提示词（可空）
             config: 配置
         """
         try:
@@ -104,6 +115,8 @@ class LLMClient:
                 user_input=user_input,
                 history=history or [],
                 tool_list=tool_list,
+                context=context,
+                agent_prompt=agent_prompt,
             )
             # 配置模型
             model = self._configure_model(tool_list=tool_list)
@@ -125,6 +138,8 @@ class LLMClient:
         *,
         method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
         strict: bool | None = None,
+        context: BaseContext | None = None,
+        agent_prompt: str | None = None,
         config: RunnableConfig | None = None
     ):
         """
@@ -139,6 +154,8 @@ class LLMClient:
             history: 历史记录
             method: 结构化输出方式
             strict: 是否严格匹配 schema
+            context: Runtime Context（含 active_skills）
+            agent_prompt: Agent 系统提示词（可空）
             config: 配置
         """
         try:
@@ -147,6 +164,8 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                context=context,
+                agent_prompt=agent_prompt,
             )
             # 配置模型
             model = self._configure_model(
@@ -176,6 +195,8 @@ class LLMClient:
         *,
         method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
         strict: bool | None = None,
+        context: BaseContext | None = None,
+        agent_prompt: str | None = None,
         config: RunnableConfig | None = None,
     ):
         """
@@ -190,6 +211,8 @@ class LLMClient:
             history: 历史记录
             method: 结构化输出方式
             strict: 是否严格匹配 schema
+            context: Runtime Context（含 active_skills）
+            agent_prompt: Agent 系统提示词（可空）
             config: 配置
         """
         try:
@@ -198,6 +221,8 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                context=context,
+                agent_prompt=agent_prompt,
             )
             # 配置模型
             model = self._configure_model(
@@ -223,6 +248,8 @@ class LLMClient:
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
         tool_list: Optional[list[dict[str, Any]]] = None,
+        context: BaseContext | None = None,
+        agent_prompt: str | None = None,
         config: RunnableConfig | None = None,
     ):
         """
@@ -233,6 +260,8 @@ class LLMClient:
             user_input: 用户输入
             history: 历史记录
             tool_list: 工具列表
+            context: Runtime Context（含 active_skills）
+            agent_prompt: Agent 系统提示词（可空）
             config: 配置
         """
         try:
@@ -242,6 +271,8 @@ class LLMClient:
                 user_input=user_input,
                 history=history or [],
                 tool_list=tool_list,
+                context=context,
+                agent_prompt=agent_prompt,
             )
             # 配置模型
             model = self._configure_model(tool_list=tool_list)
@@ -262,6 +293,8 @@ class LLMClient:
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
+        context: BaseContext | None = None,
+        agent_prompt: str | None = None,
         config: RunnableConfig | None = None,
     ):
         """
@@ -272,6 +305,8 @@ class LLMClient:
             user_input: 用户输入
             history: 历史记录
             tool_list: 工具列表
+            context: Runtime Context（含 active_skills）
+            agent_prompt: Agent 系统提示词（可空）
             config: 配置
         """
         try:
@@ -281,6 +316,8 @@ class LLMClient:
                 user_input=user_input,
                 history=history or [],
                 tool_list=tool_list,
+                context=context,
+                agent_prompt=agent_prompt,
             )
             # 配置模型
             model = self._configure_model(tool_list=tool_list)
@@ -356,14 +393,21 @@ class LLMClient:
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
         tool_list: Optional[list[dict[str, Any]]] = None,
+        context: BaseContext | None = None,
+        agent_prompt: str | None = None,
     ):
         """
         构建 LangChain Messages
         """
         messages: list[BaseMessage] = []
 
-        # 添加系统提示词
-        system_prompt = self._build_prompt(prompt, tool_list)
+        # 添加系统提示词（含 Runtime Context 注入的 Loaded Skills，不写入 history）
+        system_prompt = self._build_prompt(
+            prompt,
+            tool_list=tool_list,
+            context=context,
+            agent_prompt=agent_prompt,
+        )
         messages.append(SystemMessage(content=system_prompt))
         # 添加历史记录
         messages.extend(MessageAdapter.to_langchain_messages(history or []))
@@ -377,10 +421,26 @@ class LLMClient:
         
         return messages
 
-    def _build_prompt(self, prompt: str, tool_list: list[dict[str, Any]] | None = None):
+    def _build_prompt(
+        self,
+        prompt: str,
+        tool_list: list[dict[str, Any]] | None = None,
+        context: BaseContext | None = None,
+        agent_prompt: str | None = None,
+    ):
         """
         构建提示词
+
+        有 context 时走 PromptAssembler（注入 agent_prompt / policies / Loaded Skills）；
+        否则回退为 tool_call_policy + 节点 prompt。
         """
+        if context is not None:
+            return PromptAssembler.assemble(
+                agent_prompt=agent_prompt,
+                system_prompt=prompt,
+                active_skills=context.active_skills,
+            )
+
         system_prompts: list[str] = []
 
         # tool call policy prompt: 当工具列表不为空时，才添加工具调用策略提示词

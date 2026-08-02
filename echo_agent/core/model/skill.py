@@ -62,7 +62,14 @@ class SkillStatus(Enum):
 class SkillRuntimeContext(BaseModel):
     """
     Skill Runtime Context 模型: 用于描述Skill的运行时上下文
+
+    参数:
+        status: 生命周期状态（UNLOADED → LOADED → DISCARDED）
+        package: Skill 包元数据
+        instruction: 已加载的指令正文（DISCARDED 后清空）
+        idle_rounds: 连续未触达的 Reason 轮数；达阈值后自动 discard
     """
     status: SkillStatus
     package: SkillPackage
     instruction: str | None = None
+    idle_rounds: int = 0

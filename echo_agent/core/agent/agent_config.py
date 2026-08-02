@@ -2,7 +2,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, Field, model_validator
 
-from ..llm import LLMConfig
+from ..llm.llm_config import LLMConfig
 from ..mcp import MCPConnectionConfig, builtin_mcp_servers
 
 
@@ -19,6 +19,7 @@ class AgentConfig(BaseModel):
         skill_list: 技能列表
         mcp_allowed_directories: 内置 Filesystem 允许访问的目录（由调用方传入）
         mcp_servers: 额外 MCP Server 连接配置；同名覆盖内置，其余追加
+        conversation_max_tokens: 对话最大词元数
 
     说明:
         创建时始终合并内置 Fetch / Filesystem；Filesystem 根目录仅来自
@@ -35,6 +36,8 @@ class AgentConfig(BaseModel):
 
     mcp_allowed_directories: str | list[str]
     mcp_servers: list[MCPConnectionConfig] = Field(default_factory=list)
+
+    conversation_max_tokens: int = 16384
 
     @model_validator(mode="after")
     def _merge_builtin_mcp(self) -> Self:

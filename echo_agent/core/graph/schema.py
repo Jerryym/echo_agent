@@ -57,9 +57,11 @@ class BaseContext(BaseModel):
 
     参数:
         agent_state: 智能体状态
+        agent_prompt: Agent 系统提示词（可空）
         active_skills: 可用的Skill列表
         trace: 智能体跟踪
     """
     agent_state: AgentState
+    agent_prompt: str | None = None
     active_skills: dict[str, SkillRuntimeContext] = Field(default_factory=dict)
     trace: AgentTrace | None = None

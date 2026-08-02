@@ -3,7 +3,8 @@ from langgraph.runtime import Runtime
 from ...graph import BaseContext, BaseState, Node, START_NODE, END_NODE, SubGraph
 from ...llm import LLMConfig
 from ...model.input import UserInput
-from ...runtime.algorithm import trim_conversation
+from ...model.message import Message, Role
+from ...runtime.algorithm import ConversationCompressor, trim_conversation
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
@@ -79,11 +80,21 @@ class ReActStrategy(BaseStrategy):
             description=text,
             goal=text,
         )
-        messages = context.agent_state.conversation.messages if context else []
-        print(f"[ReAct] to_strategy_input | task={task}, messages={len(messages)}")
+        conversation = context.agent_state.conversation if context else None
+        messages = conversation.messages if conversation else []
+        view: list[Message] = []
+        if conversation is not None and conversation.summary is not None:
+            view.append(
+                Message(
+                    role=Role.SYSTEM,
+                    content=ConversationCompressor.render(conversation.summary),
+                )
+            )
+        view.extend(trim_conversation(messages))
+        print(f"[ReAct] to_strategy_input | task={task}, messages={len(view)}")
         return ReActInput(
             task=task,
-            conversation=trim_conversation(messages),
+            conversation=view,
         )
 
     def to_strategy_context(self, context: BaseContext | None = None) -> ReActContext | None:
@@ -94,6 +105,7 @@ class ReActStrategy(BaseStrategy):
             raise ValueError("BaseContext is required for ReAct strategy")
         return ReActContext(
             agent_state=context.agent_state,
+            agent_prompt=context.agent_prompt,
             active_skills=context.active_skills,
             trace=context.trace,
             max_steps=self._max_steps,

@@ -14,13 +14,13 @@ echo-agent 当前已经完成 Agent Runtime 基础能力建设：
 
 当前版本已经能够完成完整 Agent 执行流程。
 
-但是，在实际运行和测试过程中，逐渐暴露出工程化问题：
+但是，在实际运行和测试过程中，逐渐暴露出工程化问题（下文 Task 已部分消化；未消化项列入文末已知限制）：
 
-1. Skill 能力虽然支持动态加载，但 Skill 管理和运行时生命周期不完善。
-2. Tool 虽然支持注册和绑定，但 Agent 可用 Tool 集合缺少动态治理机制。
-3. Runtime Prompt 已支持组合和注入，但其生命周期与会话绑定、缺少单次调用级注入通道：Skill Catalog 随每次调用全量重发，load_skill 详情以 ToolMessage 永久驻留 messages，导致上下文污染。
-4. 长任务执行过程中 Context 持续增长（实测：32 次 LLM 调用、总消耗 332,811 tokens、单次输入 ≈5.8k），需要上下文管理机制。
-5. Agent State（BaseState / ReActState）字段职责未形成契约，Runtime 数据与 Execution 数据边界模糊，且已出现字段职责重叠的实例（observations 与 tool_results）。
+1. Skill 能力虽然支持动态加载，但 Skill 管理和运行时生命周期曾不完善（v0.1.0 已补齐 load/discard/N 轮 expire；Catalog Level 1 仍缺）。
+2. Tool 虽然支持注册和绑定，但 Agent 可用 Tool 集合缺少动态治理机制（**v0.1.0 已知限制**）。
+3. Runtime Prompt 已支持组合和注入，但其生命周期与会话绑定、缺少单次调用级注入通道：Skill Catalog 随每次调用全量重发，load_skill 详情以 ToolMessage 永久驻留 messages，导致上下文污染（详情驻留问题已改造；Catalog 仍待补）。
+4. 长任务执行过程中 Context 持续增长（实测：32 次 LLM 调用、总消耗 332,811 tokens、单次输入 ≈5.8k），需要上下文管理机制（计量 / 裁剪 / 摘要已落地；Tool Result 压缩与量化复测仍待）。
+5. Agent State（BaseState / ReActState）字段职责未形成契约，Runtime 数据与 Execution 数据边界模糊，且已出现字段职责重叠的实例（observations 与 tool_results）（State / Context 分层与 Observation 强类型已落地）。
 
 以上五个问题并非五个孤立缺陷，而是**同一层缺失的五种症状**：上下文无人组装（问题 3、4）、能力无人收放（问题 1、2）、状态边界无人把守（问题 5）。当前 echo-agent 已具备 Agent Framework 能力，缺少的是 Agent Harness Runtime——围绕模型的运行控制层。因此，v0.1.0 发版前的主要目标不是增加更多智能体推理策略，而是补齐 Harness 层，使 echo-agent 从 `LangGraph + Strategy + Tool`（执行堆叠）演进为 `Application → Harness Runtime → Execution Strategy → LangGraph`（控制分层）：框架负责执行，Harness 负责控制，Strategy 负责推理模式。
 
@@ -35,7 +35,7 @@ echo-agent 当前已经完成 Agent Runtime 基础能力建设：
 
 ### 调整后目标
 
-> 完成基于 LangGraph 的 Agent Harness Runtime 初版，并以 ReAct 作为默认执行策略。
+> 完成基于 LangGraph 的 Agent Harness Runtime **雏形**，并以 ReAct 作为默认执行策略；接受工具动态加载等已知限制（见文末）。
 
 调整理由：
 
@@ -265,16 +265,23 @@ Prompt 按生命周期分为两类：
 
 **体现原则 2（能力分层管理、渐进披露）· 指令层激活管理。**
 
-#### 当前状态
+#### 当前状态（v0.1.0 已落地部分）
 
-已有 `SkillPackage` 抽象（本地包）、SKILL.md 解析、进程级只读 catalog、`load_skill` / `read_skill_resource` 两个工具；远程 Skill 未支持。
+* `SkillPackage` 抽象（本地包）、SKILL.md 解析、`load_skill` / `read_skill_resource`
+* **load_skill 语义**：激活 Runtime Context（`active_skills`），消息仅轻量回执；详情由 PromptAssembler 按调用注入
+* **会话隔离**：`Agent._active_skills_map` 按 session 隔离，不再使用进程级全局 catalog
+* **生命周期**：`UNLOADED → LOADED → DISCARDED`
+  * 手动 `discard` / `unload` → `DISCARDED` 并移出 `active_skills`
+  * 每个 Reason 轮对 LOADED 技能 `idle_rounds += 1`；`load_skill` / `read_skill_resource` 触达时重置
+  * 达到固定阈值 **3** 轮未触达则自动 discard
+* 远程 Skill、包内容缓存仍未支持
 
-#### 存在的问题
+#### 仍待补齐（已知限制 / 后续）
 
-1. **读取即消息**：`load_skill` 返回全文 → ToolMessage 永久驻留 messages。实测错误加载的 Skill 约占单次输入 34%，叠加错误 tool result 后优化空间 30%~50%
-2. **无生命周期**：加载即永驻，UNLOADED → ACTIVE → DISCARDED 状态机缺失
-3. **存储层隐患**：`_active_catalog` 为进程级全局单例，存在多会话隔离风险；包内容每次读取、无缓存
-4. **冷启动信息不足**：模型面对 name-only 列表难以选择，需要 description 元数据
+1. **Skill Catalog Level 1**：冷启动 name + description 名单尚未注入 Prompt
+2. **Skill → Tool Scope**：激活 skill 裁剪可见工具，依赖 Task 4
+3. **读取缓存**：包内容缓存，消除重复 IO
+4. 状态枚举命名：实现使用 `LOADED`（等同设计稿 ACTIVE）
 
 #### 设计目标
 
@@ -282,11 +289,11 @@ Skill 从「文本资源」升级为「能力包」（Capability Package = Instr
 
 #### 设计内容
 
-1. **Skill Registry**：catalog 保持只读，元数据含 name + description（供冷启动选择）
-2. **生命周期状态机**：UNLOADED → ACTIVE → DISCARDED；支持手动 discard 与 N 轮未使用自动 expire
-3. **load_skill 语义改造**（核心）：从「返回全文的消息」改为「激活 Runtime Context」——skill 内容不进 messages，由 PromptAssembler（Task 2）在每次调用前注入当前 ACTIVE skills；消息流中仅保留轻量加载事件供 trace
-4. **Skill 决定 Tool Scope**：激活的 skill 声明关联工具集，供 Task 4 裁剪可见工具
-5. **读取缓存**：包内容缓存，消除重复 IO
+1. **Skill Registry**：catalog 保持只读，元数据含 name + description（供冷启动选择）——**v0.1.0 未完成**
+2. **生命周期状态机**：UNLOADED → LOADED(ACTIVE) → DISCARDED；手动 discard + N 轮未触达自动 expire——**v0.1.0 已完成（N=3，固定）**
+3. **load_skill 语义改造**（核心）：激活 Runtime Context，详情不进 messages——**v0.1.0 已完成**
+4. **Skill 决定 Tool Scope**：供 Task 4 裁剪——**未做（随 Task 4）**
+5. **读取缓存**：包内容缓存——**未做**
 
 ---
 
@@ -356,19 +363,30 @@ Skill 从「文本资源」升级为「能力包」（Capability Package = Instr
 
 ---
 
-## 明确排除（v0.1.0 不做）
+## 明确排除与已知限制（v0.1.0）
+
+**明确不做（延后版本）：**
 
 * **Plan-and-Execute**：属 Execution Strategy，v0.2.0 作为 Harness 之上的第二个策略验证
 * **Memory**（long-term / vector / retrieval）：Context Runtime 稳定前不做
 * **Multi-Agent**：依赖稳定 Runtime 基础
 * **新 MCP Server**：现有接入已满足验证需求
 
+**v0.1.0 接受为已知限制（雏形口径）：**
+
+* **Task 4 工具动态加载**：可见工具集仍为组装期快照
+* Skill Catalog Level 1（name + description）未注入
+* Tool Result 压缩未做；单次输入 2–4k 量化目标未复测
+* Prompt Registry / 静态文件缓存未做
+
+产品口径文档：`docs/echo-agent v0.1.0 设计文档.md`。
+
 ---
 
 ## v0.1.0 目标与演进
 
-* **v0.1.0**：Harness Runtime 初版（State Contract + Prompt / Skill / Tool / Context 四个 Runtime）+ ReAct 默认策略 + MCP + HITL
-* **v0.2.0**：Execution Strategy 扩展（Plan-and-Execute / Reflection）；权限梯度；上下文重置
+* **v0.1.0**：**Harness Runtime 雏形**（State / Prompt / Skill 生命周期 / Context 计量与裁剪摘要）+ ReAct 默认策略 + MCP + HITL；接受工具动态加载等已知限制
+* **v0.2.0**：Tool Resolver（动态工具治理）；Execution Strategy 扩展（Plan-and-Execute / Reflection）；权限梯度；上下文重置；Skill Catalog / Tool Result 压缩等补齐
 * **v0.3.0**：Memory / Multi-Agent / Long-running Agent
 
 完成后，echo-agent 的定位：**一个基于 LangGraph 构建的 Agent Harness Runtime——通过上下文、能力、状态三条管理主线与预算观测回路管理模型运行环境，并支持多种 Execution Strategy 扩展。**

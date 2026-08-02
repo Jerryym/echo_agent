@@ -34,6 +34,8 @@ class FinalNode(Node):
             prompt=self._prompt,
             user_input=input,
             history=history,
+            context=runtime.context,
+            agent_prompt=runtime.context.agent_prompt,
             config=config,
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
@@ -61,6 +63,8 @@ class FinalNode(Node):
             prompt=self._prompt,
             user_input=input,
             history=history,
+            context=runtime.context,
+            agent_prompt=runtime.context.agent_prompt,
             config=config,
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)

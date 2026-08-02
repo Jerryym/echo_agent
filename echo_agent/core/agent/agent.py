@@ -5,12 +5,18 @@ from langgraph.types import Command
 
 from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseInput, RootGraph
+from ..llm import LLMClient
 from ..mcp import MCPClient
 from ..model.agent_state import AgentState
 from ..model.input import UserInput
 from ..model.message import Message, Role
 from ..model.skill import SkillRuntimeContext
 from ..runtime import RuntimeConfig
+from ..runtime.algorithm import (
+    ConversationCompressor,
+    amaybe_compress_conversation,
+    maybe_compress_conversation,
+)
 from ..tool import ToolDefinition, ToolRegistry
 from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_tool
 from ..tool.utils import to_tool_definition
@@ -51,6 +57,9 @@ class Agent:
         self._agent_state_map: dict[str, AgentState] = {} # 会话ID -> 智能体状态
         self._active_skills_map: dict[str, dict[str, SkillRuntimeContext]] = {}
         self._pending_inputs: dict[str, UserInput | type[BaseInput]] = {}
+        self._conversation_compressor = ConversationCompressor(
+            LLMClient(agent_config.llm_config)
+        )
         
         # 注册工具
         self._register_tools()
@@ -95,7 +104,8 @@ class Agent:
         result = self._compiled_graph.invoke(graph_input, runnable_config, context=context)
         # 写回历史记录
         self._append_conversation(session_id, result)
-        self._print_token_usage(context)
+        self._print_token_usage(session_id, context)
+        self._compress_conversation(session_id)
         return result
 
     async def ainvoke(self, session_id: str, input: UserInput | type[BaseInput]):
@@ -119,7 +129,8 @@ class Agent:
         result = await self._compiled_graph.ainvoke(graph_input, runnable_config, context=context)
         # 写回历史记录
         self._append_conversation(session_id, result)
-        self._print_token_usage(context)
+        self._print_token_usage(session_id, context)
+        await self._acompress_conversation(session_id)
         return result
 
     def stream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
@@ -179,7 +190,8 @@ class Agent:
         context = self._build_context(session_id)
         result = self._compiled_graph.invoke(Command(resume=values), runnable_config, context=context)
         self._append_conversation(session_id, result)
-        self._print_token_usage(context)
+        self._print_token_usage(session_id, context)
+        self._compress_conversation(session_id)
         return result
 
     async def aresume(self, session_id: str, values: dict):
@@ -190,7 +202,8 @@ class Agent:
         context = self._build_context(session_id)
         result = await self._compiled_graph.ainvoke(Command(resume=values), runnable_config, context=context)
         self._append_conversation(session_id, result)
-        self._print_token_usage(context)
+        self._print_token_usage(session_id, context)
+        await self._acompress_conversation(session_id)
         return result
 
     def stream_resume(self, session_id: str, values: dict, version: str = "v2"):
@@ -287,8 +300,12 @@ class Agent:
             raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
         return BaseContext(
             agent_state=agent_state,
+            agent_prompt=self._agent_config.system_prompt,
             active_skills=self._get_active_skills(session_id),
-            trace=AgentTrace(session_id=session_id),
+            trace=AgentTrace(
+                session_id=session_id,
+                token_usage=agent_state.token_usage.model_copy(),
+            ),
         )
 
     def _get_agent_state(self, session_id: str) -> AgentState:
@@ -301,12 +318,13 @@ class Agent:
         """获取会话级已加载 Skill（同 dict 引用，供 load_skill 写回）。"""
         return self._active_skills_map.setdefault(session_id, {})
 
-    @staticmethod
-    def _print_token_usage(context: BaseContext) -> None:
-        """打印本轮 AgentTrace 的 token 使用情况。"""
+    def _print_token_usage(self, session_id: str, context: BaseContext) -> None:
+        """将会话级 token 用量写回 AgentState 并打印。"""
         if context.trace is None:
             return
         usage = context.trace.token_usage
+        agent_state = self._get_agent_state(session_id)
+        agent_state.token_usage = usage.model_copy()
         print(
             f"[AgentTrace] token_usage | "
             f"input={usage.input_tokens} "
@@ -314,16 +332,34 @@ class Agent:
             f"total={usage.total_tokens}"
         )
 
+    def _compress_conversation(self, session_id: str) -> None:
+        """交互结束后按需压缩会话历史（同步）。"""
+        maybe_compress_conversation(
+            self._get_agent_state(session_id),
+            self._conversation_compressor,
+            max_tokens=self._agent_config.conversation_max_tokens,
+        )
+
+    async def _acompress_conversation(self, session_id: str) -> None:
+        """交互结束后按需压缩会话历史（异步）。"""
+        await amaybe_compress_conversation(
+            self._get_agent_state(session_id),
+            self._conversation_compressor,
+            max_tokens=self._agent_config.conversation_max_tokens,
+        )
+
     def _stream_iterator(self, graph_input: dict | Command, runnable_config: RunnableConfig, context: BaseContext, session_id: str,version: str):
         yield from self._compiled_graph.stream(graph_input, runnable_config, context=context, stream_mode="messages", subgraphs=True, version=version)
         self._append_conversation(session_id)
-        self._print_token_usage(context)
+        self._print_token_usage(session_id, context)
+        self._compress_conversation(session_id)
 
     async def _astream_iterator(self, graph_input: dict | Command, runnable_config: RunnableConfig, context: BaseContext, session_id: str, version: str):
         async for event in self._compiled_graph.astream(graph_input, runnable_config, context=context, stream_mode="messages", subgraphs=True, version=version):
             yield event
         self._append_conversation(session_id)
-        self._print_token_usage(context)
+        self._print_token_usage(session_id, context)
+        await self._acompress_conversation(session_id)
 
     def _append_conversation(self, session_id: str, result=None) -> None:
         """

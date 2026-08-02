@@ -110,8 +110,11 @@ def create_read_skill_resource_tool(skill_manager: SkillManager):
             return f"Invalid resource path: {path}"
 
         try:
+            context = get_skill_runtime_context()
             skill_package = skill_manager.build_skill_package(name)
-            return await _aread_package_resource(skill_package, relative)
+            content = await _aread_package_resource(skill_package, relative)
+            skill_manager.touch_skill(context, name)
+            return content
         except Exception as exc:
             return f"Failed to read skill resource '{path}' from '{name}': {exc}"
 
