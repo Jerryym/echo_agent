@@ -1,7 +1,6 @@
 # echo-agent
 
-![](https://img.shields.io/github/license/Jerryym/echo_agent.svg) | [![v0.1.0](https://shields.io)](https://github.com/Jerryym/echo_agent)
-
+![](https://img.shields.io/github/license/Jerryym/echo_agent.svg) 
 
 基于 LangChain / LangGraph 的 **Agent Harness Runtime**。
 
@@ -13,6 +12,8 @@ Application
     → Execution Strategy（默认 ReAct）
       → LangGraph
 ```
+
+版本：**v0.1.0**
 
 ## 要求
 
