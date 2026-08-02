@@ -2,57 +2,57 @@
 
 ![](https://img.shields.io/github/license/Jerryym/echo_agent.svg) 
 
-»ùÓÚ LangChain / LangGraph µÄ **Agent Harness Runtime**¡£
+åŸºäº LangChain / LangGraph çš„ **Agent Harness Runtime**ã€‚
 
-ÔÚÖ´ĞĞ¿ò¼ÜÖ®ÉÏÌá¹©Î§ÈÆÄ£ĞÍµÄÔËĞĞ¿ØÖÆ²ã£º¹ÜÀíÄ£ĞÍ¿É¼ûµÄÉÏÏÂÎÄ¡¢¿ÉÓÃµÄÄÜÁ¦£¬ÒÔ¼°¿É³Ö¾Ã»¯µÄÖ´ĞĞ×´Ì¬¡£¿É×÷Îª¶ÀÁ¢ Python ¿âÊ¹ÓÃ£¬Ò²¿É×÷Îª Agent / Workflow Æ½Ì¨µÄµ×²ãÖ´ĞĞÒıÇæ¡£
+åœ¨æ‰§è¡Œæ¡†æ¶ä¹‹ä¸Šæä¾›å›´ç»•æ¨¡å‹çš„è¿è¡Œæ§åˆ¶å±‚ï¼šç®¡ç†æ¨¡å‹å¯è§çš„ä¸Šä¸‹æ–‡ã€å¯ç”¨çš„èƒ½åŠ›ï¼Œä»¥åŠå¯æŒä¹…åŒ–çš„æ‰§è¡ŒçŠ¶æ€ã€‚å¯ä½œä¸ºç‹¬ç«‹ Python åº“ä½¿ç”¨ï¼Œä¹Ÿå¯ä½œä¸º Agent / Workflow å¹³å°çš„åº•å±‚æ‰§è¡Œå¼•æ“ã€‚
 
 ```text
 Application
-  ¡ú Harness Runtime£¨ÉÏÏÂÎÄ / ÄÜÁ¦ / ×´Ì¬£©
-    ¡ú Execution Strategy£¨Ä¬ÈÏ ReAct£©
-      ¡ú LangGraph
+  â†’ Harness Runtimeï¼ˆä¸Šä¸‹æ–‡ / èƒ½åŠ› / çŠ¶æ€ï¼‰
+    â†’ Execution Strategyï¼ˆé»˜è®¤ ReActï¼‰
+      â†’ LangGraph
 ```
 
-°æ±¾£º**v0.1.0**
+ç‰ˆæœ¬ï¼š**v0.1.0**
 
-## ÒªÇó
+## è¦æ±‚
 
 - Python >= 3.12
-- ÍÆ¼öÊ¹ÓÃ [uv](https://github.com/astral-sh/uv)
+- æ¨èä½¿ç”¨ [uv](https://github.com/astral-sh/uv)
 
-## °²×°
+## å®‰è£…
 
 ```bash
 uv sync
 ```
 
-¿ª·¢ÒÀÀµ£¨²âÊÔ MCP¡¢console UI µÈ£©£º
+å¼€å‘ä¾èµ–ï¼ˆæµ‹è¯• MCPã€console UI ç­‰ï¼‰ï¼š
 
 ```bash
 uv sync --group dev
 ```
 
-## ÄÜÁ¦Ò»ÀÀ£¨v0.1.0£©
+## èƒ½åŠ›ä¸€è§ˆï¼ˆv0.1.0ï¼‰
 
-| ÄÜÁ¦ | ËµÃ÷ |
+| èƒ½åŠ› | è¯´æ˜ |
 |------|------|
-| Agent / Graph / LLM / Tool | Í³Ò»Èë¿Ú¡¢Workflow¡¢Ä£ĞÍµ÷ÓÃÓë¹¤¾ßÖ´ĞĞ |
-| ReAct | Ä¬ÈÏ Execution Strategy |
-| HITL | ÉóÅú / ²¹²ÎÖĞ¶ÏÓë»Ö¸´ |
-| MCP | Client ½ÓÈë£»ÄÚÖÃ Fetch / Filesystem |
-| Skill | ±¾µØ°ü£»¼¤»î½ø Runtime Context£¨ÏêÇé²»½ø messages£©£»»á»°¸ôÀë£»3 ÂÖÎ´´¥´ï×Ô¶¯ expire |
-| Prompt | PromptAssembler£ºAgent / Policy / Loaded Skills |
-| Context ÖÎÀí | Token ¼ÆÁ¿£»»á»°²Ã¼ô£»³¬ãĞÖµÀúÊ·ÕªÒª |
+| Agent / Graph / LLM / Tool | ç»Ÿä¸€å…¥å£ã€Workflowã€æ¨¡å‹è°ƒç”¨ä¸å·¥å…·æ‰§è¡Œ |
+| ReAct | é»˜è®¤ Execution Strategy |
+| HITL | å®¡æ‰¹ / è¡¥å‚ä¸­æ–­ä¸æ¢å¤ |
+| MCP | Client æ¥å…¥ï¼›å†…ç½® Fetch / Filesystem |
+| Skill | æœ¬åœ°åŒ…ï¼›æ¿€æ´»è¿› Runtime Contextï¼ˆè¯¦æƒ…ä¸è¿› messagesï¼‰ï¼›ä¼šè¯éš”ç¦»ï¼›3 è½®æœªè§¦è¾¾è‡ªåŠ¨ expire |
+| Prompt | PromptAssemblerï¼šAgent / Policy / Loaded Skills |
+| Context æ²»ç† | Token è®¡é‡ï¼›ä¼šè¯è£å‰ªï¼›è¶…é˜ˆå€¼å†å²æ‘˜è¦ |
 
-### ÒÑÖªÏŞÖÆ
+### å·²çŸ¥é™åˆ¶
 
-- ¹¤¾ß¼¯ÔÚ²ßÂÔ×é×°ÆÚ¿ìÕÕ£¬ÔËĞĞÆÚ²»Ëæ Skill ¶¯Ì¬²Ã¼ô
-- Skill ÀäÆô¶¯ Catalog£¨name + description£©ÉĞÎ´×¢Èë Prompt
-- Tool Result Ñ¹Ëõ¡¢Plan-and-Execute¡¢Memory¡¢Multi-Agent Î´×ö
+- å·¥å…·é›†åœ¨ç­–ç•¥ç»„è£…æœŸå¿«ç…§ï¼Œè¿è¡ŒæœŸä¸éš Skill åŠ¨æ€è£å‰ª
+- Skill å†·å¯åŠ¨ Catalogï¼ˆname + descriptionï¼‰å°šæœªæ³¨å…¥ Prompt
+- Tool Result å‹ç¼©ã€Plan-and-Executeã€Memoryã€Multi-Agent æœªåš
 
-Ïê¼û [Éè¼ÆÎÄµµ](docs/echo-agent%20v0.1.0%20Éè¼ÆÎÄµµ.md)¡£
+è¯¦è§ [è®¾è®¡æ–‡æ¡£](docs/echo-agent%20v0.1.0%20è®¾è®¡æ–‡æ¡£.md)ã€‚
 
-## ¿ìËÙ¿ªÊ¼
+## å¿«é€Ÿå¼€å§‹
 
 ```python
 from pathlib import Path
@@ -71,7 +71,7 @@ class State(BaseState):
 
 
 def build_agent(llm_config: LLMConfig) -> Agent:
-    tool_registry = ToolRegistry()  # ¿É×¢²áÒµÎñ¹¤¾ß£»ÄÚÖÃ load_skill µÈÓÉ Agent ×¢²á
+    tool_registry = ToolRegistry()  # å¯æ³¨å†Œä¸šåŠ¡å·¥å…·ï¼›å†…ç½® load_skill ç­‰ç”± Agent æ³¨å†Œ
 
     react = StrategyFactory.create_as_node(
         StrategyType.REACT,
@@ -96,63 +96,63 @@ def build_agent(llm_config: LLMConfig) -> Agent:
 
 
 agent = build_agent(LLMConfig(...))
-# ÈôÊ¹ÓÃ MCP£ºawait agent.register_mcp_tools()
-result = agent.invoke("session-1", UserInput(text="ÄãºÃ"))
+# è‹¥ä½¿ç”¨ MCPï¼šawait agent.register_mcp_tools()
+result = agent.invoke("session-1", UserInput(text="ä½ å¥½"))
 print(result.get("response") if isinstance(result, dict) else result)
 ```
 
-¸ü¶à¿ÉÔËĞĞÊ¾Àı¼û `tests/` Óë `console/`¡£
+æ›´å¤šå¯è¿è¡Œç¤ºä¾‹è§ `tests/` ä¸ `console/`ã€‚
 
-## ÏîÄ¿½á¹¹
+## é¡¹ç›®ç»“æ„
 
 ```text
 echo_agent/
-©À©¤©¤ common/          # Òì³£Óëµ÷ÊÔ
-©À©¤©¤ prompt/          # PromptLoader / PromptAssembler
-©¸©¤©¤ core/
-    ©À©¤©¤ agent/       # Agent Èë¿ÚÓëÅäÖÃ
-    ©À©¤©¤ graph/       # Workflow / Node / State / Context
-    ©À©¤©¤ strategy/    # ReAct£¨Plan-and-Execute Õ¼Î»£©
-    ©À©¤©¤ capability/  # Skill
-    ©À©¤©¤ tool/        # ×¢²áÓëÖ´ĞĞ
-    ©À©¤©¤ mcp/         # MCP Client
-    ©À©¤©¤ llm/         # Ä£ĞÍ¿Í»§¶Ë
-    ©À©¤©¤ runtime/     # RuntimeConfig¡¢HITL¡¢»á»°Ñ¹Ëõ
-    ©À©¤©¤ model/       # Í³Ò»Êı¾İÄ£ĞÍ
-    ©¸©¤©¤ trace/       # Token / AgentTrace
-docs/                # Éè¼ÆÎÄµµ
-tests/               # ¼¯³ÉÓëµ¥ÔªÊ¾Àı
-console/             # ±¾µØµ÷ÊÔ UI£¨¿ÉÑ¡£©
+â”œâ”€â”€ common/          # å¼‚å¸¸ä¸è°ƒè¯•
+â”œâ”€â”€ prompt/          # PromptLoader / PromptAssembler
+â””â”€â”€ core/
+    â”œâ”€â”€ agent/       # Agent å…¥å£ä¸é…ç½®
+    â”œâ”€â”€ graph/       # Workflow / Node / State / Context
+    â”œâ”€â”€ strategy/    # ReActï¼ˆPlan-and-Execute å ä½ï¼‰
+    â”œâ”€â”€ capability/  # Skill
+    â”œâ”€â”€ tool/        # æ³¨å†Œä¸æ‰§è¡Œ
+    â”œâ”€â”€ mcp/         # MCP Client
+    â”œâ”€â”€ llm/         # æ¨¡å‹å®¢æˆ·ç«¯
+    â”œâ”€â”€ runtime/     # RuntimeConfigã€HITLã€ä¼šè¯å‹ç¼©
+    â”œâ”€â”€ model/       # ç»Ÿä¸€æ•°æ®æ¨¡å‹
+    â””â”€â”€ trace/       # Token / AgentTrace
+docs/                # è®¾è®¡æ–‡æ¡£
+tests/               # é›†æˆä¸å•å…ƒç¤ºä¾‹
+console/             # æœ¬åœ°è°ƒè¯• UIï¼ˆå¯é€‰ï¼‰
 ```
 
-## ÎÄµµ
+## æ–‡æ¡£
 
-| ÎÄµµ | ËµÃ÷ |
+| æ–‡æ¡£ | è¯´æ˜ |
 |------|------|
-| [v0.1.0 Éè¼ÆÎÄµµ](docs/echo-agent%20v0.1.0%20Éè¼ÆÎÄµµ.md) | ²úÆ·¿Ú¾¶¡¢½»¸¶·¶Î§ÓëÒÑÖªÏŞÖÆ |
-| [Harness Runtime ÓÅ»¯Éè¼Æ](docs/runtime/echo-agent%20v0.1.0%20Harness%20Runtime%20ÓÅ»¯Éè¼ÆÎÄµµ.md) | Harness Ô­ÔòÓëÈÎÎñ²ğ½â |
-| [Runtime Adapter ¿ìËÙ½ÓÈë](docs/runtime%20adapter/¿ìËÙ½ÓÈë.md) | gRPC Adapter ½ÓÈë |
-| [Skill v0.1.0](docs/capability/skill/skill%20v0.1.0%20Éè¼ÆÎÄµµ.md) | Skill ÄÜÁ¦Éè¼Æ |
-| [ReAct ²âÊÔ°¸Àı](tests/docs/ReAct%20Agent%20²âÊÔ°¸ÀıÎÄµµ.md) | ReAct Áªµ÷ËµÃ÷ |
+| [v0.1.0 è®¾è®¡æ–‡æ¡£](docs/echo-agent%20v0.1.0%20è®¾è®¡æ–‡æ¡£.md) | äº§å“å£å¾„ã€äº¤ä»˜èŒƒå›´ä¸å·²çŸ¥é™åˆ¶ |
+| [Harness Runtime ä¼˜åŒ–è®¾è®¡](docs/runtime/echo-agent%20v0.1.0%20Harness%20Runtime%20ä¼˜åŒ–è®¾è®¡æ–‡æ¡£.md) | Harness åŸåˆ™ä¸ä»»åŠ¡æ‹†è§£ |
+| [Runtime Adapter å¿«é€Ÿæ¥å…¥](docs/runtime%20adapter/å¿«é€Ÿæ¥å…¥.md) | gRPC Adapter æ¥å…¥ |
+| [Skill v0.1.0](docs/capability/skill/skill%20v0.1.0%20è®¾è®¡æ–‡æ¡£.md) | Skill èƒ½åŠ›è®¾è®¡ |
+| [ReAct æµ‹è¯•æ¡ˆä¾‹](tests/docs/ReAct%20Agent%20æµ‹è¯•æ¡ˆä¾‹æ–‡æ¡£.md) | ReAct è”è°ƒè¯´æ˜ |
 
-## °æ±¾¹æ»®
+## ç‰ˆæœ¬è§„åˆ’
 
-- [x] **v0.1.0**£¨µ±Ç°£©£ºHarness ³ûĞÎ + ReAct + MCP + HITL + Skill
-- [ ] **v0.2.0**£º¹¤¾ß¶¯Ì¬ÖÎÀí¡¢Plan-and-Execute¡¢È¨ÏŞÌİ¶ÈµÈ
-- [ ] **v0.3.0**£ºMemory / Multi-Agent / Long-running Agent
+- [x] **v0.1.0**ï¼ˆå½“å‰ï¼‰ï¼šHarness é›å½¢ + ReAct + MCP + HITL + Skill
+- [ ] **v0.2.0**ï¼šå·¥å…·åŠ¨æ€æ²»ç†ã€Plan-and-Executeã€æƒé™æ¢¯åº¦ç­‰
+- [ ] **v0.3.0**ï¼šMemory / Multi-Agent / Long-running Agent
 
 ## License
 
-ÒÔ²Ö¿âÄÚÉùÃ÷Îª×¼¡£
+ä»¥ä»“åº“å†…å£°æ˜ä¸ºå‡†ã€‚
 
 ## References
 
 - [LangGraph](https://reference.langchain.com/python/langgraph)
-- [LangGraph ÎÄµµ](https://docs.langchain.com/oss/python/langgraph/overview)
+- [LangGraph æ–‡æ¡£](https://docs.langchain.com/oss/python/langgraph/overview)
 - [LangChain](https://reference.langchain.com/python/langchain)
-- [LangChain ÎÄµµ](https://docs.langchain.com/oss/python/langchain/overview)
-- [MCP ÎÄµµ](https://modelcontextprotocol.io/docs/2025-11-25/getting-started/intro)
-- [ÖÇÄÜÌå Harness ¹¤³ÌÖ¸ÄÏ](https://yeasy.gitbook.io/harness_engineering_guide)
+- [LangChain æ–‡æ¡£](https://docs.langchain.com/oss/python/langchain/overview)
+- [MCP æ–‡æ¡£](https://modelcontextprotocol.io/docs/2025-11-25/getting-started/intro)
+- [æ™ºèƒ½ä½“ Harness å·¥ç¨‹æŒ‡å—](https://yeasy.gitbook.io/harness_engineering_guide)
 - [Harness Engineering Guide](https://harness-guide.com/zh/)
 - [Agent Harness Complete Guide](https://harness-engineering.ai/blog/agent-harness-complete-guide/)
 - [What is Harness Engineering?](https://harness-engineering.ai/blog/what-is-harness-engineering/)
