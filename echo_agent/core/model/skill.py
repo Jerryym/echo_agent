@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SkillType(Enum):
@@ -24,6 +24,32 @@ class SkillFrontmatter(BaseModel):
     name: str
     description: str
     metadata: dict[str, Any] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def move_allowed_tools_to_metadata(cls, data: Any) -> Any:
+        """Accept top-level allowed_tools while storing it as metadata."""
+        if not isinstance(data, dict) or "allowed_tools" not in data:
+            return data
+        normalized = dict(data)
+        metadata = dict(normalized.get("metadata") or {})
+        metadata["allowed_tools"] = normalized.pop("allowed_tools")
+        normalized["metadata"] = metadata
+        return normalized
+
+    @property
+    def allowed_tools(self) -> list[str] | None:
+        """Return metadata.allowed_tools, normalized to non-empty names."""
+        if self.metadata is None or "allowed_tools" not in self.metadata:
+            return None
+        value = self.metadata["allowed_tools"]
+        if not isinstance(value, list):
+            return []
+        return [
+            name.strip()
+            for name in value
+            if isinstance(name, str) and name.strip()
+        ]
 
 
 class SkillPackage(BaseModel):
@@ -67,7 +93,7 @@ class SkillRuntimeContext(BaseModel):
         status: 生命周期状态（UNLOADED → LOADED → DISCARDED）
         package: Skill 包元数据
         instruction: 已加载的指令正文（DISCARDED 后清空）
-        idle_rounds: 连续未触达的 Reason 轮数；达阈值后自动 discard
+        idle_rounds: 连续未触达的用户交互次数；达阈值后自动 discard
     """
     status: SkillStatus
     package: SkillPackage

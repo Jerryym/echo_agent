@@ -80,6 +80,14 @@ def create_load_skill_tool(skill_manager: SkillManager):
             context = get_skill_runtime_context()
             skill_package = skill_manager.build_skill_package(name)
             skill_manager.load_skill(context=context, skill_package=skill_package)
+            resources = [
+                *skill_package.scripts,
+                *skill_package.references,
+                *skill_package.assets,
+            ]
+            if resources:
+                listed = ", ".join(resources)
+                return f"Skill {name} loaded. Available resources: {listed}"
             return f"Skill {name} loaded."
         except Exception as exc:
             return str(exc)

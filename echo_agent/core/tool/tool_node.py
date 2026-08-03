@@ -3,9 +3,10 @@ import json
 from langgraph.runtime import Runtime
 
 from ...common import format_debug
+from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseState, Node
 from ..model.message import Message, Role
-from ..model.tool import ToolResult, ToolState
+from ..model.tool import ToolCall, ToolResult, ToolState
 from .tool_executor import ToolExecutor
 from .toolkit import reset_skill_runtime_context, set_skill_runtime_context
 
@@ -39,6 +40,7 @@ class ToolNode(Node):
                 result = self._tool_executor.execute(tool_call)
                 print(f"[ReAct][tool] result name={result.name} success={result.success}")
                 print(format_debug(result.result))
+                self._touch_skills_for_tool(runtime.context, tool_call)
                 tool_results.append(result)
         finally:
             reset_skill_runtime_context(token)
@@ -60,11 +62,20 @@ class ToolNode(Node):
                 result = await self._tool_executor.aexecute(tool_call)
                 print(f"[ReAct][tool] result name={result.name} success={result.success}")
                 print(format_debug(result.result))
+                self._touch_skills_for_tool(runtime.context, tool_call)
                 tool_results.append(result)
         finally:
             reset_skill_runtime_context(token)
 
         return self._build_result(tool_results)
+
+    def _touch_skills_for_tool(self, context: BaseContext, tool_call: ToolCall) -> None:
+        """执行 allowed_tools 内工具时重置对应 skill 的 idle。"""
+        definition = self._tool_executor.get_definition(tool_call.name)
+        original_name = None
+        if definition is not None:
+            original_name = definition.meta_data.get("original_name")
+        SkillManager.touch_skills_for_tool(context, tool_call.name, original_name)
 
     def _build_result(self, tool_results: list[ToolResult]) -> dict:
         tool_messages = self._build_tool_messages(tool_results)

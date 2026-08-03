@@ -438,6 +438,7 @@ class LLMClient:
             return PromptAssembler.assemble(
                 agent_prompt=agent_prompt,
                 system_prompt=prompt,
+                skill_list=context.skill_list,
                 active_skills=context.active_skills,
             )
 

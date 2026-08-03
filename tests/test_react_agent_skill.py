@@ -28,9 +28,13 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
 from echo_agent.core.graph import END_NODE, START_NODE
+from echo_agent.core.model.agent_state import AgentState
 from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
-from echo_agent.core.tool import ToolRegistry
+from echo_agent.core.strategy.react.node import ActionNode
+from echo_agent.core.strategy.react.schema import ReActContext
+from echo_agent.core.capability.skill import SkillManager
+from echo_agent.core.tool import ToolDefinition, ToolRegistry, ToolType
 
 warnings.filterwarnings(
     "ignore",
@@ -128,6 +132,53 @@ async def test_react_skill_empty_list() -> None:
     print("ok")
 
 
+def test_action_tools_follow_skill_metadata() -> None:
+    _print("ReAct action tool visibility")
+    tools = [
+        ToolDefinition(name="load_skill", description="", parameters={}),
+        ToolDefinition(name="read_skill_resource", description="", parameters={}),
+        ToolDefinition(
+            name="eicad_mcp_render_pdf",
+            description="",
+            parameters={},
+            type=ToolType.MCP,
+            meta_data={
+                "mcp_server": "eicad_mcp",
+                "original_name": "render_pdf",
+            },
+        ),
+        ToolDefinition(
+            name="eicad_mcp_delete_pdf",
+            description="",
+            parameters={},
+            type=ToolType.MCP,
+            meta_data={
+                "mcp_server": "eicad_mcp",
+                "original_name": "delete_pdf",
+            },
+        ),
+    ]
+    node = ActionNode(
+        name="action",
+        llm_config=_dummy_llm_config(),
+        tool_list=tools,
+    )
+    context = ReActContext(agent_state=AgentState(session_id="test"))
+
+    initial_names = {tool.name for tool in node._available_tools(context)}
+    assert initial_names == {"load_skill", "read_skill_resource"}
+
+    manager = SkillManager({"pdf": str(PDF_SKILL_DIR)})
+    manager.load_skill(context, manager.build_skill_package("pdf"))
+    loaded_names = {tool.name for tool in node._available_tools(context)}
+    assert loaded_names == {
+        "load_skill",
+        "read_skill_resource",
+        "eicad_mcp_render_pdf",
+    }
+    print("ok")
+
+
 def _message_chunk_text(message: AIMessageChunk) -> str:
     content = message.content
     if isinstance(content, str):
@@ -204,6 +255,7 @@ async def run_unit_tests() -> None:
     assert PDF_SKILL_DIR.is_dir(), f"fixture missing: {PDF_SKILL_DIR}"
     await test_react_skill_wiring()
     await test_react_skill_empty_list()
+    test_action_tools_follow_skill_metadata()
     print("\nAll ReAct + Skill unit tests passed.")
 
 

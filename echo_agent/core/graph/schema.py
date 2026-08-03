@@ -1,13 +1,35 @@
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PlainValidator
 
 from ..model.agent_state import AgentState
 from ..model.hitl import HITLInteraction
 from ..model.input import UserInput
-from ..model.skill import SkillRuntimeContext
+from ..model.skill import SkillFrontmatter, SkillRuntimeContext
 from ..model.tool import ToolState
 from ..trace import AgentTrace
+
+
+def _preserve_active_skills_dict(value: Any) -> dict[str, SkillRuntimeContext]:
+    """
+    Keep the same dict instance across Context construction.
+
+    Default Pydantic dict[str, Model] validation rebuilds a new dict, which
+    breaks session-level active_skills persistence across HITL interrupt/resume
+    (load_skill writes to a copy that is discarded when the invoke ends).
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise TypeError(f"active_skills must be a dict, got {type(value)!r}")
+    return value
+
+
+# Session-scoped mutable map; must retain object identity.
+ActiveSkillsMap = Annotated[
+    dict[str, SkillRuntimeContext],
+    PlainValidator(_preserve_active_skills_dict),
+]
 
 
 class BaseInput(BaseModel):
@@ -30,21 +52,11 @@ class BaseState(BaseModel):
 
     参数:
         input: 输入
-        # messages: 消息列表
-        # tool_calls: 工具调用列表
-        # tool_results: 工具执行结果列表
-        # hitl_request: HITL 请求
-        # hitl_response: HITL 响应
         response: 响应
         tool: 工具状态
         hitl: HITL状态
     """
     input: UserInput | dict[str, Any] | str | None = None
-    # messages: Annotated[list[Message], append_messages] = Field(default_factory=list)
-    # tool_calls: list[ToolCall] = Field(default_factory=list)
-    # tool_results: list[ToolResult] = Field(default_factory=list)
-    # hitl_request: HITLInput | None = None
-    # hitl_response: HITLOutput | None = None
     response: str | None = None
 
     tool_state: ToolState = Field(default_factory=ToolState)
@@ -58,10 +70,17 @@ class BaseContext(BaseModel):
     参数:
         agent_state: 智能体状态
         agent_prompt: Agent 系统提示词（可空）
-        active_skills: 可用的Skill列表
+        skill_list: Skill列表
+        active_skills: 可用的Skill列表（会话级可变 dict，构造时保持同一引用）
+        kb_list: 知识库列表（预留）
         trace: 智能体跟踪
     """
     agent_state: AgentState
     agent_prompt: str | None = None
-    active_skills: dict[str, SkillRuntimeContext] = Field(default_factory=dict)
+    # Skill
+    skill_list: dict[str, SkillFrontmatter] = Field(default_factory=dict)
+    active_skills: ActiveSkillsMap = Field(default_factory=dict)
+    # Knowledge Base
+    kb_list: dict[str, Any] | None = Field(default_factory=dict)
+
     trace: AgentTrace | None = None

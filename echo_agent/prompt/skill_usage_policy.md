@@ -15,3 +15,7 @@ A skill may provide task-specific procedures, constraints, or domain-specific gu
 When multiple skills are loaded, use the relevant instructions from all applicable skills.
 
 Skills provide additional guidance and do not override higher-priority runtime, strategy, or agent instructions.
+
+## Available Skills
+
+{{AVAILABLE_SKILLS}}

@@ -22,7 +22,7 @@ class ReActStrategy(BaseStrategy):
         self._llm_config = llm_config
         self._tool_registry = tool_registry
         self._tool_executor = ToolExecutor(self._tool_registry)
-        self._max_steps = 10
+        self._max_steps = 20
         self._retry_max_count = 3
 
     def build(self) -> SubGraph:
@@ -100,17 +100,25 @@ class ReActStrategy(BaseStrategy):
     def to_strategy_context(self, context: BaseContext | None = None) -> ReActContext | None:
         """
         将 Parent Context 映射为 Strategy Context
+
+        active_skills 必须与 Parent 保持同一 dict 引用，否则 HITL resume 后
+        load_skill 写回会丢失。
         """
         if context is None:
             raise ValueError("BaseContext is required for ReAct strategy")
-        return ReActContext(
+        active_skills = context.active_skills
+        react_context = ReActContext(
             agent_state=context.agent_state,
             agent_prompt=context.agent_prompt,
-            active_skills=context.active_skills,
+            skill_list=context.skill_list,
+            active_skills=active_skills,
             trace=context.trace,
             max_steps=self._max_steps,
             retry_max_count=self._retry_max_count,
         )
+        if react_context.active_skills is not active_skills:
+            object.__setattr__(react_context, "active_skills", active_skills)
+        return react_context
 
     def to_parent_state(self, output: ReActOutput) -> dict:
         """

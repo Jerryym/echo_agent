@@ -67,5 +67,5 @@ class ReActContext(BaseContext):
         max_steps: 最大推理步数
         retry_max_count: 最大重试次数
     """
-    max_steps: int = Field(default=10)
+    max_steps: int = Field(default=20)
     retry_max_count: int = Field(default=3)

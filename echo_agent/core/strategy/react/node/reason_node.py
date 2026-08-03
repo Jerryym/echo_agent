@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 from .....common import debug_print_messages
 from .....prompt import PromptLoader
-from ....capability.skill import SkillManager
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message
@@ -85,7 +84,6 @@ class ReasonNode(Node):
         Run the node
         """
         print(f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} ")
-        self._expire_idle_skills(runtime.context)
         history = self._build_history(state, runtime.context)
         debug_print_messages("[ReAct][reason]", history)
 
@@ -120,7 +118,6 @@ class ReasonNode(Node):
         异步运行
         """
         print(f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} ")
-        self._expire_idle_skills(runtime.context)
         history = self._build_history(state, runtime.context)
         debug_print_messages("[ReAct][reason]", history)
 
@@ -160,14 +157,6 @@ class ReasonNode(Node):
             *state.conversation,
             *state.trajectory,
         ]
-
-    @staticmethod
-    def _expire_idle_skills(context: ReActContext | None) -> None:
-        if context is None:
-            return
-        discarded = SkillManager.expire_idle(context)
-        if discarded:
-            print(f"[ReAct][reason] expired idle skills: {discarded}")
 
     @staticmethod
     def _accumulate_token_usage(context: ReActContext | None, token_usage: TokenUsage) -> None:

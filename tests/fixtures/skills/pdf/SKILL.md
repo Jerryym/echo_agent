@@ -1,6 +1,8 @@
 ---
 name: pdf
 description: Create and analyze PDF files.
+allowed_tools:
+  - render_pdf
 ---
 
 # PDF Skill

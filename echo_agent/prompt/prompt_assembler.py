@@ -1,4 +1,4 @@
-from ..core.model.skill import SkillStatus, SkillRuntimeContext
+from ..core.model.skill import SkillFrontmatter, SkillStatus, SkillRuntimeContext
 from .loader import PromptLoader
 
 
@@ -10,6 +10,7 @@ class PromptAssembler:
     def assemble(
         agent_prompt: str | None = None,
         system_prompt: str | None = None,
+        skill_list: dict[str, SkillFrontmatter] | None = None,
         active_skills: dict[str, SkillRuntimeContext] | None = None,
     ) -> str:
         prompts: list[str] = []
@@ -23,9 +24,11 @@ class PromptAssembler:
         if tool_policy:
             prompts.append(tool_policy)
 
-        # Skill Usage Policy
+        # Skill Usage Policy + Available Skills
         skill_policy = PromptLoader.load("prompt/skill_usage_policy.md")
+        available_skills = PromptAssembler._build_available_skills(skill_list)
         if skill_policy:
+            skill_policy = skill_policy.replace("{{AVAILABLE_SKILLS}}", available_skills)
             prompts.append(skill_policy)
 
         # System Prompt（节点 / 策略提示词）
@@ -38,6 +41,16 @@ class PromptAssembler:
             prompts.append(skill_prompt)
 
         return "\n\n".join(prompts)
+
+    @staticmethod
+    def _build_available_skills(skill_list: dict[str, SkillFrontmatter] | None) -> str:
+        if not skill_list:
+            return "No skills are currently available."
+
+        return "\n".join(
+            f"- `{name}`: {frontmatter.description}"
+            for name, frontmatter in skill_list.items()
+        )
 
     @staticmethod
     def _build_skill_prompt(active_skills: dict[str, SkillRuntimeContext] | None = None) -> str:

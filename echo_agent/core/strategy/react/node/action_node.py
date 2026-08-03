@@ -6,8 +6,10 @@ from langgraph.types import Command, RunnableConfig
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
+from ....mcp.builtin_mcp import FETCH_SERVER_NAME, FILESYSTEM_SERVER_NAME
 from ....model.hitl import HITLInput, HITLInteraction, HITLOutput, HITLType
 from ....model.message import Message, Role
+from ....model.skill import SkillStatus
 from ....model.tool import ToolCall, ToolResult, ToolState
 from ....runtime.interrupt import InterruptField
 from ....tool import ToolDefinition
@@ -15,6 +17,10 @@ from ....tool.utils import get_tool_definition
 from ....trace import TokenUsage
 from ..observation import ObservationBuilder
 from ..schema import ReActContext, ReActState
+
+# Always-visible skill meta tools + builtin MCP servers.
+_META_TOOL_NAMES = frozenset({"load_skill", "read_skill_resource"})
+_ALWAYS_EXPOSED_MCP_SERVERS = frozenset({FETCH_SERVER_NAME, FILESYSTEM_SERVER_NAME})
 
 
 class ActionNode(Node):
@@ -26,7 +32,10 @@ class ActionNode(Node):
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
         self._tool_list = tool_list or []
-        self._tool_json_schema = [
+        
+    @staticmethod
+    def _to_tool_json_schema(tool_list: list[ToolDefinition]) -> list[dict[str, Any]]:
+        return [
             {
                 "type": "function",
                 "function": {
@@ -35,8 +44,56 @@ class ActionNode(Node):
                     "parameters": tool.parameters,
                 },
             }
-            for tool in self._tool_list
+            for tool in tool_list
         ]
+
+    def _default_tools(self) -> list[ToolDefinition]:
+        """Skill meta tools + fetch/filesystem MCP tools (always exposed)."""
+        return [
+            tool
+            for tool in self._tool_list
+            if (
+                tool.name in _META_TOOL_NAMES
+                or tool.meta_data.get("mcp_server") in _ALWAYS_EXPOSED_MCP_SERVERS
+            )
+        ]
+
+    def _available_tools(self, context: ReActContext) -> list[ToolDefinition]:
+        """Return tools visible to the model for the current skill state."""
+        default_tools = self._default_tools()
+        loaded_skills = [
+            skill
+            for skill in context.active_skills.values()
+            if skill.status == SkillStatus.LOADED
+        ]
+        if not loaded_skills:
+            return default_tools
+
+        allowed_names: set[str] = set()
+        has_explicit_allowlist = False
+        for skill in loaded_skills:
+            configured = skill.package.frontmatter.allowed_tools
+            if configured is None:
+                continue
+            has_explicit_allowlist = True
+            allowed_names.update(configured)
+
+        # Backward compatibility: existing skills without allowed_tools keep
+        # the previous all-tools behavior after they are explicitly loaded.
+        if not has_explicit_allowlist:
+            return self._tool_list
+
+        default_names = {tool.name for tool in default_tools}
+        business_tools = [
+            tool
+            for tool in self._tool_list
+            if tool.name not in default_names
+            and (
+                tool.name in allowed_names
+                or tool.meta_data.get("original_name") in allowed_names
+            )
+        ]
+        return [*default_tools, *business_tools]
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
@@ -53,12 +110,14 @@ class ActionNode(Node):
         input = {
             "reasoning": state.reasoning,
         }
+        available_tools = self._available_tools(runtime.context)
+        self._log_available_tools(runtime.context, available_tools)
         # 选择工具
         response = self._llm_client.invoke(
             prompt=self._prompt,
             user_input=input,
             history=self._build_history(state, runtime.context),
-            tool_list=self._tool_json_schema,
+            tool_list=self._to_tool_json_schema(available_tools),
             context=runtime.context,
             agent_prompt=runtime.context.agent_prompt,
         )
@@ -68,24 +127,34 @@ class ActionNode(Node):
 
         # 没有工具调用，则返回 no_tool_calls 状态
         if not response.tool_calls:
+            print("[ReAct][action] branch=no_tool_calls")
             return self._handle_no_tool_calls(state)
 
         tool_calls = response.tool_calls
         # 工具合法性校验
-        invalid_tools = self._get_invalid_tools(tool_calls)
+        invalid_tools = self._get_invalid_tools(tool_calls, available_tools)
         if invalid_tools:
-            return self._handle_invalid_tools(invalid_tools, state)
+            print(
+                "[ReAct][action] branch=invalid_tools "
+                f"selected={[tc.name for tc in tool_calls]} "
+                f"invalid={invalid_tools} "
+                f"available={[tool.name for tool in available_tools]}"
+            )
+            return self._handle_invalid_tools(invalid_tools, state, available_tools)
         # 参数校验
         missing_parameters_map = self._get_missing_parameters(tool_calls)
 
         # 参数缺失，需要收集信息
         if missing_parameters_map:
+            print(f"[ReAct][action] branch=missing_parameters map={missing_parameters_map}")
             return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
 
         # 人工审核
         if self._need_approval(tool_calls):
+            print(f"[ReAct][action] branch=approval tools={[tc.name for tc in tool_calls]}")
             return self._handle_approval(tool_calls, state)
 
+        print(f"[ReAct][action] branch=ready tools={[tc.name for tc in tool_calls]}")
         return self._handle_ready(tool_calls, state)
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
@@ -103,12 +172,14 @@ class ActionNode(Node):
         input = {
             "reasoning": state.reasoning,
         }
+        available_tools = self._available_tools(runtime.context)
+        self._log_available_tools(runtime.context, available_tools)
         # 选择工具
         response = await self._llm_client.ainvoke(
             prompt=self._prompt,
             user_input=input,
             history=self._build_history(state, runtime.context),
-            tool_list=self._tool_json_schema,
+            tool_list=self._to_tool_json_schema(available_tools),
             context=runtime.context,
             agent_prompt=runtime.context.agent_prompt,
         )
@@ -118,24 +189,34 @@ class ActionNode(Node):
 
         # 没有工具调用，则返回 no_tool_calls 状态
         if not response.tool_calls:
+            print("[ReAct][action] branch=no_tool_calls")
             return self._handle_no_tool_calls(state)
 
         tool_calls = response.tool_calls
         # 工具合法性校验
-        invalid_tools = self._get_invalid_tools(tool_calls)
+        invalid_tools = self._get_invalid_tools(tool_calls, available_tools)
         if invalid_tools:
-            return self._handle_invalid_tools(invalid_tools, state)
+            print(
+                "[ReAct][action] branch=invalid_tools "
+                f"selected={[tc.name for tc in tool_calls]} "
+                f"invalid={invalid_tools} "
+                f"available={[tool.name for tool in available_tools]}"
+            )
+            return self._handle_invalid_tools(invalid_tools, state, available_tools)
         # 参数校验
         missing_parameters_map = self._get_missing_parameters(tool_calls)
 
         # 参数缺失，需要收集信息
         if missing_parameters_map:
+            print(f"[ReAct][action] branch=missing_parameters map={missing_parameters_map}")
             return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
 
         # 人工审核
         if self._need_approval(tool_calls):
+            print(f"[ReAct][action] branch=approval tools={[tc.name for tc in tool_calls]}")
             return self._handle_approval(tool_calls, state)
 
+        print(f"[ReAct][action] branch=ready tools={[tc.name for tc in tool_calls]}")
         return self._handle_ready(tool_calls, state)
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
@@ -213,10 +294,36 @@ class ActionNode(Node):
             ],
         })
 
+    def _log_available_tools(
+        self,
+        context: ReActContext,
+        available_tools: list[ToolDefinition],
+    ) -> None:
+        """打印本轮可见工具与已加载 skill 的 allowlist，便于排查非法工具路由。"""
+        loaded = [
+            {
+                "name": name,
+                "status": skill.status.value,
+                "idle_rounds": skill.idle_rounds,
+                "allowed_tools": skill.package.frontmatter.allowed_tools,
+            }
+            for name, skill in context.active_skills.items()
+            if skill.status == SkillStatus.LOADED
+        ]
+        print(
+            "[ReAct][action] available_tools="
+            f"{[tool.name for tool in available_tools]} "
+            f"loaded_skills={loaded}"
+        )
+
     def _handle_no_tool_calls(self, state: ReActState) -> Command:
         """
         处理没有工具调用的情况
         """
+        print(
+            "[ReAct][action] handle_no_tool_calls "
+            f"step={state.step_count} retry={state.retry_count} -> {state.retry_count + 1}"
+        )
         return self._router(state, {
             "task_status": "no_tool_calls",
             "step_count": state.step_count + 1,
@@ -232,12 +339,25 @@ class ActionNode(Node):
             ],
         })
 
-    def _handle_invalid_tools(self, invalid_tools: list[str], state: ReActState) -> Command:
+    def _handle_invalid_tools(
+        self,
+        invalid_tools: list[str],
+        state: ReActState,
+        available_tools: list[ToolDefinition] | None = None,
+    ) -> Command:
         """
         处理非法工具的情况
         """
+        available_names = (
+            [tool.name for tool in available_tools] if available_tools is not None else None
+        )
+        print(
+            "[ReAct][action] handle_invalid_tools "
+            f"invalid={invalid_tools} available={available_names} "
+            f"retry={state.retry_count} -> {state.retry_count + 1}"
+        )
         return self._router(state, {
-            "task_status": "failed",
+            "task_status": "no_tool_calls",
             "reasoning": f"Invalid tools selected: {', '.join(invalid_tools)}",
             "tool_state": ToolState(tool_calls=[]),
             "step_count": state.step_count + 1,
@@ -248,6 +368,10 @@ class ActionNode(Node):
         """
         处理ready状态
         """
+        print(
+            "[ReAct][action] handle_ready "
+            f"tools={[tc.name for tc in tool_calls]} ids={[tc.tool_call_id for tc in tool_calls]}"
+        )
         return self._router(state, {
             "task_status": "in_progress",
             "tool_state": ToolState(tool_calls=tool_calls),
@@ -334,13 +458,22 @@ class ActionNode(Node):
 
     def _select_node(self, state: ReActState, update_state: dict) -> Literal["HITL", "tool", "reason"]:
         task_status = update_state.get("task_status", state.task_status)
-        tool_calls = update_state.get("tool_state", state.tool_state).tool_calls
+        tool_state = update_state.get("tool_state", state.tool_state)
+        tool_calls = tool_state.tool_calls
+        tool_names = [tc.name for tc in tool_calls]
 
         if task_status == "human_in_the_loop":
-            return "HITL"
-        if tool_calls:
-            return "tool"
-        return "reason"
+            next_node: Literal["HITL", "tool", "reason"] = "HITL"
+        elif tool_calls:
+            next_node = "tool"
+        else:
+            next_node = "reason"
+
+        print(
+            "[ReAct][action] select_node "
+            f"task_status={task_status} tool_calls={tool_names} -> {next_node}"
+        )
+        return next_node
 
     def _build_tool_call_message(self, tool_calls: list[ToolCall]) -> Message:
         """
@@ -351,22 +484,32 @@ class ActionNode(Node):
             tool_calls=tool_calls,
         )
 
-    def _get_invalid_tools(self, tool_calls: list[ToolCall]) -> list[str]:
+    def _get_invalid_tools(
+        self,
+        tool_calls: list[ToolCall],
+        available_tools: list[ToolDefinition] | None = None,
+    ) -> list[str]:
         """
         获取非法工具
         """
-        valid_names = self._valid_tool_names()
+        valid_names = self._valid_tool_names(available_tools)
         return [
             tc.name
             for tc in tool_calls
             if tc.name not in valid_names
         ]
 
-    def _valid_tool_names(self) -> set[str]:
+    def _valid_tool_names(
+        self,
+        available_tools: list[ToolDefinition] | None = None,
+    ) -> set[str]:
         """
         获取合法工具名称列表
         """
         return {
+            tool.name
+            for tool in available_tools if available_tools is not None
+        } if available_tools is not None else {
             tool.name
             for tool in self._tool_list
         }

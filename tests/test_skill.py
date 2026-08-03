@@ -41,6 +41,8 @@ def test_skill_parser() -> None:
     assert package.type == SkillType.FILE
     assert package.frontmatter.name == "pdf"
     assert "PDF" in package.frontmatter.description
+    assert package.frontmatter.metadata == {"allowed_tools": ["render_pdf"]}
+    assert package.frontmatter.allowed_tools == ["render_pdf"]
     assert package.skill_file == "SKILL.md"
     assert any(path.endswith("specification.md") for path in package.references)
 
@@ -80,6 +82,47 @@ def test_skill_loader_and_manager() -> None:
     print("ok")
 
 
+def test_active_skills_dict_identity_survives_context_rebuild() -> None:
+    """HITL resume rebuilds Context; session active_skills map must keep mutations."""
+    _print("active_skills dict identity across Context rebuild")
+    from echo_agent.core.strategy.react.schema import ReActContext
+
+    session_skills: dict = {}
+    manager = SkillManager({"pdf": str(PDF_SKILL_DIR)})
+    package = manager.build_skill_package("pdf")
+
+    context = BaseContext(
+        agent_state=AgentState(session_id="hitl-session"),
+        active_skills=session_skills,
+    )
+    assert context.active_skills is session_skills
+
+    manager.load_skill(context, package)
+    assert "pdf" in session_skills
+    assert "pdf" in context.active_skills
+
+    # Simulate Agent.resume -> _build_context with the same session map
+    resumed = BaseContext(
+        agent_state=AgentState(session_id="hitl-session"),
+        active_skills=session_skills,
+    )
+    assert resumed.active_skills is session_skills
+    assert "pdf" in resumed.active_skills
+    assert resumed.active_skills["pdf"].status == SkillStatus.LOADED
+
+    # Simulate ReActStrategy.to_strategy_context
+    react = ReActContext(
+        agent_state=resumed.agent_state,
+        active_skills=resumed.active_skills,
+        max_steps=10,
+        retry_max_count=3,
+    )
+    assert react.active_skills is session_skills
+    assert "pdf" in react.active_skills
+
+    print("ok")
+
+
 async def test_load_and_read_tools() -> None:
     _print("load_skill / read_skill_resource")
 
@@ -95,7 +138,9 @@ async def test_load_and_read_tools() -> None:
     token = set_skill_runtime_context(context)
     try:
         body = await load_skill.ainvoke({"name": "pdf"})
-        assert body == "Skill pdf loaded."
+        assert body.startswith("Skill pdf loaded.")
+        assert "Available resources:" in body
+        assert "references/specification.md" in body.replace("\\", "/")
         assert "pdf" in context.active_skills
 
         unknown = await load_skill.ainvoke({"name": "missing"})
@@ -149,6 +194,7 @@ async def main() -> None:
     assert PDF_SKILL_DIR.is_dir(), f"fixture missing: {PDF_SKILL_DIR}"
     test_skill_parser()
     test_skill_loader_and_manager()
+    test_active_skills_dict_identity_survives_context_rebuild()
     await test_load_and_read_tools()
     await test_llm_build_prompt_no_global_catalog()
     print("\nAll skill tests passed.")

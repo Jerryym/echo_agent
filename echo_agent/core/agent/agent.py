@@ -100,6 +100,7 @@ class Agent:
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
         context = self._build_context(session_id)
+        self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         result = self._compiled_graph.invoke(graph_input, runnable_config, context=context)
         # 写回历史记录
@@ -125,6 +126,7 @@ class Agent:
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
         context = self._build_context(session_id)
+        self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         result = await self._compiled_graph.ainvoke(graph_input, runnable_config, context=context)
         # 写回历史记录
@@ -155,6 +157,7 @@ class Agent:
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
         context = self._build_context(session_id)
+        self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         return self._stream_iterator(graph_input, runnable_config, context, version, session_id)
 
@@ -175,6 +178,7 @@ class Agent:
         # 构建RunnableConfig
         runnable_config = self._build_runnable_config(session_id)
         context = self._build_context(session_id)
+        self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         return self._astream_iterator(graph_input, runnable_config, context, session_id, version)
 
@@ -294,19 +298,33 @@ class Agent:
     def _build_context(self, session_id: str) -> BaseContext:
         """
         构建上下文
+
+        active_skills 使用会话级同一 dict；构造后校验引用，避免 Pydantic 拷贝
+        导致 HITL resume 丢失已加载 skill。
         """
         agent_state = self._get_agent_state(session_id)
         if agent_state.session_id != session_id:
             raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
-        return BaseContext(
+        active_skills = self._get_active_skills(session_id)
+        context = BaseContext(
             agent_state=agent_state,
             agent_prompt=self._agent_config.system_prompt,
-            active_skills=self._get_active_skills(session_id),
+            skill_list=self._skill_manager.skill_frontmatter_list,
+            active_skills=active_skills,
             trace=AgentTrace(
                 session_id=session_id,
                 token_usage=agent_state.token_usage.model_copy(),
             ),
         )
+        if context.active_skills is not active_skills:
+            object.__setattr__(context, "active_skills", active_skills)
+        return context
+
+    def _expire_idle_skills_for_user_turn(self, context: BaseContext) -> None:
+        """按用户交互推进 skill idle；HITL resume 不调用。"""
+        discarded = SkillManager.expire_idle(context)
+        if discarded:
+            print(f"[Agent] expired idle skills (user turn): {discarded}")
 
     def _get_agent_state(self, session_id: str) -> AgentState:
         """

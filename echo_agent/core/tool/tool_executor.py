@@ -1,4 +1,5 @@
 from ..model.tool import ToolCall, ToolResult
+from .schema import ToolDefinition
 from .tool_registry import ToolRegistry
 
 
@@ -8,6 +9,13 @@ class ToolExecutor:
     """
     def __init__(self, registry: ToolRegistry):
         self._registry = registry
+
+    def get_definition(self, name: str) -> ToolDefinition | None:
+        """按名称获取工具定义；未注册时返回 None。"""
+        try:
+            return self._registry.get(name)
+        except KeyError:
+            return None
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
         """

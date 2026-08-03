@@ -1,7 +1,7 @@
 from typing import Any
 
 from ...graph.schema import BaseContext
-from ...model.skill import SkillPackage, SkillRuntimeContext, SkillStatus
+from ...model.skill import SkillFrontmatter, SkillPackage, SkillRuntimeContext, SkillStatus
 from .skill_loader import SkillLoader
 from .skill_parser import SkillParser
 
@@ -12,14 +12,26 @@ class SkillManager:
 
     状态机：UNLOADED → LOADED → DISCARDED
     - load：激活为 LOADED，并重置 idle_rounds
-    - touch：标记本轮被使用（idle_rounds = 0）
+    - touch：标记本轮交互中被使用（idle_rounds = 0）
     - discard / unload：标为 DISCARDED 并从 active_skills 移除
-    - expire_idle：每个 Reason 轮对 LOADED 技能 idle+1，达 3 轮则 discard
+    - expire_idle：每次用户交互入口对 LOADED 技能 idle+1，达 3 次交互未触达则 discard
+
+    参数：
+        skill_list: Skill列表
+        skill_frontmatter_list: Skill Frontmatter 列表
     """
     DEFAULT_MAX_IDLE_ROUNDS = 3
 
     def __init__(self, skill_list: dict[str, Any]):
         self._skill_list = skill_list
+        self._skill_frontmatter_list = {
+            name: SkillParser.parse(skill_dir).frontmatter
+            for name, skill_dir in skill_list.items()
+        }
+
+    @property
+    def skill_frontmatter_list(self) -> dict[str, SkillFrontmatter]:
+        return self._skill_frontmatter_list
 
     def get_skill(self, context: BaseContext, skill_name: str) -> SkillRuntimeContext | None:
         """
@@ -62,11 +74,34 @@ class SkillManager:
         return skill_context
 
     def touch_skill(self, context: BaseContext, skill_name: str) -> None:
-        """标记 Skill 本轮被使用，重置 idle_rounds。"""
+        """标记 Skill 在本轮用户交互中被使用，重置 idle_rounds。"""
         skill = context.active_skills.get(skill_name)
         if skill is None or skill.status != SkillStatus.LOADED:
             return
         skill.idle_rounds = 0
+
+    @staticmethod
+    def touch_skills_for_tool(
+        context: BaseContext,
+        tool_name: str,
+        original_name: str | None = None,
+    ) -> None:
+        """
+        执行工具时触达 Skill：若 LOADED skill 的 allowed_tools 包含该工具
+        （完整名或 original_name），则重置其 idle_rounds。
+        """
+        candidates = {tool_name}
+        if original_name:
+            candidates.add(original_name)
+
+        for skill in context.active_skills.values():
+            if skill.status != SkillStatus.LOADED:
+                continue
+            allowed = skill.package.frontmatter.allowed_tools
+            if not allowed:
+                continue
+            if candidates & set(allowed):
+                skill.idle_rounds = 0
 
     def discard_skill(self, context: BaseContext, skill_name: str) -> None:
         """
@@ -87,8 +122,9 @@ class SkillManager:
         """
         推进 idle 并淘汰超时 Skill。
 
-        每个 Reason 轮调用一次：对 LOADED 技能 idle_rounds += 1；
-        达到 DEFAULT_MAX_IDLE_ROUNDS（3）则 discard。
+        在每次新的用户交互入口调用一次（invoke / stream，不含 HITL resume）：
+        对 LOADED 技能 idle_rounds += 1；达到 DEFAULT_MAX_IDLE_ROUNDS（3）则 discard。
+        同一次交互内的 Reason/Action/Tool 循环不推进 idle。
 
         返回:
             本轮被 discard 的 skill 名称列表。
