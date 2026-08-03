@@ -27,7 +27,7 @@ def builtin_fetch_config() -> MCPConnectionConfig:
         name=FETCH_SERVER_NAME,
         type="stdio",
         command="uvx",
-        args=["mcp-server-fetch"],
+        args=["--with", "mcp<2", "mcp-server-fetch"],
     )
 
 
