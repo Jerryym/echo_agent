@@ -92,8 +92,13 @@ def agent_config_from_proto(msg: pb.AgentConfig) -> AgentConfig:
     if not msg.HasField("llm_config"):
         raise ValueError("agent config llm_config is required")
     directories = list(msg.mcp_allowed_directories)
+    mcp_allowed_directories: str | list[str] | None
     if not directories:
-        raise ValueError("mcp_allowed_directories is required")
+        mcp_allowed_directories = None
+    elif len(directories) == 1:
+        mcp_allowed_directories = directories[0]
+    else:
+        mcp_allowed_directories = directories
 
     return AgentConfig(
         name=msg.name,
@@ -102,8 +107,9 @@ def agent_config_from_proto(msg: pb.AgentConfig) -> AgentConfig:
         system_prompt=msg.system_prompt or None,
         kb_list=list(msg.kb_list),
         skill_list=dict(msg.skill_list),
-        mcp_allowed_directories=directories if len(directories) > 1 else directories[0],
+        mcp_allowed_directories=mcp_allowed_directories,
         mcp_servers=[mcp_connection_from_proto(s) for s in msg.mcp_servers],
+        # 内置 Fetch / Filesystem 默认关闭；需启用时在 Python AgentConfig 显式打开
     )
 
 

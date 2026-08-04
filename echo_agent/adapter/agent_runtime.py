@@ -1,16 +1,21 @@
-"""Adapter 侧 AgentRuntime：Create / Invoke / Stream / Resume（含默认 ReAct 组装）。"""
+"""Adapter 侧 AgentRuntime：Create / Invoke / Stream / Resume。"""
 
 from __future__ import annotations
 
+import inspect
 import uuid
-from collections.abc import AsyncIterator
-from typing import Any
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any, TypeAlias
 
 from echo_agent import Agent, AgentConfig, UserInput
 
 from .events import iter_agent_events, to_invoke_result
-from .react_agent import build_default_react_agent
 from .schema import AgentEvent, AgentInvokeResult, RuntimeOptions
+
+AgentFactory: TypeAlias = Callable[
+    [AgentConfig, RuntimeOptions | None],
+    Agent | Awaitable[Agent],
+]
 
 
 class AgentRuntime:
@@ -18,15 +23,20 @@ class AgentRuntime:
     Runtime Adapter 入口（非 core）。
 
     - 持有 agent_id → Agent
-    - CreateAgent 时在本层固定组装默认 ReAct Agent
+    - CreateAgent 时必须调用集成方注入的 factory
     - 转发 invoke / stream / resume 到现有 Agent API
     """
-
-    def __init__(self) -> None:
-        self._agents: dict[str, Agent] = {}
+    def __init__(self, factory: AgentFactory) -> None:
+        if factory is None:
+            raise TypeError("factory is required")
+        self._agent_map: dict[str, Agent] = {}
+        self._factory = factory
 
     def get_agent(self, agent_id: str) -> Agent:
-        agent = self._agents.get(agent_id)
+        """
+        根据ID获取对应智能体
+        """
+        agent = self._agent_map.get(agent_id)
         if agent is None:
             raise KeyError(f"agent not found: {agent_id}")
         return agent
@@ -36,9 +46,17 @@ class AgentRuntime:
         config: AgentConfig,
         runtime_options: RuntimeOptions | None = None,
     ) -> str:
-        agent = await build_default_react_agent(config, runtime_options=runtime_options)
+        """
+        创建智能体
+        """
+        result = self._factory(config, runtime_options)
+        agent = await result if inspect.isawaitable(result) else result
+        if not isinstance(agent, Agent):
+            raise TypeError(
+                f"agent factory must return Agent, got {type(agent).__name__}"
+            )
         agent_id = str(uuid.uuid4())
-        self._agents[agent_id] = agent
+        self._agent_map[agent_id] = agent
         return agent_id
 
     async def invoke(

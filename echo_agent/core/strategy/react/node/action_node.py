@@ -3,6 +3,7 @@ from typing import Any, Literal
 from langgraph.runtime import Runtime
 from langgraph.types import Command, RunnableConfig
 
+from .....common import get_logger
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
@@ -17,6 +18,8 @@ from ....tool.utils import get_tool_definition
 from ....trace import TokenUsage
 from ..observation import ObservationBuilder
 from ..schema import ReActContext, ReActState
+
+logger = get_logger("react.action")
 
 # Always-visible skill meta tools + builtin MCP servers.
 _META_TOOL_NAMES = frozenset({"load_skill", "read_skill_resource"})
@@ -99,10 +102,10 @@ class ActionNode(Node):
         """
         Run the node
         """
-        print(f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}")
+        logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
 
         # 如果存在工具调用，则跳过工具选择
-        print(f"[ReAct][action] state.tool_calls={state.tool_state.tool_calls}")
+        logger.debug("state.tool_calls=%s", state.tool_state.tool_calls)
         if state.tool_state.tool_calls:
             return self._handle_tool_calls(state)
 
@@ -122,23 +125,23 @@ class ActionNode(Node):
             agent_prompt=runtime.context.agent_prompt,
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
-        print(f"[ReAct][action] tool_selection_response={response}")
-        print(f"[ReAct][action] tool_selection_response.tool_calls={response.tool_calls}")
+        logger.debug("tool_selection_response=%s", response)
+        logger.info("tool_selection_response.tool_calls=%s", response.tool_calls)
 
         # 没有工具调用，则返回 no_tool_calls 状态
         if not response.tool_calls:
-            print("[ReAct][action] branch=no_tool_calls")
+            logger.info("branch=no_tool_calls")
             return self._handle_no_tool_calls(state)
 
         tool_calls = response.tool_calls
         # 工具合法性校验
         invalid_tools = self._get_invalid_tools(tool_calls, available_tools)
         if invalid_tools:
-            print(
-                "[ReAct][action] branch=invalid_tools "
-                f"selected={[tc.name for tc in tool_calls]} "
-                f"invalid={invalid_tools} "
-                f"available={[tool.name for tool in available_tools]}"
+            logger.warning(
+                "branch=invalid_tools selected=%s invalid=%s available=%s",
+                [tc.name for tc in tool_calls],
+                invalid_tools,
+                [tool.name for tool in available_tools],
             )
             return self._handle_invalid_tools(invalid_tools, state, available_tools)
         # 参数校验
@@ -146,25 +149,25 @@ class ActionNode(Node):
 
         # 参数缺失，需要收集信息
         if missing_parameters_map:
-            print(f"[ReAct][action] branch=missing_parameters map={missing_parameters_map}")
+            logger.info("branch=missing_parameters map=%s", missing_parameters_map)
             return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
 
         # 人工审核
         if self._need_approval(tool_calls):
-            print(f"[ReAct][action] branch=approval tools={[tc.name for tc in tool_calls]}")
+            logger.info("branch=approval tools=%s", [tc.name for tc in tool_calls])
             return self._handle_approval(tool_calls, state)
 
-        print(f"[ReAct][action] branch=ready tools={[tc.name for tc in tool_calls]}")
+        logger.info("branch=ready tools=%s", [tc.name for tc in tool_calls])
         return self._handle_ready(tool_calls, state)
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
         异步运行
         """
-        print(f"[ReAct][action] enter | step={state.step_count} retry={state.retry_count}")
+        logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
 
         # 如果存在工具调用，则跳过工具选择
-        print(f"[ReAct][action] state.tool_calls={state.tool_state.tool_calls}")
+        logger.debug("state.tool_calls=%s", state.tool_state.tool_calls)
         if state.tool_state.tool_calls:
             return self._handle_tool_calls(state)
 
@@ -184,23 +187,23 @@ class ActionNode(Node):
             agent_prompt=runtime.context.agent_prompt,
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
-        print(f"[ReAct][action] tool_selection_response={response}")
-        print(f"[ReAct][action] tool_selection_response.tool_calls={response.tool_calls}")
+        logger.debug("tool_selection_response=%s", response)
+        logger.info("tool_selection_response.tool_calls=%s", response.tool_calls)
 
         # 没有工具调用，则返回 no_tool_calls 状态
         if not response.tool_calls:
-            print("[ReAct][action] branch=no_tool_calls")
+            logger.info("branch=no_tool_calls")
             return self._handle_no_tool_calls(state)
 
         tool_calls = response.tool_calls
         # 工具合法性校验
         invalid_tools = self._get_invalid_tools(tool_calls, available_tools)
         if invalid_tools:
-            print(
-                "[ReAct][action] branch=invalid_tools "
-                f"selected={[tc.name for tc in tool_calls]} "
-                f"invalid={invalid_tools} "
-                f"available={[tool.name for tool in available_tools]}"
+            logger.warning(
+                "branch=invalid_tools selected=%s invalid=%s available=%s",
+                [tc.name for tc in tool_calls],
+                invalid_tools,
+                [tool.name for tool in available_tools],
             )
             return self._handle_invalid_tools(invalid_tools, state, available_tools)
         # 参数校验
@@ -208,15 +211,15 @@ class ActionNode(Node):
 
         # 参数缺失，需要收集信息
         if missing_parameters_map:
-            print(f"[ReAct][action] branch=missing_parameters map={missing_parameters_map}")
+            logger.info("branch=missing_parameters map=%s", missing_parameters_map)
             return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
 
         # 人工审核
         if self._need_approval(tool_calls):
-            print(f"[ReAct][action] branch=approval tools={[tc.name for tc in tool_calls]}")
+            logger.info("branch=approval tools=%s", [tc.name for tc in tool_calls])
             return self._handle_approval(tool_calls, state)
 
-        print(f"[ReAct][action] branch=ready tools={[tc.name for tc in tool_calls]}")
+        logger.info("branch=ready tools=%s", [tc.name for tc in tool_calls])
         return self._handle_ready(tool_calls, state)
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
@@ -242,7 +245,7 @@ class ActionNode(Node):
         """
         hitl_state = state.hitl_state
         if hitl_state.response:
-            print("[ReAct][action] applying hitl response to tool_calls")
+            logger.info("applying hitl response to tool_calls")
             # HITL 被取消
             if hitl_state.response.status == "cancelled":
                 return self._router(state, {
@@ -285,7 +288,7 @@ class ActionNode(Node):
                         "step_count": state.step_count + 1,
                     })
 
-        print("[ReAct][action] no hitl response, continue to generate tool calls")
+        logger.debug("no hitl response, continue to generate tool calls")
         return self._router(state, {
             "task_status": "in_progress",
             "tool_state": ToolState(tool_calls=state.tool_state.tool_calls),
@@ -299,7 +302,7 @@ class ActionNode(Node):
         context: ReActContext,
         available_tools: list[ToolDefinition],
     ) -> None:
-        """打印本轮可见工具与已加载 skill 的 allowlist，便于排查非法工具路由。"""
+        """记录本轮可见工具与已加载 skill 的 allowlist，便于排查非法工具路由。"""
         loaded = [
             {
                 "name": name,
@@ -310,19 +313,21 @@ class ActionNode(Node):
             for name, skill in context.active_skills.items()
             if skill.status == SkillStatus.LOADED
         ]
-        print(
-            "[ReAct][action] available_tools="
-            f"{[tool.name for tool in available_tools]} "
-            f"loaded_skills={loaded}"
+        logger.info(
+            "available_tools=%s loaded_skills=%s",
+            [tool.name for tool in available_tools],
+            loaded,
         )
 
     def _handle_no_tool_calls(self, state: ReActState) -> Command:
         """
         处理没有工具调用的情况
         """
-        print(
-            "[ReAct][action] handle_no_tool_calls "
-            f"step={state.step_count} retry={state.retry_count} -> {state.retry_count + 1}"
+        logger.info(
+            "handle_no_tool_calls step=%s retry=%s -> %s",
+            state.step_count,
+            state.retry_count,
+            state.retry_count + 1,
         )
         return self._router(state, {
             "task_status": "no_tool_calls",
@@ -351,10 +356,12 @@ class ActionNode(Node):
         available_names = (
             [tool.name for tool in available_tools] if available_tools is not None else None
         )
-        print(
-            "[ReAct][action] handle_invalid_tools "
-            f"invalid={invalid_tools} available={available_names} "
-            f"retry={state.retry_count} -> {state.retry_count + 1}"
+        logger.warning(
+            "handle_invalid_tools invalid=%s available=%s retry=%s -> %s",
+            invalid_tools,
+            available_names,
+            state.retry_count,
+            state.retry_count + 1,
         )
         return self._router(state, {
             "task_status": "no_tool_calls",
@@ -368,9 +375,10 @@ class ActionNode(Node):
         """
         处理ready状态
         """
-        print(
-            "[ReAct][action] handle_ready "
-            f"tools={[tc.name for tc in tool_calls]} ids={[tc.tool_call_id for tc in tool_calls]}"
+        logger.info(
+            "handle_ready tools=%s ids=%s",
+            [tc.name for tc in tool_calls],
+            [tc.tool_call_id for tc in tool_calls],
         )
         return self._router(state, {
             "task_status": "in_progress",
@@ -391,7 +399,7 @@ class ActionNode(Node):
         处理缺少参数状态
         """
         updated_tool_calls = self._mark_missing_parameters(tool_calls, missing_parameters_map)
-        print(f"[ReAct][action] updated tool_calls={updated_tool_calls}")
+        logger.debug("updated tool_calls=%s", updated_tool_calls)
 
         # 构建 HITL 请求（fields / resume values 均按 tool_call_id 分组，避免多工具同名缺参串写）
         fields_by_call = self._build_fields(updated_tool_calls, missing_parameters_map)
@@ -453,7 +461,7 @@ class ActionNode(Node):
 
     def _router(self, state: ReActState, update_state: dict) -> Command:
         next_node = self._select_node(state, update_state)
-        print(f"[ReAct][route] action -> {next_node}")
+        logger.info("route action -> %s", next_node)
         return Command(update=update_state, goto=next_node)
 
     def _select_node(self, state: ReActState, update_state: dict) -> Literal["HITL", "tool", "reason"]:
@@ -469,9 +477,11 @@ class ActionNode(Node):
         else:
             next_node = "reason"
 
-        print(
-            "[ReAct][action] select_node "
-            f"task_status={task_status} tool_calls={tool_names} -> {next_node}"
+        logger.info(
+            "select_node task_status=%s tool_calls=%s -> %s",
+            task_status,
+            tool_names,
+            next_node,
         )
         return next_node
 

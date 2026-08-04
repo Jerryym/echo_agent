@@ -1,13 +1,15 @@
 from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
-from .....common import debug_print_messages
+from .....common import get_logger, log_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message, Role
 from ....trace import TokenUsage
 from ..schema import ReActContext, ReActState
+
+logger = get_logger("react.final")
 
 
 class FinalNode(Node):
@@ -23,9 +25,9 @@ class FinalNode(Node):
         """
         Run the node
         """
-        print(f"[ReAct][final] enter | step={state.step_count} retry={state.retry_count}")
+        logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
         history = self._build_history(state, runtime.context)
-        debug_print_messages("[ReAct][final]", history)
+        log_messages(logger, "final", history)
 
         # 构建输入
         input = self._build_input(state)
@@ -42,7 +44,7 @@ class FinalNode(Node):
         # 更新状态
         preview = response.content[:300]
         suffix = "..." if len(response.content) > 300 else ""
-        print(f"[ReAct][final] response={preview}{suffix}")
+        logger.info("response=%s%s", preview, suffix)
         return {
             "response": response.content,
             "trajectory": [Message(role=Role.ASSISTANT, content=response.content)],
@@ -52,9 +54,9 @@ class FinalNode(Node):
         """
         异步运行
         """
-        print(f"[ReAct][final] enter | step={state.step_count} retry={state.retry_count}")
+        logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
         history = self._build_history(state, runtime.context)
-        debug_print_messages("[ReAct][final]", history)
+        log_messages(logger, "final", history)
 
         # 构建输入
         input = self._build_input(state)
@@ -71,7 +73,7 @@ class FinalNode(Node):
         # 更新状态
         preview = response.content[:300]
         suffix = "..." if len(response.content) > 300 else ""
-        print(f"[ReAct][final] response={preview}{suffix}")
+        logger.info("response=%s%s", preview, suffix)
         return {
             "response": response.content,
             "trajectory": [Message(role=Role.ASSISTANT, content=response.content)],

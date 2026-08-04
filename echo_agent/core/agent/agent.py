@@ -3,6 +3,7 @@ import json
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import Command
 
+from ...common import get_logger
 from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseInput, RootGraph
 from ..llm import LLMClient
@@ -23,6 +24,8 @@ from ..tool.utils import to_tool_definition
 from ..trace import AgentTrace
 from .agent_config import AgentConfig
 
+logger = get_logger("agent")
+
 
 class Agent:
     """
@@ -36,7 +39,7 @@ class Agent:
         tool_registry: 工具注册器
         skill_manager: Skill 管理器
         mcp_client: MCP 客户端（由 AgentConfig.mcp_servers 在构造时内部创建；
-            始终含内置 Fetch / Filesystem，并与额外 mcp_servers 合并）
+            可选合并内置 Fetch / Filesystem，默认关闭）
     """
     def __init__(self, agent_config: AgentConfig, runtime_config: RuntimeConfig, graph: RootGraph):
         # 配置
@@ -324,7 +327,7 @@ class Agent:
         """按用户交互推进 skill idle；HITL resume 不调用。"""
         discarded = SkillManager.expire_idle(context)
         if discarded:
-            print(f"[Agent] expired idle skills (user turn): {discarded}")
+            logger.info("expired idle skills (user turn): %s", discarded)
 
     def _get_agent_state(self, session_id: str) -> AgentState:
         """
@@ -337,17 +340,17 @@ class Agent:
         return self._active_skills_map.setdefault(session_id, {})
 
     def _print_token_usage(self, session_id: str, context: BaseContext) -> None:
-        """将会话级 token 用量写回 AgentState 并打印。"""
+        """将会话级 token 用量写回 AgentState 并记录日志。"""
         if context.trace is None:
             return
         usage = context.trace.token_usage
         agent_state = self._get_agent_state(session_id)
         agent_state.token_usage = usage.model_copy()
-        print(
-            f"[AgentTrace] token_usage | "
-            f"input={usage.input_tokens} "
-            f"output={usage.output_tokens} "
-            f"total={usage.total_tokens}"
+        logger.info(
+            "token_usage | input=%s output=%s total=%s",
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.total_tokens,
         )
 
     def _compress_conversation(self, session_id: str) -> None:

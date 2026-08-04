@@ -1,7 +1,7 @@
 """
 内置 MCP Server 连接配置。
 
-对应官方 reference servers：
+对应官方 reference servers（默认均不自动启用，由 AgentConfig 开关控制）：
 - Fetch：网页抓取（Python，`uvx mcp-server-fetch`）
 - Filesystem：受限目录下的文件操作（Node，`@modelcontextprotocol/server-filesystem`）
 
@@ -62,15 +62,15 @@ def builtin_filesystem_config(
 
 def builtin_mcp_servers(
     *,
-    allowed_directories: str | list[str],
-    enable_fetch: bool = True,
-    enable_filesystem: bool = True,
+    allowed_directories: str | list[str] | None = None,
+    enable_fetch: bool = False,
+    enable_filesystem: bool = False,
 ) -> list[MCPConnectionConfig]:
     """
-    返回 Agent 默认内置的 MCP Server 配置列表。
+    返回 Agent 可选内置的 MCP Server 配置列表（默认均不启用）。
 
     Args:
-        allowed_directories: Filesystem 允许访问的目录（由调用方传入）。
+        allowed_directories: Filesystem 允许访问的目录（启用 Filesystem 时必填）。
         enable_fetch: 是否包含 Fetch。
         enable_filesystem: 是否包含 Filesystem。
     """
@@ -78,7 +78,9 @@ def builtin_mcp_servers(
     if enable_fetch:
         servers.append(builtin_fetch_config())
     if enable_filesystem:
-        servers.append(builtin_filesystem_config(allowed_directories))
+        servers.append(
+            builtin_filesystem_config(allowed_directories if allowed_directories is not None else [])
+        )
     return servers
 
 

@@ -4,10 +4,13 @@ import uuid
 from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
+from ....common import get_logger
 from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE
 from ...model.hitl import HITLInput, HITLOutput, HITLType, HITLInteraction
 from .node import ApprovalFlow, InputFlow, NormalizeResultNode
 from .schema import HITLState
+
+logger = get_logger("hitl")
 
 
 class HITLSubgraph:
@@ -99,10 +102,10 @@ class HITLSubgraph:
         按 HITLType 路由到对应 flow
         """
         if state.type == HITLType.INPUT:
-            print("[HITLSubgraph] routing to input_flow")
+            logger.info("routing to input_flow")
             return "input_flow"
         if state.type == HITLType.APPROVAL:
-            print("[HITLSubgraph] routing to approval_flow")
+            logger.info("routing to approval_flow")
             return "approval_flow"
         raise ValueError(f"unsupported HITL type: {state.type}")
 

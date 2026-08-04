@@ -2,13 +2,15 @@ import json
 
 from langgraph.runtime import Runtime
 
-from ...common import format_debug
+from ...common import format_value, get_logger
 from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseState, Node
 from ..model.message import Message, Role
 from ..model.tool import ToolCall, ToolResult, ToolState
 from .tool_executor import ToolExecutor
 from .toolkit import reset_skill_runtime_context, set_skill_runtime_context
+
+logger = get_logger("tool")
 
 
 class ToolNode(Node):
@@ -29,17 +31,20 @@ class ToolNode(Node):
         """
         同步运行（适用于支持 sync invoke 的工具）
         """
-        print(f"[ReAct][tool] enter | calls={[tc.name for tc in state.tool_state.tool_calls]}")
+        logger.info("enter | calls=%s", [tc.name for tc in state.tool_state.tool_calls])
 
         token = set_skill_runtime_context(runtime.context)
         try:
             tool_results: list[ToolResult] = []
             for tool_call in state.tool_state.tool_calls:
-                print(f"[ReAct][tool] executing {tool_call.name} args:")
-                print(format_debug(tool_call.args))
+                logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
                 result = self._tool_executor.execute(tool_call)
-                print(f"[ReAct][tool] result name={result.name} success={result.success}")
-                print(format_debug(result.result))
+                logger.info(
+                    "result name=%s success=%s result=%s",
+                    result.name,
+                    result.success,
+                    format_value(result.result),
+                )
                 self._touch_skills_for_tool(runtime.context, tool_call)
                 tool_results.append(result)
         finally:
@@ -51,17 +56,20 @@ class ToolNode(Node):
         """
         异步运行（适用于 MCP 等仅支持 ainvoke 的工具）
         """
-        print(f"[ReAct][tool] enter | calls={[tc.name for tc in state.tool_state.tool_calls]}")
+        logger.info("enter | calls=%s", [tc.name for tc in state.tool_state.tool_calls])
 
         token = set_skill_runtime_context(runtime.context)
         try:
             tool_results: list[ToolResult] = []
             for tool_call in state.tool_state.tool_calls:
-                print(f"[ReAct][tool] executing {tool_call.name} args:")
-                print(format_debug(tool_call.args))
+                logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
                 result = await self._tool_executor.aexecute(tool_call)
-                print(f"[ReAct][tool] result name={result.name} success={result.success}")
-                print(format_debug(result.result))
+                logger.info(
+                    "result name=%s success=%s result=%s",
+                    result.name,
+                    result.success,
+                    format_value(result.result),
+                )
                 self._touch_skills_for_tool(runtime.context, tool_call)
                 tool_results.append(result)
         finally:
@@ -79,7 +87,7 @@ class ToolNode(Node):
 
     def _build_result(self, tool_results: list[ToolResult]) -> dict:
         tool_messages = self._build_tool_messages(tool_results)
-        print(f"[ReAct][tool] appended {len(tool_messages)} ToolMessage(s) to messages")
+        logger.debug("appended %s ToolMessage(s) to messages", len(tool_messages))
         result = {
             "tool_state": ToolState(tool_calls=[], tool_results=tool_results),
         }

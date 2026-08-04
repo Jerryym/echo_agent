@@ -17,13 +17,12 @@ class AgentConfig(BaseModel):
         system_prompt: 系统提示词
         kb_list: 知识库列表
         skill_list: 技能列表
-        mcp_allowed_directories: 内置 Filesystem 允许访问的目录（由调用方传入）
+        mcp_allowed_directories: 内置 Filesystem 允许访问的目录；
+            仅当 enable_builtin_filesystem=True 时必填
         mcp_servers: 额外 MCP Server 连接配置；同名覆盖内置，其余追加
+        enable_builtin_fetch: 是否合并内置 Fetch MCP（默认关闭）
+        enable_builtin_filesystem: 是否合并内置 Filesystem MCP（默认关闭）
         conversation_max_tokens: 对话最大词元数
-
-    说明:
-        创建时始终合并内置 Fetch / Filesystem；Filesystem 根目录仅来自
-        mcp_allowed_directories，无默认 cwd 回退。
     """
     name: str
     description: str | None = None
@@ -34,15 +33,30 @@ class AgentConfig(BaseModel):
     kb_list: list[str] = Field(default_factory=list)
     skill_list: dict[str, Any] = Field(default_factory=dict)
 
-    mcp_allowed_directories: str | list[str]
+    mcp_allowed_directories: str | list[str] | None = None
     mcp_servers: list[MCPConnectionConfig] = Field(default_factory=list)
+
+    enable_builtin_fetch: bool = False
+    enable_builtin_filesystem: bool = False
 
     conversation_max_tokens: int = 16384
 
     @model_validator(mode="after")
     def _merge_builtin_mcp(self) -> Self:
+        if self.enable_builtin_filesystem:
+            dirs = self.mcp_allowed_directories
+            if dirs is None or (isinstance(dirs, str) and not dirs.strip()) or (
+                isinstance(dirs, list) and not dirs
+            ):
+                raise ValueError(
+                    "mcp_allowed_directories is required when "
+                    "enable_builtin_filesystem is True"
+                )
+
         builtin_list = builtin_mcp_servers(
-            allowed_directories=self.mcp_allowed_directories,
+            allowed_directories=self.mcp_allowed_directories or [],
+            enable_fetch=self.enable_builtin_fetch,
+            enable_filesystem=self.enable_builtin_filesystem,
         )
         user_by_name = {cfg.name: cfg for cfg in self.mcp_servers}
         builtin_names = {cfg.name for cfg in builtin_list}

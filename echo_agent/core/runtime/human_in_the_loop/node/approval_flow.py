@@ -5,9 +5,12 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
+from .....common import get_logger
 from ....graph import Node
 from ....graph.schema import BaseContext
 from ..schema import HITLState
+
+logger = get_logger("hitl.approval")
 
 
 class ApprovalFlow(Node):
@@ -28,7 +31,7 @@ class ApprovalFlow(Node):
                 "payload": state.payload,
             }
         )
-        print("[ApprovalFlow] response:", response)
+        logger.info("response=%s", response)
 
         result = response if isinstance(response, dict) else {"raw": response}
         return {

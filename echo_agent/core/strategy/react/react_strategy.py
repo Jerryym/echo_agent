@@ -1,5 +1,6 @@
 from langgraph.runtime import Runtime
 
+from ....common import get_logger
 from ...graph import BaseContext, BaseState, Node, START_NODE, END_NODE, SubGraph
 from ...llm import LLMConfig
 from ...model.input import UserInput
@@ -11,6 +12,8 @@ from ..strategy import BaseStrategy
 from ..strategy_task import StrategyTask
 from .node import ActionNode, FinalNode, ReasonNode
 from .schema import ReActContext, ReActInput, ReActOutput, ReActState
+
+logger = get_logger("react")
 
 
 class ReActStrategy(BaseStrategy):
@@ -91,7 +94,7 @@ class ReActStrategy(BaseStrategy):
                 )
             )
         view.extend(trim_conversation(messages))
-        print(f"[ReAct] to_strategy_input | task={task}, messages={len(view)}")
+        logger.info("to_strategy_input | task=%s, messages=%s", task, len(view))
         return ReActInput(
             task=task,
             conversation=view,

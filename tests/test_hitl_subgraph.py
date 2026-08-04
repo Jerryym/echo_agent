@@ -4,7 +4,7 @@ from typing import Any
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, RootGraph, UserInput
-from echo_agent.common.debug import format_debug
+from echo_agent.common import format_value
 from echo_agent.core.graph import START_NODE, END_NODE
 from echo_agent.core.llm import LLMConfig
 from echo_agent.core.runtime import RuntimeConfig
@@ -200,7 +200,7 @@ def chat_hitl(hitl_type: HITLType) -> None:
                 resume_values = {"approved": approved}
             result = agent.resume(session_id, resume_values)
 
-        print("[HITL] result:", format_debug(result["hitl_result"]))
+        print("[HITL] result:", format_value(result["hitl_result"]))
         print("-" * 40)
 
 

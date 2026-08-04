@@ -4,7 +4,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from .....common import debug_print_messages
+from .....common import get_logger, log_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
@@ -13,6 +13,8 @@ from ....model.tool import ToolState
 from ....trace import TokenUsage
 from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState
+
+logger = get_logger("react.reason")
 
 
 class ReasonStructuredOutput(BaseModel):
@@ -83,9 +85,9 @@ class ReasonNode(Node):
         """
         Run the node
         """
-        print(f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} ")
+        logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
         history = self._build_history(state, runtime.context)
-        debug_print_messages("[ReAct][reason]", history)
+        log_messages(logger, "reason", history)
 
         # 检查工具执行失败
         if self._has_tool_error(state):
@@ -104,11 +106,11 @@ class ReasonNode(Node):
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
         result = response.structured
-        print(
-            "[ReAct][reason] "
-            f"thought={result.thought} \n"
-            f"reasoning={result.reasoning} \n"
-            f"task_status={result.task_status}"
+        logger.info(
+            "thought=%s reasoning=%s task_status=%s",
+            result.thought,
+            result.reasoning,
+            result.task_status,
         )
 
         return self._handle_result(result, state, runtime.context)
@@ -117,9 +119,9 @@ class ReasonNode(Node):
         """
         异步运行
         """
-        print(f"[ReAct][reason] enter | step={state.step_count} retry={state.retry_count} ")
+        logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
         history = self._build_history(state, runtime.context)
-        debug_print_messages("[ReAct][reason]", history)
+        log_messages(logger, "reason", history)
 
         # 检查工具执行失败
         if self._has_tool_error(state):
@@ -138,11 +140,11 @@ class ReasonNode(Node):
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
         result = response.structured
-        print(
-            "[ReAct][reason] "
-            f"thought={result.thought} \n"
-            f"reasoning={result.reasoning} \n"
-            f"task_status={result.task_status}"
+        logger.info(
+            "thought=%s reasoning=%s task_status=%s",
+            result.thought,
+            result.reasoning,
+            result.task_status,
         )
 
         return self._handle_result(result, state, runtime.context)
@@ -195,7 +197,7 @@ class ReasonNode(Node):
         处理工具错误
         """
         failed_tools = [r.name for r in state.tool_state.tool_results if r.error]
-        print(f"[ReAct][reason] tool error detected: {failed_tools}")
+        logger.warning("tool error detected: %s", failed_tools)
 
         retry_count = state.retry_count + 1
         result = {
@@ -226,7 +228,7 @@ class ReasonNode(Node):
 
     def _router(self, state: ReActState, context: ReActContext | None, update_state: dict) -> Command:
         next_node = self._select_node(state, context, update_state)
-        print(f"[ReAct][route] reason -> {next_node}")
+        logger.info("route reason -> %s", next_node)
         return Command(update=update_state, goto=next_node)
 
     def _select_node(self, state: ReActState, context: ReActContext | None, update_state: dict) -> Literal["action", "final"]:

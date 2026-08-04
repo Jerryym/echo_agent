@@ -66,7 +66,7 @@ def test_agent_config_from_proto_basic():
     assert remote.url == "http://localhost:8000/mcp"
 
 
-def test_agent_config_requires_mcp_allowed_directories():
+def test_agent_config_builtin_mcp_off_by_default():
     msg = pb.AgentConfig(
         name="demo",
         llm_config=pb.LLMConfig(
@@ -75,11 +75,11 @@ def test_agent_config_requires_mcp_allowed_directories():
             model_name="m",
         ),
     )
-    try:
-        agent_config_from_proto(msg)
-        raise AssertionError("expected ValueError")
-    except ValueError as exc:
-        assert "mcp_allowed_directories" in str(exc)
+    config = agent_config_from_proto(msg)
+    assert config.enable_builtin_fetch is False
+    assert config.enable_builtin_filesystem is False
+    assert config.mcp_servers == []
+    assert config.mcp_allowed_directories is None
 
 
 def test_user_input_and_response_events():
@@ -113,10 +113,14 @@ def test_runtime_options_from_proto():
     assert opts.checkpointer_kind == "memory"
 
 
+async def _stub_factory(config, runtime_options=None):
+    raise RuntimeError("stub factory should not be called in bind test")
+
+
 def test_create_server_binds():
     async def _run():
         server, runtime, addr = await create_server(
-            AgentRuntime(),
+            AgentRuntime(factory=_stub_factory),
             host="127.0.0.1",
             port=0,
         )

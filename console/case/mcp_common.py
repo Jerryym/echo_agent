@@ -106,6 +106,8 @@ async def _abuild_react_mcp_agent(
         llm_config=llm_config,
         mcp_allowed_directories=REPO_ROOT,
         mcp_servers=list(MCP_SERVERS),
+        enable_builtin_fetch=True,
+        enable_builtin_filesystem=True,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
 

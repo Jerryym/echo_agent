@@ -7,14 +7,14 @@ from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from ..utils.adapter.message_adapter import MessageAdapter
+from ...common import get_logger
 from ...prompt import PromptAssembler, PromptLoader
-
 from ..graph.schema import BaseContext
 from ..model.input import UserInput
 from ..model.message import Message
 from ..model.tool import ToolCall
 from ..trace import TokenUsage
+from ..utils.adapter.message_adapter import MessageAdapter
 from .exception import (
     LLMException,
     LLMInitializeError,
@@ -23,6 +23,8 @@ from .exception import (
 )
 from .llm_config import LLMConfig
 from .llm_result import LLMResult
+
+logger = get_logger("llm")
 
 
 class LLMClient:
@@ -336,11 +338,11 @@ class LLMClient:
         """初始化模型"""
         # Responses API 模型初始化
         if self._config.use_responses_api:
-            print("Initializing model with Responses API")
+            logger.info("Initializing model with Responses API")
             return self._initialize_model_with_responses_api()
-            
+
         # 非 Responses API 模型初始化
-        print("Initializing model with Completion API")
+        logger.info("Initializing model with Completion API")
         model_kwargs: dict[str, Any] = {
             "model": self._config.model_name,
             "api_key": self._config.api_key,

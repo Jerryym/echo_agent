@@ -102,6 +102,8 @@ async def build_react_agent(
         llm_config=llm_config,
         mcp_allowed_directories=str(Path(__file__).resolve().parents[1]),
         mcp_servers=MCP_SERVERS,
+        enable_builtin_fetch=True,
+        enable_builtin_filesystem=True,
     )
     runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
 
