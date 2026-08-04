@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from ....common.network import HttpClient, HttpClientError
+from ....utils.url_utils import join_url
 from ...model.skill import SkillPackage, SkillRuntimeContext, SkillStatus, SkillType
 
 
@@ -42,7 +44,15 @@ class SkillLoader:
         """
         加载HTTP内容
         """
-        raise NotImplementedError("HTTP skill loading is not implemented")
+        if not skill_package.skill_file:
+            raise ValueError("Skill file is required for HTTP skill")
+
+        url = join_url(skill_package.url, skill_package.skill_file)
+        try:
+            content = HttpClient.get(url)
+        except HttpClientError:
+            raise ValueError(f"Failed to load HTTP skill: {url}")
+        return SkillLoader._extract_instruction(content)
 
     @staticmethod
     def _extract_instruction(content: str) -> str:

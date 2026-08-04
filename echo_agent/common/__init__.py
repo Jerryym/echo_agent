@@ -7,6 +7,7 @@ from .logger import (
     resolve_log_file,
 )
 
+
 __all__ = [
     "Logger",
     "configure_logging",
