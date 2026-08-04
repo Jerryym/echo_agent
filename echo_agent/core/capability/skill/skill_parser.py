@@ -1,9 +1,10 @@
 from pathlib import Path
 from urllib.parse import urlparse
 
-import requests
 import yaml
 
+from ....common.network import HttpClient, HttpClientError
+from ....utils.url_utils import join_url
 from ...model.skill import SkillFrontmatter, SkillPackage, SkillType
 
 
@@ -11,6 +12,13 @@ class SkillParser:
     """
     Skill 解析器：负责解析 Skill 目录，生成 SkillPackage
     """
+    # 支持的Skill文件名
+    SKILL_FILE_CANDIDATES = (
+            "SKILL.md",
+            "Skill.md",
+            "skill.md",
+        )
+
     @staticmethod
     def parse(skill_dir: str) -> SkillPackage:
         skill_type = SkillParser._detect_type(skill_dir)
@@ -53,13 +61,27 @@ class SkillParser:
             assets=SkillParser._get_files(root / "assets"),
         )
 
-    # TODO：后续实现
     @staticmethod
     def _parse_http(skill_url: str) -> SkillPackage:
         """
         解析HTTP Skill
         """
-        pass
+        for name in SkillParser.SKILL_FILE_CANDIDATES:
+            try:
+                # 拼接url
+                url = join_url(skill_url, name)
+                content = HttpClient.get(url)
+                break
+            except HttpClientError:
+                continue
+
+        frontmatter = SkillParser._parse_frontmatter(content)
+        return SkillPackage(
+            type=SkillType.HTTP,
+            url=skill_url, # 远端url地址
+            skill_file=name,
+            frontmatter=frontmatter,
+        )
 
     @staticmethod
     def _find_skill_file(skill_dir: Path) -> Path:
@@ -72,13 +94,7 @@ class SkillParser:
             skill.md
 
         """
-        candidates = (
-            "SKILL.md",
-            "Skill.md",
-            "skill.md",
-        )
-
-        for name in candidates:
+        for name in SkillParser.SKILL_FILE_CANDIDATES:
             path = skill_dir / name
             if path.exists():
                 return path
@@ -98,7 +114,27 @@ class SkillParser:
             raise ValueError("Invalid YAML frontmatter")
 
         data = yaml.safe_load(parts[1]) or {}
-        return SkillFrontmatter.model_validate(data)
+        if not isinstance(data, dict):
+            raise ValueError("Invalid YAML frontmatter: expected a mapping")
+
+        normalized: dict = {
+            "name": data.get("name"),
+            "description": data.get("description"),
+        }
+        metadata: dict = {}
+        nested = data.get("metadata")
+        if isinstance(nested, dict):
+            metadata.update(nested)
+
+        for key, value in data.items():
+            if key in ("name", "description", "metadata"):
+                continue
+            metadata[key] = value
+
+        if metadata:
+            normalized["metadata"] = metadata
+
+        return SkillFrontmatter.model_validate(normalized)
 
     @staticmethod
     def _get_files(directory: Path) -> list[str]:

@@ -27,14 +27,30 @@ class SkillFrontmatter(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def move_allowed_tools_to_metadata(cls, data: Any) -> Any:
-        """Accept top-level allowed_tools while storing it as metadata."""
-        if not isinstance(data, dict) or "allowed_tools" not in data:
+    def fold_extra_fields_into_metadata(cls, data: Any) -> Any:
+        """Keep name/description; fold all other top-level fields into metadata."""
+        if not isinstance(data, dict):
             return data
-        normalized = dict(data)
-        metadata = dict(normalized.get("metadata") or {})
-        metadata["allowed_tools"] = normalized.pop("allowed_tools")
-        normalized["metadata"] = metadata
+
+        normalized: dict[str, Any] = {
+            "name": data.get("name"),
+            "description": data.get("description"),
+        }
+        metadata: dict[str, Any] = {}
+        nested = data.get("metadata")
+        if isinstance(nested, dict):
+            metadata.update(nested)
+
+        for key, value in data.items():
+            if key in ("name", "description", "metadata"):
+                continue
+            metadata[key] = value
+
+        if metadata:
+            normalized["metadata"] = metadata
+        elif "metadata" in data and data["metadata"] is None:
+            normalized["metadata"] = None
+
         return normalized
 
     @property
@@ -64,6 +80,7 @@ class SkillPackage(BaseModel):
         scripts: 可执行脚本
         references: 参考文档
         assets: 资源文件
+        additional_resources: 附加资源，除去scripts/references/assets/外的其他资源
     """
     type: SkillType
     url: str
@@ -74,6 +91,7 @@ class SkillPackage(BaseModel):
     scripts: list[str] = Field(default_factory=list)
     references: list[str] = Field(default_factory=list)
     assets: list[str] = Field(default_factory=list)
+    additional_resources: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class SkillStatus(Enum):
