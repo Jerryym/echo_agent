@@ -31,9 +31,7 @@ def builtin_fetch_config() -> MCPConnectionConfig:
     )
 
 
-def builtin_filesystem_config(
-    allowed_directories: str | list[str],
-) -> MCPConnectionConfig:
+def builtin_filesystem_config(allowed_directories: str | list[str]) -> MCPConnectionConfig:
     """
     内置 Filesystem MCP Server 配置（stdio / npx）。
 
@@ -84,9 +82,7 @@ def builtin_mcp_servers(
     return servers
 
 
-def _normalize_directories(
-    allowed_directories: str | list[str],
-) -> list[str]:
+def _normalize_directories(allowed_directories: str | list[str]) -> list[str]:
     if isinstance(allowed_directories, str):
         roots = [allowed_directories]
     else:

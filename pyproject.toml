@@ -33,4 +33,4 @@ include = ["echo_agent*"]
 exclude = ["console*", "tests*", "docs*"]
 
 [tool.setuptools.package-data]
-echo_agent = ["**/*.md"]
+echo_agent = ["**/*.md", "**/*.proto"]

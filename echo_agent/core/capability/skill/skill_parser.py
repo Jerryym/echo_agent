@@ -18,6 +18,8 @@ class SkillParser:
             "Skill.md",
             "skill.md",
         )
+    # 标准附属资源目录（不进入 additional_resources）
+    STANDARD_RESOURCE_DIRS = frozenset({"scripts", "references", "assets"})
 
     @staticmethod
     def parse(skill_dir: str) -> SkillPackage:
@@ -59,6 +61,7 @@ class SkillParser:
             scripts=SkillParser._get_files(root / "scripts"),
             references=SkillParser._get_files(root / "references"),
             assets=SkillParser._get_files(root / "assets"),
+            additional_resources=SkillParser._get_additional_resources(root),
         )
 
     @staticmethod
@@ -149,3 +152,40 @@ class SkillParser:
             for path in directory.rglob("*")
             if path.is_file()
         )
+
+    @staticmethod
+    def _get_additional_resources(skill_root: Path) -> dict[str, list[str]]:
+        """
+        获取 skill 根下除 scripts/references/assets/SKILL.md 外的附加资源。
+
+        按顶层目录名分组，例如::
+
+            {
+                "agents": ["agents/grader.md", ...],
+                "eval-viewer": ["eval-viewer/generate_review.py", ...],
+            }
+
+        根目录下的非描述文件归入键 ``"."``。
+        """
+        additional_resources: dict[str, list[str]] = {}
+        if not skill_root.exists():
+            return additional_resources
+
+        for entry in sorted(skill_root.iterdir(), key=lambda p: p.name.lower()):
+            if entry.is_dir():
+                if entry.name in SkillParser.STANDARD_RESOURCE_DIRS:
+                    continue
+                files = SkillParser._get_files(entry)
+                if files:
+                    additional_resources[entry.name] = files
+                continue
+
+            if not entry.is_file():
+                continue
+            if entry.name in SkillParser.SKILL_FILE_CANDIDATES:
+                continue
+            additional_resources.setdefault(".", []).append(entry.name)
+
+        for key in additional_resources:
+            additional_resources[key] = sorted(additional_resources[key])
+        return additional_resources

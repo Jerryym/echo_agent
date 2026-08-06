@@ -20,6 +20,16 @@ class AgentHandle(_message.Message):
     id: str
     def __init__(self, id: _Optional[str] = ...) -> None: ...
 
+class DeleteAgentRequest(_message.Message):
+    __slots__ = ("agent_id",)
+    AGENT_ID_FIELD_NUMBER: _ClassVar[int]
+    agent_id: str
+    def __init__(self, agent_id: _Optional[str] = ...) -> None: ...
+
+class DeleteAgentResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class RuntimeOptions(_message.Message):
     __slots__ = ("checkpointer_kind", "checkpointer_uri")
     CHECKPOINTER_KIND_FIELD_NUMBER: _ClassVar[int]
@@ -121,14 +131,23 @@ class Attachment(_message.Message):
     def __init__(self, type: _Optional[str] = ..., data: _Optional[str] = ...) -> None: ...
 
 class InvokeRequest(_message.Message):
-    __slots__ = ("agent_id", "session_id", "input")
+    __slots__ = ("agent_id", "session_id", "input", "metadata")
+    class MetadataEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
     AGENT_ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     INPUT_FIELD_NUMBER: _ClassVar[int]
+    METADATA_FIELD_NUMBER: _ClassVar[int]
     agent_id: str
     session_id: str
     input: UserInput
-    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., input: _Optional[_Union[UserInput, _Mapping]] = ...) -> None: ...
+    metadata: _containers.ScalarMap[str, str]
+    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., input: _Optional[_Union[UserInput, _Mapping]] = ..., metadata: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class AgentResponse(_message.Message):
     __slots__ = ("output", "interrupted", "interrupt_json")
@@ -141,14 +160,37 @@ class AgentResponse(_message.Message):
     def __init__(self, output: _Optional[str] = ..., interrupted: _Optional[bool] = ..., interrupt_json: _Optional[str] = ...) -> None: ...
 
 class ResumeRequest(_message.Message):
-    __slots__ = ("agent_id", "session_id", "values_json")
+    __slots__ = ("agent_id", "session_id", "values_json", "metadata")
+    class MetadataEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
     AGENT_ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     VALUES_JSON_FIELD_NUMBER: _ClassVar[int]
+    METADATA_FIELD_NUMBER: _ClassVar[int]
     agent_id: str
     session_id: str
     values_json: str
-    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., values_json: _Optional[str] = ...) -> None: ...
+    metadata: _containers.ScalarMap[str, str]
+    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., values_json: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ...) -> None: ...
+
+class CancelRequest(_message.Message):
+    __slots__ = ("agent_id", "session_id")
+    AGENT_ID_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    agent_id: str
+    session_id: str
+    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ...) -> None: ...
+
+class CancelResponse(_message.Message):
+    __slots__ = ("cancelled",)
+    CANCELLED_FIELD_NUMBER: _ClassVar[int]
+    cancelled: bool
+    def __init__(self, cancelled: _Optional[bool] = ...) -> None: ...
 
 class AgentEvent(_message.Message):
     __slots__ = ("type", "data")

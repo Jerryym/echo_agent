@@ -1,4 +1,5 @@
 import json
+from typing import Any, Mapping
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import Command
@@ -23,6 +24,7 @@ from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_to
 from ..tool.utils import to_tool_definition
 from ..trace import AgentTrace
 from .agent_config import AgentConfig
+from .runnable_metadata import METADATA_HTTP_HEADERS_KEY
 
 logger = get_logger("agent")
 
@@ -82,13 +84,19 @@ class Agent:
         """Agent 持有的 Skill 管理器。"""
         return self._skill_manager
 
-    def invoke(self, session_id: str, input: UserInput | type[BaseInput]):
+    def invoke(
+        self,
+        session_id: str,
+        input: UserInput | type[BaseInput],
+        metadata: Mapping[str, Any] | None = None,
+    ):
         """
         调用 Agent 执行
 
         Args:
             session_id: 会话 ID
             input: UserInput 用户输入 或 BaseInput 输入类型
+            metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         # 构建输入
         input_schema = self._graph.input_schema
@@ -101,7 +109,7 @@ class Agent:
                 raise TypeError(f"输入类型错误，期望 {input_schema}，实际 {type(input)}")
 
         # 构建RunnableConfig
-        runnable_config = self._build_runnable_config(session_id)
+        runnable_config = self._build_runnable_config(session_id, metadata)
         context = self._build_context(session_id)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -112,7 +120,12 @@ class Agent:
         self._compress_conversation(session_id)
         return result
 
-    async def ainvoke(self, session_id: str, input: UserInput | type[BaseInput]):
+    async def ainvoke(
+        self,
+        session_id: str,
+        input: UserInput | type[BaseInput],
+        metadata: Mapping[str, Any] | None = None,
+    ):
         """
         调用 Agent 执行（异步）
         """
@@ -127,7 +140,7 @@ class Agent:
                 raise TypeError(f"输入类型错误，期望 {input_schema}，实际 {type(input)}")
 
         # 构建RunnableConfig
-        runnable_config = self._build_runnable_config(session_id)
+        runnable_config = self._build_runnable_config(session_id, metadata)
         context = self._build_context(session_id)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -138,7 +151,13 @@ class Agent:
         await self._acompress_conversation(session_id)
         return result
 
-    def stream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
+    def stream(
+        self,
+        session_id: str,
+        input: UserInput | type[BaseInput],
+        version: str = "v2",
+        metadata: Mapping[str, Any] | None = None,
+    ):
         """
         流式调用 Agent 执行
 
@@ -146,6 +165,7 @@ class Agent:
             session_id: 会话 ID
             input: UserInput 用户输入 或 BaseInput 输入类型
             version: 版本
+            metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         # 构建输入
         input_schema = self._graph.input_schema
@@ -158,13 +178,19 @@ class Agent:
                 raise TypeError(f"输入类型错误，期望 {input_schema}，实际 {type(input)}")
 
         # 构建RunnableConfig
-        runnable_config = self._build_runnable_config(session_id)
+        runnable_config = self._build_runnable_config(session_id, metadata)
         context = self._build_context(session_id)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         return self._stream_iterator(graph_input, runnable_config, context, version, session_id)
 
-    async def astream(self, session_id: str, input: UserInput | type[BaseInput], version: str = "v2"):
+    async def astream(
+        self,
+        session_id: str,
+        input: UserInput | type[BaseInput],
+        version: str = "v2",
+        metadata: Mapping[str, Any] | None = None,
+    ):
         """
         流式调用 Agent 执行（异步）
         """
@@ -179,21 +205,27 @@ class Agent:
                 raise TypeError(f"输入类型错误，期望 {input_schema}，实际 {type(input)}")
 
         # 构建RunnableConfig
-        runnable_config = self._build_runnable_config(session_id)
+        runnable_config = self._build_runnable_config(session_id, metadata)
         context = self._build_context(session_id)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         return self._astream_iterator(graph_input, runnable_config, context, session_id, version)
 
-    def resume(self, session_id: str, values: dict):
+    def resume(
+        self,
+        session_id: str,
+        values: dict,
+        metadata: Mapping[str, Any] | None = None,
+    ):
         """
         恢复 Agent 执行
 
         Args:
             session_id: 会话 ID
             values: 输入
+            metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
-        runnable_config = self._build_runnable_config(session_id)
+        runnable_config = self._build_runnable_config(session_id, metadata)
         context = self._build_context(session_id)
         result = self._compiled_graph.invoke(Command(resume=values), runnable_config, context=context)
         self._append_conversation(session_id, result)
@@ -201,11 +233,16 @@ class Agent:
         self._compress_conversation(session_id)
         return result
 
-    async def aresume(self, session_id: str, values: dict):
+    async def aresume(
+        self,
+        session_id: str,
+        values: dict,
+        metadata: Mapping[str, Any] | None = None,
+    ):
         """
         恢复 Agent 执行（异步）
         """
-        runnable_config = self._build_runnable_config(session_id)
+        runnable_config = self._build_runnable_config(session_id, metadata)
         context = self._build_context(session_id)
         result = await self._compiled_graph.ainvoke(Command(resume=values), runnable_config, context=context)
         self._append_conversation(session_id, result)
@@ -213,7 +250,13 @@ class Agent:
         await self._acompress_conversation(session_id)
         return result
 
-    def stream_resume(self, session_id: str, values: dict, version: str = "v2"):
+    def stream_resume(
+        self,
+        session_id: str,
+        values: dict,
+        version: str = "v2",
+        metadata: Mapping[str, Any] | None = None,
+    ):
         """
         流式恢复 Agent 执行
 
@@ -221,16 +264,23 @@ class Agent:
             session_id: 会话 ID
             values: 输入
             version: 版本
+            metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
-        runnable_config = self._build_runnable_config(session_id)
+        runnable_config = self._build_runnable_config(session_id, metadata)
         context = self._build_context(session_id)
         return self._stream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
-    async def astream_resume(self, session_id: str, values: dict, version: str = "v2"):
+    async def astream_resume(
+        self,
+        session_id: str,
+        values: dict,
+        version: str = "v2",
+        metadata: Mapping[str, Any] | None = None,
+    ):
         """
         流式恢复 Agent 执行（异步）
         """
-        runnable_config = self._build_runnable_config(session_id)
+        runnable_config = self._build_runnable_config(session_id, metadata)
         context = self._build_context(session_id)
         return self._astream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
@@ -265,6 +315,108 @@ class Agent:
         runnable_config = RunnableConfig(configurable=configurable)
         return self._compiled_graph.get_state_history(runnable_config)
 
+    def restore_checkpoint(
+        self,
+        session_id: str,
+        checkpoint_id: str | None,
+    ) -> None:
+        """
+        将 thread tip fork 回开跑前基线（Cancel 用）。
+
+        LangGraph 的 update_state 不删除历史，只 fork 出新 tip，使后续
+        无 checkpoint_id 的 get_state / invoke / astream 读到基线语义。
+
+        Args:
+            session_id: 会话 ID（= thread_id）
+            checkpoint_id: 开跑前 tip 的 checkpoint_id；首轮无基线时为 None
+        """
+        if not session_id or not str(session_id).strip():
+            raise ValueError("session_id is required")
+
+        # 当轮未完成，不写 conversation
+        self._pending_inputs.pop(session_id, None)
+
+        if checkpoint_id is None or not str(checkpoint_id).strip():
+            self._restore_first_turn_baseline(session_id)
+            return
+
+        baseline = self.get_state(session_id, checkpoint_id=str(checkpoint_id))
+        config = self._config_for_checkpoint(session_id, str(checkpoint_id), baseline)
+        values = self._normalize_checkpoint_values(getattr(baseline, "values", None))
+        # 不传 as_node：由 checkpoint 版本史推断。
+        # - 完成态基线 → tip.next == ()
+        # - HITL interrupt 基线 → tip.next 保留，可再次 Resume
+        self._compiled_graph.update_state(config, values=values)
+
+    def _restore_first_turn_baseline(self, session_id: str) -> None:
+        """首轮无基线：若已有 tip（半成品），写成空完成态；否则 no-op。"""
+        tip = self.get_state(session_id)
+        tip_config = getattr(tip, "config", None) or {}
+        tip_configurable = (
+            tip_config.get("configurable") if isinstance(tip_config, dict) else None
+        ) or {}
+        if not tip_configurable.get("checkpoint_id"):
+            return
+        values = self._empty_state_values()
+        config = RunnableConfig(configurable={"thread_id": session_id})
+        self._compiled_graph.update_state(config, values=values)
+
+    def _empty_state_values(self) -> dict[str, Any]:
+        """用 state_schema 默认值构造空完成态；失败则 {}。"""
+        schema = self._graph.state_schema
+        if schema is None:
+            return {}
+        try:
+            instance = schema()
+        except Exception:
+            return {}
+        if hasattr(instance, "model_dump"):
+            return instance.model_dump()
+        if isinstance(instance, dict):
+            return dict(instance)
+        return {}
+
+    @staticmethod
+    def _normalize_checkpoint_values(values: Any) -> dict[str, Any]:
+        """将 StateSnapshot.values 规范为 update_state 可用的 dict。"""
+        if values is None:
+            return {}
+        if hasattr(values, "model_dump"):
+            return values.model_dump()
+        if isinstance(values, dict):
+            out: dict[str, Any] = {}
+            for key, value in values.items():
+                if hasattr(value, "model_dump"):
+                    out[key] = value.model_dump()
+                else:
+                    out[key] = value
+            return out
+        try:
+            return dict(values)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _config_for_checkpoint(
+        session_id: str,
+        checkpoint_id: str,
+        baseline: Any,
+    ) -> RunnableConfig:
+        """构造带 checkpoint_ns 的 config（get_state 按 id 取回时可能缺 ns）。"""
+        checkpoint_ns = ""
+        baseline_config = getattr(baseline, "config", None) or {}
+        if isinstance(baseline_config, dict):
+            configurable = baseline_config.get("configurable") or {}
+            if isinstance(configurable, dict) and configurable.get("checkpoint_ns") is not None:
+                checkpoint_ns = str(configurable.get("checkpoint_ns") or "")
+        return RunnableConfig(
+            configurable={
+                "thread_id": session_id,
+                "checkpoint_id": checkpoint_id,
+                "checkpoint_ns": checkpoint_ns,
+            }
+        )
+
     def _register_tools(self) -> None:
         """
         注册工具。
@@ -285,18 +437,21 @@ class Agent:
             return []
         return await self._mcp_client.register_tools()
 
-    def _build_runnable_config(self, session_id: str) -> RunnableConfig:
+    def _build_runnable_config(
+        self,
+        session_id: str,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> RunnableConfig:
         """
-        构建 RunnableConfig
+        构建 RunnableConfig。
 
-        Args:
-            session_id: 会话 ID
+        metadata 经规范化后写入 configurable["metadata"]（包含默认键 http_headers, {"Authorization":"Bearer x"}）。
         """
-        return RunnableConfig(
-            configurable={
-                "thread_id": session_id,
-            }
-        )
+        configurable: dict[str, Any] = {
+            "thread_id": session_id,
+            "metadata": self._normalize_invoke_metadata(metadata),
+        }
+        return RunnableConfig(configurable=configurable)
 
     def _build_context(self, session_id: str) -> BaseContext:
         """
@@ -432,3 +587,52 @@ class Agent:
         if isinstance(value, str):
             return value
         return json.dumps(value, ensure_ascii=False, default=str)
+
+    def _normalize_invoke_metadata(self, metadata: Mapping[str, Any] | None) -> dict[str, Any]:
+        """
+        规范化调用 metadata，写入 configurable["metadata"]。
+
+        - 其它键原样拷贝（不解释业务语义）
+        - 保留键 http_headers：JSON 字符串或已是 dict → 统一为 dict[str, str]
+        """
+        if not metadata:
+            return {}
+
+        out: dict[str, Any] = dict(metadata)
+        if METADATA_HTTP_HEADERS_KEY not in out:
+            return out
+
+        raw = out[METADATA_HTTP_HEADERS_KEY]
+        if raw is None or raw == "":
+            del out[METADATA_HTTP_HEADERS_KEY]
+            return out
+
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"metadata.{METADATA_HTTP_HEADERS_KEY} is not valid JSON: {exc}"
+                ) from exc
+        elif isinstance(raw, dict):
+            parsed = raw
+        else:
+            raise ValueError(
+                f"metadata.{METADATA_HTTP_HEADERS_KEY} must be a JSON object string "
+                f"or dict[str, str], got {type(raw).__name__}"
+            )
+
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"metadata.{METADATA_HTTP_HEADERS_KEY} must be a JSON object"
+            )
+        headers: dict[str, str] = {}
+        for key, value in parsed.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise ValueError(
+                    f"metadata.{METADATA_HTTP_HEADERS_KEY} entries must be string keys "
+                    "and string values"
+                )
+            headers[key] = value
+        out[METADATA_HTTP_HEADERS_KEY] = headers
+        return out

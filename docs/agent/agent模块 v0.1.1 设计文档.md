@@ -24,7 +24,7 @@ v0.1.1 将 Agent 从设计草案落地为可运行的 **CompiledGraph 封装层*
 | 输入类型 | `Message` | `UserInput` 或 Graph `input_schema` 子类 |
 | 调用方式 | `async invoke` / `async stream` | 同步 `invoke` / `stream` |
 | 流式参数 | 未定义 | `stream_mode="messages"`, `subgraphs=True`, `version="v2"` |
-| 调试 API | 无 | `get_state()` / `get_state_history()` |
+| 调试 API | 无 | `get_state()` / `get_state_history()` / `restore_checkpoint()` |
 | `AgentConfig.strategy` | 策略标识字段 | **已移除**；Strategy 在 Graph 构建期注入 |
 
 ---
@@ -277,7 +277,23 @@ def get_state_history(self, session_id: str) -> Iterator[StateSnapshot]:
 
 读取指定 session 的状态变更历史。
 
-> 两个 Debug API 均标记为调试用途，不参与正常业务调用链路。
+### 7.5 restore_checkpoint（Cancel 回滚）
+
+```python
+def restore_checkpoint(
+    self,
+    session_id: str,
+    checkpoint_id: str | None,
+) -> None:
+```
+
+将 thread tip **fork** 回开跑前基线（供 Adapter `Cancel` 使用）。
+
+- `checkpoint_id`：开跑前 tip；首轮无基线时传 `None`（写成空完成态或 no-op）。  
+- 同时清除 `_pending_inputs[session_id]`。  
+- 基于 LangGraph `update_state`，不删除历史 checkpoint。
+
+> `get_state` / `get_state_history` 为调试用途；`restore_checkpoint` 由 Runtime Adapter 在当轮中止时调用，一般不由业务直接调用。
 
 ---
 

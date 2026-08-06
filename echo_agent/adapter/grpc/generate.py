@@ -1,6 +1,7 @@
-"""重新从 proto 生成 Python stubs。
+"""
+重新从 proto 生成 Python stubs。
 
-用法（仓库根目录）::
+用法（在仓库根目录下执行）：
 
     python -m echo_agent.adapter.grpc.generate
 """
@@ -14,7 +15,7 @@ from pathlib import Path
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[3]
-    proto_dir = repo_root / "echo_agent" / "proto"
+    proto_dir = repo_root / "echo_agent" / "adapter" / "proto"
     out_dir = Path(__file__).resolve().parent / "pb"
     proto_file = proto_dir / "echo_agent.proto"
     out_dir.mkdir(parents=True, exist_ok=True)

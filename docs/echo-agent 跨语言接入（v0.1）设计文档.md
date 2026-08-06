@@ -6,7 +6,7 @@
 | 状态 | 设计修订；执行面 gRPC 与必填 Agent 工厂已落地；集成方入口示例已提供 |
 | 目标 | 非 Python 宿主传入 `AgentConfig`；集成方用 Python 自定义图构建 Agent；本库提供通信与执行转发 |
 
-> **协议细节**以 `echo_agent/proto/echo_agent.proto` 为准。  
+> **协议细节**以 `echo_agent/adapter/proto/echo_agent.proto` 为准。  
 > **Adapter 实现契约**见 [runtime adapter v0.1.0 设计文档](./runtime%20adapter/runtime%20adapter%20v0.1.0%20设计文档.md)。  
 > **集成方入口示例**：`examples/integrator_runtime/`。
 
@@ -34,7 +34,7 @@ echo-agent Runtime 基于 Python（LangChain / LangGraph）实现。跨语言场
    启动时注入 `factory`；`CreateAgent` 调用工厂消费 `AgentConfig` 并返回 `Agent`。图逻辑不在客户端、不在协议里序列化。
 
 3. **本库提供通信执行面**  
-   `EchoAgentService`：CreateAgent / Invoke / Stream / Resume / StreamResume，以及事件归一化。
+   `EchoAgentService`：CreateAgent / Invoke / Stream / Resume / StreamResume / Cancel，以及事件归一化。
 
 4. **宿主可自启 Runtime**  
    静默拉起集成方入口或 `python -m echo_agent.adapter.grpc.server --factory …`。
@@ -73,7 +73,7 @@ Session 由宿主生成并维护，仅作为调用参数传入。
 +--------------------+---------------------+
                      |
         CreateAgent(AgentConfig)
-        Invoke / Stream / Resume
+        Invoke / Stream / Resume / Cancel
                      |
 +--------------------v---------------------+
 | Runtime 进程                              |
@@ -161,19 +161,22 @@ uv run python -m echo_agent.adapter.grpc.server \
 
 ## 6. 通信契约（摘要）
 
-完整定义见 `echo_agent/proto/echo_agent.proto`。
+完整定义见 `echo_agent/adapter/proto/echo_agent.proto`。
 
 ```protobuf
 service EchoAgentService {
   rpc CreateAgent(CreateAgentRequest) returns (AgentHandle);
+  rpc DeleteAgent(DeleteAgentRequest) returns (DeleteAgentResponse);
   rpc Invoke(InvokeRequest) returns (AgentResponse);
   rpc Stream(InvokeRequest) returns (stream AgentEvent);
   rpc Resume(ResumeRequest) returns (AgentResponse);
   rpc StreamResume(ResumeRequest) returns (stream AgentEvent);
+  rpc Cancel(CancelRequest) returns (CancelResponse);
 }
 ```
 
-调用顺序：启动（已注入工厂）→ CreateAgent → Invoke/Stream →（HITL）Resume/StreamResume。
+调用顺序：启动（已注入工厂）→ CreateAgent → Invoke/Stream →（HITL）Resume/StreamResume →（可选）Cancel 中止当轮 → DeleteAgent。  
+`InvokeRequest` / `ResumeRequest` 可选 `metadata`（含保留键 `http_headers`），透传到 `RunnableConfig.configurable["metadata"]`；`Cancel` 与 Stream 事件细节见 [快速接入](./runtime%20adapter/快速接入.md) §5–§7。
 
 ---
 
@@ -193,6 +196,7 @@ service EchoAgentService {
 - `AgentRuntime(factory=...)`（factory **必填**）  
 - `build_runtime_config`（供工厂复用 checkpointer 选项）  
 - `--factory module:attr` 与 `examples/integrator_runtime` 入口  
+- `Cancel`（当轮中止 + checkpoint tip 回滚）  
 
 **不做：**
 

@@ -43,6 +43,11 @@ class EchoAgentServiceStub:
                 request_serializer=echo__agent__pb2.CreateAgentRequest.SerializeToString,
                 response_deserializer=echo__agent__pb2.AgentHandle.FromString,
                 _registered_method=True)
+        self.DeleteAgent = channel.unary_unary(
+                '/echo_agent.v1.EchoAgentService/DeleteAgent',
+                request_serializer=echo__agent__pb2.DeleteAgentRequest.SerializeToString,
+                response_deserializer=echo__agent__pb2.DeleteAgentResponse.FromString,
+                _registered_method=True)
         self.Invoke = channel.unary_unary(
                 '/echo_agent.v1.EchoAgentService/Invoke',
                 request_serializer=echo__agent__pb2.InvokeRequest.SerializeToString,
@@ -63,6 +68,11 @@ class EchoAgentServiceStub:
                 request_serializer=echo__agent__pb2.ResumeRequest.SerializeToString,
                 response_deserializer=echo__agent__pb2.AgentEvent.FromString,
                 _registered_method=True)
+        self.Cancel = channel.unary_unary(
+                '/echo_agent.v1.EchoAgentService/Cancel',
+                request_serializer=echo__agent__pb2.CancelRequest.SerializeToString,
+                response_deserializer=echo__agent__pb2.CancelResponse.FromString,
+                _registered_method=True)
 
 
 class EchoAgentServiceServicer:
@@ -74,6 +84,13 @@ class EchoAgentServiceServicer:
 
     def CreateAgent(self, request, context):
         """按 AgentConfig（+ 可选 RuntimeOptions）创建默认 ReAct Agent，返回 agent_id
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteAgent(self, request, context):
+        """销毁进程内 Agent 实例（宿主业务结束时调用）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -107,6 +124,13 @@ class EchoAgentServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Cancel(self, request, context):
+        """中止指定 session 上正在进行的当轮执行（非 HITL resume 取消）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_EchoAgentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -114,6 +138,11 @@ def add_EchoAgentServiceServicer_to_server(servicer, server):
                     servicer.CreateAgent,
                     request_deserializer=echo__agent__pb2.CreateAgentRequest.FromString,
                     response_serializer=echo__agent__pb2.AgentHandle.SerializeToString,
+            ),
+            'DeleteAgent': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteAgent,
+                    request_deserializer=echo__agent__pb2.DeleteAgentRequest.FromString,
+                    response_serializer=echo__agent__pb2.DeleteAgentResponse.SerializeToString,
             ),
             'Invoke': grpc.unary_unary_rpc_method_handler(
                     servicer.Invoke,
@@ -134,6 +163,11 @@ def add_EchoAgentServiceServicer_to_server(servicer, server):
                     servicer.StreamResume,
                     request_deserializer=echo__agent__pb2.ResumeRequest.FromString,
                     response_serializer=echo__agent__pb2.AgentEvent.SerializeToString,
+            ),
+            'Cancel': grpc.unary_unary_rpc_method_handler(
+                    servicer.Cancel,
+                    request_deserializer=echo__agent__pb2.CancelRequest.FromString,
+                    response_serializer=echo__agent__pb2.CancelResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -167,6 +201,33 @@ class EchoAgentService:
             '/echo_agent.v1.EchoAgentService/CreateAgent',
             echo__agent__pb2.CreateAgentRequest.SerializeToString,
             echo__agent__pb2.AgentHandle.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteAgent(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/echo_agent.v1.EchoAgentService/DeleteAgent',
+            echo__agent__pb2.DeleteAgentRequest.SerializeToString,
+            echo__agent__pb2.DeleteAgentResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -275,6 +336,33 @@ class EchoAgentService:
             '/echo_agent.v1.EchoAgentService/StreamResume',
             echo__agent__pb2.ResumeRequest.SerializeToString,
             echo__agent__pb2.AgentEvent.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Cancel(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/echo_agent.v1.EchoAgentService/Cancel',
+            echo__agent__pb2.CancelRequest.SerializeToString,
+            echo__agent__pb2.CancelResponse.FromString,
             options,
             channel_credentials,
             insecure,

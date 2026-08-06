@@ -155,6 +155,7 @@ async def iter_agent_events(
                     last_output = str(content)
             yield event
 
+        # 中断事件
         pending = get_pending_interrupt(agent, session_id)
         if pending is not None:
             yield AgentEvent(type="interrupt", data=pending)
@@ -167,11 +168,12 @@ async def iter_agent_events(
                 last_output = str(values["response"])
 
         yield AgentEvent(type="done", data={"output": last_output})
-    except Exception as exc:  # noqa: BLE001 — 协议层统一为 error 事件
+    except Exception as exc:  # noqa: BLE001 — 先 error 事件，再抛出供上层 abort
         yield AgentEvent(
             type="error",
             data={"message": str(exc), "type": type(exc).__name__},
         )
+        raise
 
 
 def iter_agent_events_sync(
@@ -191,6 +193,7 @@ def iter_agent_events_sync(
                     last_output = str(content)
             yield event
 
+        # 中断事件
         pending = get_pending_interrupt(agent, session_id)
         if pending is not None:
             yield AgentEvent(type="interrupt", data=pending)
@@ -208,3 +211,4 @@ def iter_agent_events_sync(
             type="error",
             data={"message": str(exc), "type": type(exc).__name__},
         )
+        raise

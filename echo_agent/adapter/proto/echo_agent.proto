@@ -1,5 +1,5 @@
 // echo-agent Runtime Adapter gRPC 契约（v0.1.0）
-// 对齐设计文档 §9：CreateAgent / Invoke / Stream / Resume / StreamResume
+// 对齐设计文档 §9：CreateAgent / Invoke / Stream / Resume / StreamResume / Cancel
 syntax = "proto3";
 
 package echo_agent.v1;
@@ -17,6 +17,9 @@ service EchoAgentService {
   // 按 AgentConfig（+ 可选 RuntimeOptions）创建默认 ReAct Agent，返回 agent_id
   rpc CreateAgent(CreateAgentRequest) returns (AgentHandle);
 
+  // 销毁进程内 Agent 实例（宿主业务结束时调用）
+  rpc DeleteAgent(DeleteAgentRequest) returns (DeleteAgentResponse);
+
   // 同步执行一轮（需 session_id）
   rpc Invoke(InvokeRequest) returns (AgentResponse);
 
@@ -28,6 +31,9 @@ service EchoAgentService {
 
   // HITL 流式恢复（对齐 Agent.stream_resume）
   rpc StreamResume(ResumeRequest) returns (stream AgentEvent);
+
+  // 中止指定 session 上正在进行的当轮执行（非 HITL resume 取消）
+  rpc Cancel(CancelRequest) returns (CancelResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +49,12 @@ message CreateAgentRequest {
 message AgentHandle {
   string id = 1;
 }
+
+message DeleteAgentRequest {
+  string agent_id = 1;
+}
+
+message DeleteAgentResponse {}
 
 message RuntimeOptions {
   // v0.1：例如 "memory" | "sqlite"；具体取值实现期再定
@@ -75,7 +87,9 @@ message LLMConfig {
   string model_name = 3;
   // 默认 openai（空字符串时由 Adapter 填默认值）
   string model_provider = 4;
-  double temperature = 5;
+  // 使用 optional，以便显式设置 temperature=0（与未设置区分）
+  optional double temperature = 5;
+  // 以下标量：0 表示未设置，回退 Python 默认（不支持合法值 0）
   int32 max_tokens = 6;
   int32 timeout = 7;
   int32 max_retries = 8;
@@ -119,6 +133,8 @@ message InvokeRequest {
   // 必填 → LangGraph thread_id
   string session_id = 2;
   UserInput input = 3;
+  // 元数据：自定义字段（包含默认键 http_headers, {"Authorization":"Bearer x"}）
+  map<string, string> metadata = 4;
 }
 
 message AgentResponse {
@@ -139,6 +155,23 @@ message ResumeRequest {
   string session_id = 2;
   // HITL resume 载荷，如 {"values":{...}} / {"cancelled":true}
   string values_json = 3;
+  // 元数据：自定义字段（包含默认键 http_headers, {"Authorization":"Bearer x"}）
+  map<string, string> metadata = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Cancel（中止当轮图执行；与 HITL {"cancelled":true} 无关）
+// ---------------------------------------------------------------------------
+
+message CancelRequest {
+  string agent_id = 1;
+  // 必填 → LangGraph thread_id
+  string session_id = 2;
+}
+
+message CancelResponse {
+  // true：找到活跃 turn 并已发出取消；false：当时无活跃 turn（幂等成功）
+  bool cancelled = 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,7 +179,7 @@ message ResumeRequest {
 // ---------------------------------------------------------------------------
 
 message AgentEvent {
-  // message | interrupt | error | done
+  // message | interrupt | error | done | cancelled
   // 可选扩展：tool_call | tool_result（v0.1 最小集合不含强制要求）
   string type = 1;
   // UTF-8 JSON payload

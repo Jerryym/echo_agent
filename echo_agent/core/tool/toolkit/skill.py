@@ -42,26 +42,6 @@ def _validate_resource_path(path: str) -> str | None:
         return None
     return relative
 
-
-async def _aread_package_resource(package: SkillPackage, relative: str) -> str:
-    if package.type != SkillType.FILE:
-        raise NotImplementedError(f"Unsupported skill type for resource read: {package.type}")
-
-    root = Path(package.url).resolve()
-    target = (root / relative).resolve()
-    try:
-        target.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"Path escapes skill package root: {relative}") from exc
-    if not target.is_file():
-        raise FileNotFoundError(f"Skill resource not found: {relative}")
-
-    def _read_text() -> str:
-        return target.read_text(encoding="utf-8")
-
-    return await asyncio.to_thread(_read_text)
-
-
 def create_load_skill_tool(skill_manager: SkillManager):
     """创建绑定到指定 SkillManager 的 load_skill 工具。"""
 
@@ -127,3 +107,25 @@ def create_read_skill_resource_tool(skill_manager: SkillManager):
             return f"Failed to read skill resource '{path}' from '{name}': {exc}"
 
     return read_skill_resource
+
+
+async def _aread_package_resource(package: SkillPackage, relative: str) -> str:
+    """
+    异步读取 skill 包中的资源
+    """
+    if package.type != SkillType.FILE:
+        raise NotImplementedError(f"Unsupported skill type for resource read: {package.type}")
+
+    root = Path(package.url).resolve()
+    target = (root / relative).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Path escapes skill package root: {relative}") from exc
+    if not target.is_file():
+        raise FileNotFoundError(f"Skill resource not found: {relative}")
+
+    def _read_text() -> str:
+        return target.read_text(encoding="utf-8")
+
+    return await asyncio.to_thread(_read_text)

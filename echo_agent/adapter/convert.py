@@ -34,7 +34,12 @@ def llm_config_from_proto(msg: pb.LLMConfig) -> LLMConfig:
     extra_body: dict[str, Any] = {}
     builtin_tools: list[dict[str, Any]] = []
     if msg.extra_json:
-        payload = json.loads(msg.extra_json)
+        try:
+            payload = json.loads(msg.extra_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"llm_config.extra_json is not valid JSON: {exc}"
+            ) from exc
         if not isinstance(payload, dict):
             raise ValueError("llm_config.extra_json must be a JSON object")
         builtin_tools = list(payload.get("builtin_tools") or [])
@@ -57,8 +62,8 @@ def llm_config_from_proto(msg: pb.LLMConfig) -> LLMConfig:
         "builtin_tools": builtin_tools,
         "extra_body": extra_body,
     }
-    # proto3 标量 0 / "" 无法区分未设置；对明显「未填」的字段回退 Python 默认值
-    if msg.temperature != 0.0:
+    # temperature：optional，支持显式 0；其余标量 0 视为未设置
+    if msg.HasField("temperature"):
         kwargs["temperature"] = float(msg.temperature)
     if msg.max_tokens > 0:
         kwargs["max_tokens"] = int(msg.max_tokens)

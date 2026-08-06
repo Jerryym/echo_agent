@@ -352,6 +352,7 @@ HTTP/SSE 可作为可选第二适配器，语义与 gRPC 一致。
 ```protobuf
 service EchoAgentService {
   rpc CreateAgent(CreateAgentRequest) returns (AgentHandle);
+  rpc DeleteAgent(DeleteAgentRequest) returns (DeleteAgentResponse);
 
   rpc Invoke(InvokeRequest) returns (AgentResponse);
 
@@ -360,7 +361,13 @@ service EchoAgentService {
   rpc Resume(ResumeRequest) returns (AgentResponse);
 
   rpc StreamResume(ResumeRequest) returns (stream AgentEvent);
+
+  // 中止当轮图执行（非 HITL resume {"cancelled":true}）
+  rpc Cancel(CancelRequest) returns (CancelResponse);
 }
+
+message DeleteAgentRequest { string agent_id = 1; }
+message DeleteAgentResponse {}
 ```
 
 ### 9.2 CreateAgent
@@ -444,6 +451,9 @@ message InvokeRequest {
   string agent_id = 1;
   string session_id = 2;   // 必填 → thread_id
   UserInput input = 3;
+  // 可选；透传到 RunnableConfig.configurable["metadata"]
+  // 保留键 http_headers：JSON object 字符串 → 解析为 dict[str,str]
+  map<string, string> metadata = 4;
 }
 
 message AgentResponse {
@@ -462,16 +472,42 @@ message ResumeRequest {
   string agent_id = 1;
   string session_id = 2;
   string values_json = 3;  // HITL resume 载荷，如 {"values":{...}} / {"cancelled":true}
+  map<string, string> metadata = 4;  // 同 InvokeRequest.metadata
 }
 ```
 
-### 9.6 Streaming 事件
+### 9.6 Cancel
+
+中止指定 `session_id` 上正在进行的当轮执行（Invoke / Stream / Resume / StreamResume）。
+
+```protobuf
+message CancelRequest {
+  string agent_id = 1;
+  string session_id = 2;  // = LangGraph thread_id
+}
+
+message CancelResponse {
+  // true：找到活跃 turn 并已取消；false：当时无活跃 turn（幂等成功）
+  bool cancelled = 1;
+}
+```
+
+语义：
+
+1. 开跑前记录 tip 的 `checkpoint_id`；当轮执行登记为 `asyncio.Task`。  
+2. `Cancel` → `task.cancel()` → `Agent.restore_checkpoint`：用 `update_state` 将 tip **fork** 回开跑前基线（不删历史）。  
+3. 首轮无基线（`checkpoint_id is None`）时写成空完成态。  
+4. **不是** HITL 的 `Resume({"cancelled":true})`。  
+5. 客户端断 Stream 时服务端走同一取消路径；被中止的 RPC status 为 `CANCELLED`。  
+6. 同一 `(agent_id, session_id)` 同时只允许一轮，否则 `FAILED_PRECONDITION`。
+
+### 9.7 Streaming 事件
 
 当前 `Agent.stream` 返回 LangGraph messages 流。协议层定义归一化事件，由 Adapter 映射：
 
 ```protobuf
 message AgentEvent {
-  string type = 1;  // message | interrupt | error | done
+  string type = 1;  // message | interrupt | error | done | cancelled
                     // 可选扩展（Adapter 映射目标，非原生）：tool_call | tool_result
   bytes data = 2;   // UTF-8 JSON
 }
@@ -483,28 +519,30 @@ message AgentEvent {
 {"type": "message", "data": {"role": "assistant", "content": "..."}}
 {"type": "interrupt", "data": {"id": "...", "type": "approval", "description": "..."}}
 {"type": "done", "data": {"output": "..."}}
+{"type": "cancelled", "data": {}}
 ```
 
-说明：`reasoning` / `tool_call` / `tool_result` 等细粒度类型为**可选增强**，依赖 Adapter 从 messages/subgraphs 解析；v0.1 以 `message` + `interrupt` + `done` / `error` 为最小集合。
+说明：`reasoning` / `tool_call` / `tool_result` 等细粒度类型为**可选增强**，依赖 Adapter 从 messages/subgraphs 解析；v0.1 以 `message` + `interrupt` + `done` / `error` / `cancelled` 为最小集合。
 
 ---
 
-## 10. 目录结构（拟议）
+## 10. 目录结构
 
 避免与 `echo_agent/core/runtime` 冲突：
 
 ```text
 echo_agent/
-├── adapter/                    # 拟新增：协议 + ReAct 组装（非侵入）
+├── adapter/                    # 协议适配层（非侵入 core）
 │   ├── __init__.py
-│   ├── agent_runtime.py        # Create / Invoke / Stream / Resume
-│   ├── react_agent.py          # ★ 默认 ReAct 组装（仅此处，勿下沉 core）
+│   ├── agent_runtime.py        # Create / Delete / Invoke / Stream / Resume / Cancel
 │   ├── events.py               # messages → AgentEvent 映射
+│   ├── proto/                  # gRPC 契约源（宿主可单独拷贝）
+│   │   └── echo_agent.proto
 │   └── grpc/
+│       ├── generate.py         # proto → pb stubs
 │       ├── server.py
-│       └── service.py
-├── proto/                      # 或仓库根 proto/
-│   └── echo_agent.proto
+│       ├── service.py
+│       └── pb/                 # 生成物
 └── core/                       # 现有实现，不变；不含组装配方
     ├── agent/
     ├── runtime/                # RuntimeConfig / HITL / interrupt（保持原义）
@@ -513,6 +551,8 @@ echo_agent/
     ├── mcp/
     └── ...
 ```
+
+> ReAct 等默认组装由集成方注入 `AgentFactory`（见 `examples/integrator_runtime/`），不强制放在 adapter 包内。
 
 入口进程（示例）：`echo-agent-server` → 构造 Adapter 侧 `AgentRuntime` → 启动 gRPC。
 
@@ -538,7 +578,8 @@ grpc_server.start(runtime)
 3. 宿主自管 session_id
 4. Invoke / Stream(agent_id, session_id, UserInput)
 5. 若 interrupted → 宿主收集人机结果 → Resume / StreamResume
-6. 获取最终 output
+6. 运行中可 Cancel(agent_id, session_id) 中止当轮（tip 回滚）
+7. 获取最终 output；业务结束 → DeleteAgent
 ```
 
 ```text
@@ -550,7 +591,7 @@ CreateAgent
    │
 AgentRuntime（Adapter：协议 + ReAct 组装）
    │  仅调用 core 已有 API（非侵入）
-Agent.invoke / stream / resume
+Agent.invoke / stream / resume / cancel
    │
 AgentResponse / AgentEvent
 ```
@@ -565,6 +606,7 @@ AgentResponse / AgentEvent
 | `AgentBuilder` / `create_react_agent()` | **不新增 Builder**；**仅在 Adapter** 固定 ReAct 组装，**不侵入 core** |
 | `Invoke(agent_id, string input)`        | `agent_id` + `session_id` + `UserInput`                 |
 | 无 Resume                                | 增加**Resume / StreamResume**，对齐 HITL                     |
+| 无当轮中止                                 | 增加**Cancel** + checkpoint tip 回滚；断 Stream 同路径           |
 | Stream = reasoning/tool_* 原生事件          | 原生为 messages；协议事件由 Adapter 映射                           |
 | 仅`AgentConfig` 即可构造                     | 还需**`RuntimeConfig`（checkpointer）**                     |
 | `ToolResolver`                          | 不存在；用**ToolRegistry + MCP + setup_skills**              |
@@ -587,6 +629,7 @@ AgentResponse / AgentEvent
 [x] CreateAgent（默认 Memory checkpointer）
 [x] Invoke / Stream
 [x] Resume / StreamResume + interrupt 事件
+[x] Cancel（当轮中止 + checkpoint tip 回滚）
 [x] messages → AgentEvent 最小映射
 [ ] Python 示例 Client
 [ ] C# Demo（可选）
@@ -613,7 +656,7 @@ AgentResponse / AgentEvent
                  Application
                       |
              Agent Runtime Contract
-             (gRPC：Create / Invoke / Stream / Resume)
+             (gRPC：Create / Invoke / Stream / Resume / Cancel)
                       |
                  Runtime Adapter
                  （协议 + 默认 ReAct 组装）

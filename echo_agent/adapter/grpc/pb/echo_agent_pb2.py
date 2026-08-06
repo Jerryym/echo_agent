@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x65\x63ho_agent.proto\x12\recho_agent.v1\"x\n\x12\x43reateAgentRequest\x12*\n\x06\x63onfig\x18\x01 \x01(\x0b\x32\x1a.echo_agent.v1.AgentConfig\x12\x36\n\x0fruntime_options\x18\x02 \x01(\x0b\x32\x1d.echo_agent.v1.RuntimeOptions\"\x19\n\x0b\x41gentHandle\x12\n\n\x02id\x18\x01 \x01(\t\"E\n\x0eRuntimeOptions\x12\x19\n\x11\x63heckpointer_kind\x18\x01 \x01(\t\x12\x18\n\x10\x63heckpointer_uri\x18\x02 \x01(\t\"\xd1\x02\n\x0b\x41gentConfig\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12,\n\nllm_config\x18\x03 \x01(\x0b\x32\x18.echo_agent.v1.LLMConfig\x12\x15\n\rsystem_prompt\x18\x04 \x01(\t\x12\x0f\n\x07kb_list\x18\x05 \x03(\t\x12=\n\nskill_list\x18\x06 \x03(\x0b\x32).echo_agent.v1.AgentConfig.SkillListEntry\x12\x1f\n\x17mcp_allowed_directories\x18\x07 \x03(\t\x12\x37\n\x0bmcp_servers\x18\x08 \x03(\x0b\x32\".echo_agent.v1.MCPConnectionConfig\x1a\x30\n\x0eSkillListEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xf0\x01\n\tLLMConfig\x12\x10\n\x08\x62\x61se_url\x18\x01 \x01(\t\x12\x0f\n\x07\x61pi_key\x18\x02 \x01(\t\x12\x12\n\nmodel_name\x18\x03 \x01(\t\x12\x16\n\x0emodel_provider\x18\x04 \x01(\t\x12\x13\n\x0btemperature\x18\x05 \x01(\x01\x12\x12\n\nmax_tokens\x18\x06 \x01(\x05\x12\x0f\n\x07timeout\x18\x07 \x01(\x05\x12\x13\n\x0bmax_retries\x18\x08 \x01(\x05\x12\x19\n\x11use_responses_api\x18\t \x01(\x08\x12\x16\n\x0eoutput_version\x18\n \x01(\t\x12\x12\n\nextra_json\x18\x0b \x01(\t\"\xcf\x01\n\x13MCPConnectionConfig\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0f\n\x07\x63ommand\x18\x03 \x01(\t\x12\x0c\n\x04\x61rgs\x18\x04 \x03(\t\x12\x0b\n\x03url\x18\x05 \x01(\t\x12@\n\x07headers\x18\x06 \x03(\x0b\x32/.echo_agent.v1.MCPConnectionConfig.HeadersEntry\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"I\n\tUserInput\x12\x0c\n\x04text\x18\x01 \x01(\t\x12.\n\x0b\x61ttachments\x18\x02 \x03(\x0b\x32\x19.echo_agent.v1.Attachment\"(\n\nAttachment\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\t\"^\n\rInvokeRequest\x12\x10\n\x08\x61gent_id\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\x12\'\n\x05input\x18\x03 \x01(\x0b\x32\x18.echo_agent.v1.UserInput\"L\n\rAgentResponse\x12\x0e\n\x06output\x18\x01 \x01(\t\x12\x13\n\x0binterrupted\x18\x02 \x01(\x08\x12\x16\n\x0einterrupt_json\x18\x03 \x01(\t\"J\n\rResumeRequest\x12\x10\n\x08\x61gent_id\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\x12\x13\n\x0bvalues_json\x18\x03 \x01(\t\"(\n\nAgentEvent\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\x0c\x32\xfc\x02\n\x10\x45\x63hoAgentService\x12L\n\x0b\x43reateAgent\x12!.echo_agent.v1.CreateAgentRequest\x1a\x1a.echo_agent.v1.AgentHandle\x12\x44\n\x06Invoke\x12\x1c.echo_agent.v1.InvokeRequest\x1a\x1c.echo_agent.v1.AgentResponse\x12\x43\n\x06Stream\x12\x1c.echo_agent.v1.InvokeRequest\x1a\x19.echo_agent.v1.AgentEvent0\x01\x12\x44\n\x06Resume\x12\x1c.echo_agent.v1.ResumeRequest\x1a\x1c.echo_agent.v1.AgentResponse\x12I\n\x0cStreamResume\x12\x1c.echo_agent.v1.ResumeRequest\x1a\x19.echo_agent.v1.AgentEvent0\x01\x42Y\n\x11\x63om.echo_agent.v1P\x01Z3github.com/echo-agent/echo-agent/api/v1;echoagentv1\xaa\x02\x0c\x45\x63hoAgent.V1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x65\x63ho_agent.proto\x12\recho_agent.v1\"x\n\x12\x43reateAgentRequest\x12*\n\x06\x63onfig\x18\x01 \x01(\x0b\x32\x1a.echo_agent.v1.AgentConfig\x12\x36\n\x0fruntime_options\x18\x02 \x01(\x0b\x32\x1d.echo_agent.v1.RuntimeOptions\"\x19\n\x0b\x41gentHandle\x12\n\n\x02id\x18\x01 \x01(\t\"&\n\x12\x44\x65leteAgentRequest\x12\x10\n\x08\x61gent_id\x18\x01 \x01(\t\"\x15\n\x13\x44\x65leteAgentResponse\"E\n\x0eRuntimeOptions\x12\x19\n\x11\x63heckpointer_kind\x18\x01 \x01(\t\x12\x18\n\x10\x63heckpointer_uri\x18\x02 \x01(\t\"\xd1\x02\n\x0b\x41gentConfig\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12,\n\nllm_config\x18\x03 \x01(\x0b\x32\x18.echo_agent.v1.LLMConfig\x12\x15\n\rsystem_prompt\x18\x04 \x01(\t\x12\x0f\n\x07kb_list\x18\x05 \x03(\t\x12=\n\nskill_list\x18\x06 \x03(\x0b\x32).echo_agent.v1.AgentConfig.SkillListEntry\x12\x1f\n\x17mcp_allowed_directories\x18\x07 \x03(\t\x12\x37\n\x0bmcp_servers\x18\x08 \x03(\x0b\x32\".echo_agent.v1.MCPConnectionConfig\x1a\x30\n\x0eSkillListEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x85\x02\n\tLLMConfig\x12\x10\n\x08\x62\x61se_url\x18\x01 \x01(\t\x12\x0f\n\x07\x61pi_key\x18\x02 \x01(\t\x12\x12\n\nmodel_name\x18\x03 \x01(\t\x12\x16\n\x0emodel_provider\x18\x04 \x01(\t\x12\x18\n\x0btemperature\x18\x05 \x01(\x01H\x00\x88\x01\x01\x12\x12\n\nmax_tokens\x18\x06 \x01(\x05\x12\x0f\n\x07timeout\x18\x07 \x01(\x05\x12\x13\n\x0bmax_retries\x18\x08 \x01(\x05\x12\x19\n\x11use_responses_api\x18\t \x01(\x08\x12\x16\n\x0eoutput_version\x18\n \x01(\t\x12\x12\n\nextra_json\x18\x0b \x01(\tB\x0e\n\x0c_temperature\"\xcf\x01\n\x13MCPConnectionConfig\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0f\n\x07\x63ommand\x18\x03 \x01(\t\x12\x0c\n\x04\x61rgs\x18\x04 \x03(\t\x12\x0b\n\x03url\x18\x05 \x01(\t\x12@\n\x07headers\x18\x06 \x03(\x0b\x32/.echo_agent.v1.MCPConnectionConfig.HeadersEntry\x1a.\n\x0cHeadersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"I\n\tUserInput\x12\x0c\n\x04text\x18\x01 \x01(\t\x12.\n\x0b\x61ttachments\x18\x02 \x03(\x0b\x32\x19.echo_agent.v1.Attachment\"(\n\nAttachment\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\t\"\xcd\x01\n\rInvokeRequest\x12\x10\n\x08\x61gent_id\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\x12\'\n\x05input\x18\x03 \x01(\x0b\x32\x18.echo_agent.v1.UserInput\x12<\n\x08metadata\x18\x04 \x03(\x0b\x32*.echo_agent.v1.InvokeRequest.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"L\n\rAgentResponse\x12\x0e\n\x06output\x18\x01 \x01(\t\x12\x13\n\x0binterrupted\x18\x02 \x01(\x08\x12\x16\n\x0einterrupt_json\x18\x03 \x01(\t\"\xb9\x01\n\rResumeRequest\x12\x10\n\x08\x61gent_id\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\x12\x13\n\x0bvalues_json\x18\x03 \x01(\t\x12<\n\x08metadata\x18\x04 \x03(\x0b\x32*.echo_agent.v1.ResumeRequest.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"5\n\rCancelRequest\x12\x10\n\x08\x61gent_id\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\"#\n\x0e\x43\x61ncelResponse\x12\x11\n\tcancelled\x18\x01 \x01(\x08\"(\n\nAgentEvent\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\x0c\x32\x99\x04\n\x10\x45\x63hoAgentService\x12L\n\x0b\x43reateAgent\x12!.echo_agent.v1.CreateAgentRequest\x1a\x1a.echo_agent.v1.AgentHandle\x12T\n\x0b\x44\x65leteAgent\x12!.echo_agent.v1.DeleteAgentRequest\x1a\".echo_agent.v1.DeleteAgentResponse\x12\x44\n\x06Invoke\x12\x1c.echo_agent.v1.InvokeRequest\x1a\x1c.echo_agent.v1.AgentResponse\x12\x43\n\x06Stream\x12\x1c.echo_agent.v1.InvokeRequest\x1a\x19.echo_agent.v1.AgentEvent0\x01\x12\x44\n\x06Resume\x12\x1c.echo_agent.v1.ResumeRequest\x1a\x1c.echo_agent.v1.AgentResponse\x12I\n\x0cStreamResume\x12\x1c.echo_agent.v1.ResumeRequest\x1a\x19.echo_agent.v1.AgentEvent0\x01\x12\x45\n\x06\x43\x61ncel\x12\x1c.echo_agent.v1.CancelRequest\x1a\x1d.echo_agent.v1.CancelResponseBY\n\x11\x63om.echo_agent.v1P\x01Z3github.com/echo-agent/echo-agent/api/v1;echoagentv1\xaa\x02\x0c\x45\x63hoAgent.V1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -36,34 +36,50 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_AGENTCONFIG_SKILLLISTENTRY']._serialized_options = b'8\001'
   _globals['_MCPCONNECTIONCONFIG_HEADERSENTRY']._loaded_options = None
   _globals['_MCPCONNECTIONCONFIG_HEADERSENTRY']._serialized_options = b'8\001'
+  _globals['_INVOKEREQUEST_METADATAENTRY']._loaded_options = None
+  _globals['_INVOKEREQUEST_METADATAENTRY']._serialized_options = b'8\001'
+  _globals['_RESUMEREQUEST_METADATAENTRY']._loaded_options = None
+  _globals['_RESUMEREQUEST_METADATAENTRY']._serialized_options = b'8\001'
   _globals['_CREATEAGENTREQUEST']._serialized_start=35
   _globals['_CREATEAGENTREQUEST']._serialized_end=155
   _globals['_AGENTHANDLE']._serialized_start=157
   _globals['_AGENTHANDLE']._serialized_end=182
-  _globals['_RUNTIMEOPTIONS']._serialized_start=184
-  _globals['_RUNTIMEOPTIONS']._serialized_end=253
-  _globals['_AGENTCONFIG']._serialized_start=256
-  _globals['_AGENTCONFIG']._serialized_end=593
-  _globals['_AGENTCONFIG_SKILLLISTENTRY']._serialized_start=545
-  _globals['_AGENTCONFIG_SKILLLISTENTRY']._serialized_end=593
-  _globals['_LLMCONFIG']._serialized_start=596
-  _globals['_LLMCONFIG']._serialized_end=836
-  _globals['_MCPCONNECTIONCONFIG']._serialized_start=839
-  _globals['_MCPCONNECTIONCONFIG']._serialized_end=1046
-  _globals['_MCPCONNECTIONCONFIG_HEADERSENTRY']._serialized_start=1000
-  _globals['_MCPCONNECTIONCONFIG_HEADERSENTRY']._serialized_end=1046
-  _globals['_USERINPUT']._serialized_start=1048
-  _globals['_USERINPUT']._serialized_end=1121
-  _globals['_ATTACHMENT']._serialized_start=1123
-  _globals['_ATTACHMENT']._serialized_end=1163
-  _globals['_INVOKEREQUEST']._serialized_start=1165
-  _globals['_INVOKEREQUEST']._serialized_end=1259
-  _globals['_AGENTRESPONSE']._serialized_start=1261
-  _globals['_AGENTRESPONSE']._serialized_end=1337
-  _globals['_RESUMEREQUEST']._serialized_start=1339
-  _globals['_RESUMEREQUEST']._serialized_end=1413
-  _globals['_AGENTEVENT']._serialized_start=1415
-  _globals['_AGENTEVENT']._serialized_end=1455
-  _globals['_ECHOAGENTSERVICE']._serialized_start=1458
-  _globals['_ECHOAGENTSERVICE']._serialized_end=1838
+  _globals['_DELETEAGENTREQUEST']._serialized_start=184
+  _globals['_DELETEAGENTREQUEST']._serialized_end=222
+  _globals['_DELETEAGENTRESPONSE']._serialized_start=224
+  _globals['_DELETEAGENTRESPONSE']._serialized_end=245
+  _globals['_RUNTIMEOPTIONS']._serialized_start=247
+  _globals['_RUNTIMEOPTIONS']._serialized_end=316
+  _globals['_AGENTCONFIG']._serialized_start=319
+  _globals['_AGENTCONFIG']._serialized_end=656
+  _globals['_AGENTCONFIG_SKILLLISTENTRY']._serialized_start=608
+  _globals['_AGENTCONFIG_SKILLLISTENTRY']._serialized_end=656
+  _globals['_LLMCONFIG']._serialized_start=659
+  _globals['_LLMCONFIG']._serialized_end=920
+  _globals['_MCPCONNECTIONCONFIG']._serialized_start=923
+  _globals['_MCPCONNECTIONCONFIG']._serialized_end=1130
+  _globals['_MCPCONNECTIONCONFIG_HEADERSENTRY']._serialized_start=1084
+  _globals['_MCPCONNECTIONCONFIG_HEADERSENTRY']._serialized_end=1130
+  _globals['_USERINPUT']._serialized_start=1132
+  _globals['_USERINPUT']._serialized_end=1205
+  _globals['_ATTACHMENT']._serialized_start=1207
+  _globals['_ATTACHMENT']._serialized_end=1247
+  _globals['_INVOKEREQUEST']._serialized_start=1250
+  _globals['_INVOKEREQUEST']._serialized_end=1455
+  _globals['_INVOKEREQUEST_METADATAENTRY']._serialized_start=1408
+  _globals['_INVOKEREQUEST_METADATAENTRY']._serialized_end=1455
+  _globals['_AGENTRESPONSE']._serialized_start=1457
+  _globals['_AGENTRESPONSE']._serialized_end=1533
+  _globals['_RESUMEREQUEST']._serialized_start=1536
+  _globals['_RESUMEREQUEST']._serialized_end=1721
+  _globals['_RESUMEREQUEST_METADATAENTRY']._serialized_start=1408
+  _globals['_RESUMEREQUEST_METADATAENTRY']._serialized_end=1455
+  _globals['_CANCELREQUEST']._serialized_start=1723
+  _globals['_CANCELREQUEST']._serialized_end=1776
+  _globals['_CANCELRESPONSE']._serialized_start=1778
+  _globals['_CANCELRESPONSE']._serialized_end=1813
+  _globals['_AGENTEVENT']._serialized_start=1815
+  _globals['_AGENTEVENT']._serialized_end=1855
+  _globals['_ECHOAGENTSERVICE']._serialized_start=1858
+  _globals['_ECHOAGENTSERVICE']._serialized_end=2395
 # @@protoc_insertion_point(module_scope)
