@@ -182,7 +182,7 @@ class Agent:
         context = self._build_context(session_id)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
-        return self._stream_iterator(graph_input, runnable_config, context, version, session_id)
+        return self._stream_iterator(graph_input, runnable_config, context, session_id, version)
 
     async def astream(
         self,
