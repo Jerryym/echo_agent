@@ -7,7 +7,7 @@ import json
 import math
 
 from echo_agent.adapter import AgentRuntime
-from echo_agent.adapter.convert import (
+from echo_agent.adapter.grpc.convert_grpc import (
     agent_config_from_proto,
     agent_event_to_proto,
     agent_response_to_proto,
@@ -106,7 +106,7 @@ def test_llm_config_temperature_zero_is_honored():
 
 
 def test_llm_config_invalid_extra_json_raises_value_error():
-    from echo_agent.adapter.convert import llm_config_from_proto
+    from echo_agent.adapter.grpc.convert_grpc import llm_config_from_proto
 
     msg = pb.LLMConfig(
         base_url="http://x",
@@ -123,7 +123,7 @@ def test_llm_config_invalid_extra_json_raises_value_error():
 
 
 def test_llm_config_extra_json_must_be_object():
-    from echo_agent.adapter.convert import llm_config_from_proto
+    from echo_agent.adapter.grpc.convert_grpc import llm_config_from_proto
 
     msg = pb.LLMConfig(
         base_url="http://x",

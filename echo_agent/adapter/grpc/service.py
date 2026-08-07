@@ -10,7 +10,7 @@ import grpc
 
 from ...common import get_logger
 from ..agent_runtime import AgentLimitExceededError, AgentRuntime
-from ..convert import (
+from .convert_grpc import (
     agent_config_from_proto,
     agent_event_to_proto,
     agent_response_to_proto,

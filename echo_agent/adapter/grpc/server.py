@@ -3,35 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 from collections.abc import Sequence
 
 import grpc
 
 from ...common import get_logger
-from ..agent_runtime import AgentFactory, AgentRuntime
+from ..agent_runtime import AgentRuntime
+from ..factory import load_factory
 from .pb import echo_agent_pb2_grpc as pb_grpc
 from .service import EchoAgentServicer
 
 logger = get_logger("adapter.grpc")
 
-
-def load_factory(spec: str) -> AgentFactory:
-    """
-    从 `module:attr` 加载 Agent 工厂。
-
-    例：`examples.integrator_runtime.build_agent:build_agent`
-    """
-    module_name, sep, attr = spec.partition(":")
-    if not sep or not module_name.strip() or not attr.strip():
-        raise ValueError(
-            f"invalid factory spec {spec!r}; expected 'module:attr'"
-        )
-    module = importlib.import_module(module_name.strip())
-    factory = getattr(module, attr.strip(), None)
-    if factory is None or not callable(factory):
-        raise ValueError(f"factory not found or not callable: {spec}")
-    return factory
+__all__ = ["create_server", "start", "main", "load_factory"]
 
 
 async def create_server(

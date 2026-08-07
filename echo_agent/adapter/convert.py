@@ -1,4 +1,7 @@
-"""AgentConfig / UserInput 等 proto ↔ Pydantic 转换。"""
+"""协议无关的配置/输入转换（字段/DTO → core 模型）。
+
+本模块不得依赖 gRPC / protobuf；协议绑定见 ``adapter.grpc.convert_grpc``。
+"""
 
 from __future__ import annotations
 
@@ -10,15 +13,16 @@ from echo_agent.core.llm.llm_config import LLMConfig
 from echo_agent.core.mcp.schema import MCPConnectionConfig
 from echo_agent.core.model.input import Attachment, UserInput
 
-from .grpc.pb import echo_agent_pb2 as pb
 from .schema import RuntimeOptions
 
 
-def runtime_options_from_proto(msg: pb.RuntimeOptions | None) -> RuntimeOptions | None:
-    if msg is None:
-        return None
-    kind = (msg.checkpointer_kind or "").strip()
-    uri = (msg.checkpointer_uri or "").strip()
+def runtime_options_from_fields(
+    *,
+    checkpointer_kind: str = "",
+    checkpointer_uri: str = "",
+) -> RuntimeOptions | None:
+    kind = (checkpointer_kind or "").strip()
+    uri = (checkpointer_uri or "").strip()
     if not kind and not uri:
         return None
     return RuntimeOptions(
@@ -27,130 +31,162 @@ def runtime_options_from_proto(msg: pb.RuntimeOptions | None) -> RuntimeOptions 
     )
 
 
-def llm_config_from_proto(msg: pb.LLMConfig) -> LLMConfig:
-    if not msg.base_url or not msg.api_key or not msg.model_name:
+def parse_llm_extra_json(extra_json: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """解析 llm_config.extra_json → (extra_body, builtin_tools)。非法 JSON → ValueError。"""
+    if not extra_json:
+        return {}, []
+    try:
+        payload = json.loads(extra_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"llm_config.extra_json is not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("llm_config.extra_json must be a JSON object")
+    builtin_tools = list(payload.get("builtin_tools") or [])
+    body = payload.get("extra_body")
+    if isinstance(body, dict):
+        extra_body = body
+    else:
+        extra_body = {
+            k: v
+            for k, v in payload.items()
+            if k not in ("builtin_tools", "extra_body")
+        }
+    return extra_body, builtin_tools
+
+
+def llm_config_from_fields(
+    *,
+    base_url: str,
+    api_key: str,
+    model_name: str,
+    model_provider: str = "",
+    temperature: float | None = None,
+    max_tokens: int = 0,
+    timeout: int = 0,
+    max_retries: int = 0,
+    use_responses_api: bool = False,
+    output_version: str = "",
+    extra_json: str = "",
+) -> LLMConfig:
+    """
+    由普通字段构建 LLMConfig。
+
+    ``temperature is None`` 表示未设置（回退默认 0.2）；
+    ``max_tokens`` / ``timeout`` / ``max_retries`` 以 ``> 0`` 表示已设置。
+    """
+    if not base_url or not api_key or not model_name:
         raise ValueError("llm_config requires base_url, api_key, model_name")
 
-    extra_body: dict[str, Any] = {}
-    builtin_tools: list[dict[str, Any]] = []
-    if msg.extra_json:
-        try:
-            payload = json.loads(msg.extra_json)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"llm_config.extra_json is not valid JSON: {exc}"
-            ) from exc
-        if not isinstance(payload, dict):
-            raise ValueError("llm_config.extra_json must be a JSON object")
-        builtin_tools = list(payload.get("builtin_tools") or [])
-        body = payload.get("extra_body")
-        if isinstance(body, dict):
-            extra_body = body
-        else:
-            extra_body = {
-                k: v
-                for k, v in payload.items()
-                if k not in ("builtin_tools", "extra_body")
-            }
-
+    extra_body, builtin_tools = parse_llm_extra_json(extra_json)
     kwargs: dict[str, Any] = {
-        "base_url": msg.base_url,
-        "api_key": msg.api_key,
-        "model_name": msg.model_name,
-        "model_provider": msg.model_provider or "openai",
-        "use_responses_api": bool(msg.use_responses_api),
+        "base_url": base_url,
+        "api_key": api_key,
+        "model_name": model_name,
+        "model_provider": model_provider or "openai",
+        "use_responses_api": bool(use_responses_api),
         "builtin_tools": builtin_tools,
         "extra_body": extra_body,
     }
-    # temperature：optional，支持显式 0；其余标量 0 视为未设置
-    if msg.HasField("temperature"):
-        kwargs["temperature"] = float(msg.temperature)
-    if msg.max_tokens > 0:
-        kwargs["max_tokens"] = int(msg.max_tokens)
-    if msg.timeout > 0:
-        kwargs["timeout"] = int(msg.timeout)
-    if msg.max_retries > 0:
-        kwargs["max_retries"] = int(msg.max_retries)
-    if msg.output_version:
-        kwargs["output_version"] = msg.output_version
+    if temperature is not None:
+        kwargs["temperature"] = float(temperature)
+    if max_tokens > 0:
+        kwargs["max_tokens"] = int(max_tokens)
+    if timeout > 0:
+        kwargs["timeout"] = int(timeout)
+    if max_retries > 0:
+        kwargs["max_retries"] = int(max_retries)
+    if output_version:
+        kwargs["output_version"] = output_version
 
     return LLMConfig(**kwargs)
 
 
-def mcp_connection_from_proto(msg: pb.MCPConnectionConfig) -> MCPConnectionConfig:
-    mcp_type = (msg.type or "stdio").strip() or "stdio"
+def mcp_connection_from_fields(
+    *,
+    name: str,
+    type: str = "stdio",
+    command: str | None = None,
+    args: list[str] | None = None,
+    url: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> MCPConnectionConfig:
+    mcp_type = (type or "stdio").strip() or "stdio"
     if mcp_type not in ("stdio", "http"):
         raise ValueError(f"unsupported mcp type: {mcp_type!r}")
     return MCPConnectionConfig(
-        name=msg.name,
+        name=name,
         type=mcp_type,  # type: ignore[arg-type]
-        command=msg.command or None,
-        args=list(msg.args) or None,
-        url=msg.url or None,
-        headers=dict(msg.headers) or None,
+        command=command or None,
+        args=list(args) if args else None,
+        url=url or None,
+        headers=dict(headers) if headers else None,
     )
 
 
-def agent_config_from_proto(msg: pb.AgentConfig) -> AgentConfig:
-    if not msg.name:
-        raise ValueError("agent config name is required")
-    if not msg.HasField("llm_config"):
-        raise ValueError("agent config llm_config is required")
-    directories = list(msg.mcp_allowed_directories)
-    mcp_allowed_directories: str | list[str] | None
+def coalesce_mcp_allowed_directories(
+    directories: list[str],
+) -> str | list[str] | None:
     if not directories:
-        mcp_allowed_directories = None
-    elif len(directories) == 1:
-        mcp_allowed_directories = directories[0]
-    else:
-        mcp_allowed_directories = directories
+        return None
+    if len(directories) == 1:
+        return directories[0]
+    return directories
 
+
+def agent_config_from_fields(
+    *,
+    name: str,
+    llm_config: LLMConfig,
+    description: str | None = None,
+    system_prompt: str | None = None,
+    kb_list: list[str] | None = None,
+    skill_list: dict[str, str] | None = None,
+    mcp_allowed_directories: str | list[str] | None = None,
+    mcp_servers: list[MCPConnectionConfig] | None = None,
+) -> AgentConfig:
+    if not name:
+        raise ValueError("agent config name is required")
     return AgentConfig(
-        name=msg.name,
-        description=msg.description or None,
-        llm_config=llm_config_from_proto(msg.llm_config),
-        system_prompt=msg.system_prompt or None,
-        kb_list=list(msg.kb_list),
-        skill_list=dict(msg.skill_list),
+        name=name,
+        description=description or None,
+        llm_config=llm_config,
+        system_prompt=system_prompt or None,
+        kb_list=list(kb_list or []),
+        skill_list=dict(skill_list or {}),
         mcp_allowed_directories=mcp_allowed_directories,
-        mcp_servers=[mcp_connection_from_proto(s) for s in msg.mcp_servers],
+        mcp_servers=list(mcp_servers or []),
         # 内置 Fetch / Filesystem 默认关闭；需启用时在 Python AgentConfig 显式打开
     )
 
 
-def attachment_from_proto(msg: pb.Attachment) -> Attachment:
-    att_type = (msg.type or "").strip()
+def attachment_from_fields(*, type: str, data: str) -> Attachment:
+    att_type = (type or "").strip()
     if att_type not in ("image", "audio", "file"):
         raise ValueError(f"unsupported attachment type: {att_type!r}")
-    return Attachment(type=att_type, data=msg.data)  # type: ignore[arg-type]
+    return Attachment(type=att_type, data=data)  # type: ignore[arg-type]
 
 
-def user_input_from_proto(msg: pb.UserInput) -> UserInput:
+def user_input_from_fields(
+    *,
+    text: str = "",
+    attachments: list[Attachment] | None = None,
+) -> UserInput:
     return UserInput(
-        text=msg.text or "",
-        attachments=[attachment_from_proto(a) for a in msg.attachments],
+        text=text or "",
+        attachments=list(attachments or []),
     )
 
 
-def agent_response_to_proto(
-    *,
-    output: str,
+def encode_interrupt_json(
     interrupted: bool,
     interrupt_payload: dict[str, Any] | None,
-) -> pb.AgentResponse:
-    interrupt_json = ""
+) -> str:
     if interrupted and interrupt_payload is not None:
-        interrupt_json = json.dumps(interrupt_payload, ensure_ascii=False, default=str)
-    return pb.AgentResponse(
-        output=output or "",
-        interrupted=interrupted,
-        interrupt_json=interrupt_json,
-    )
+        return json.dumps(interrupt_payload, ensure_ascii=False, default=str)
+    return ""
 
 
-def agent_event_to_proto(event_type: str, data: dict[str, Any] | Any) -> pb.AgentEvent:
+def encode_event_data(data: dict[str, Any] | Any) -> bytes:
     if isinstance(data, (bytes, bytearray)):
-        payload = bytes(data)
-    else:
-        payload = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
-    return pb.AgentEvent(type=event_type, data=payload)
+        return bytes(data)
+    return json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
