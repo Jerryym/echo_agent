@@ -44,7 +44,7 @@ class LLMInvokeNode(Node):
             user_input=user_input,
             history=state.messages,
         )
-        content = result.content if isinstance(result.content, str) else str(result.content)
+        content = result.text if isinstance(result.text, str) else str(result.text)
         return {
             "response": content,
             "messages": [

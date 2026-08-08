@@ -21,7 +21,6 @@ from .exception import (
     LLMInvokeError,
     LLMResponseDecodeError,
 )
-from .content import split_ai_content
 from .llm_config import LLMConfig
 from .llm_result import LLMResult
 
@@ -498,10 +497,10 @@ class LLMClient:
         解析 LLM 响应
         """
         try:
-            content, reasoning = self._normalize_content(response.content)
+            text, reasoning = self._normalize_content(response)
             usage_metadata = getattr(response, "usage_metadata", None) or {}
             return LLMResult(
-                    content=content,
+                    text=text,
                     reasoning=reasoning,
                     tool_calls=self._normalize_tool_calls(getattr(response, "tool_calls", None)),
                     raw=response,
@@ -535,14 +534,14 @@ class LLMClient:
                     message="structured response missing parsed message",
                 )
 
-            content, reasoning = self._normalize_content(raw.content)
-            usage_metadata = getattr(raw, "usage_metadata", None) or {}
+            text, reasoning = self._normalize_content(raw)
+            usage_metadata = getattr(response, "usage_metadata", None) or {}
             return LLMResult(
-                content=content,
+                text=text,
                 reasoning=reasoning,
                 raw=raw,
                 structured=parsed,
-                response_metadata=getattr(raw, "response_metadata", None) or {},
+                response_metadata=getattr(raw, "response_metadata", {}),
                 token_usage=TokenUsage(
                     input_tokens=usage_metadata.get("input_tokens", 0),
                     output_tokens=usage_metadata.get("output_tokens", 0),
@@ -554,9 +553,91 @@ class LLMClient:
                 detail=str(e),
             )
 
-    def _normalize_content(self, content: Any) -> tuple[str, str]:
-        """规范化 AIMessage content；委托 split_ai_content（与 Adapter 同源）。"""
-        return split_ai_content(content)
+    def _normalize_content(self, response: AIMessage | Any) -> tuple[str, str | None]:
+        """
+        规范化内容为 text / reasoning（对齐 LangChain ContentBlock）。
+
+        优先使用 AIMessage.content_blocks；否则回退解析 content。
+        reasoning 为空时返回 None。
+        """
+        blocks = getattr(response, "content_blocks", None)
+        if blocks:
+            text, reasoning = self._split_content_blocks(blocks)
+            return text, reasoning or None
+
+        content = getattr(response, "content", response)
+        if content is None:
+            return "", None
+        if isinstance(content, str):
+            return content, None
+        if isinstance(content, list):
+            text, reasoning = self._split_content_blocks(content)
+            return text, reasoning or None
+        return str(content), None
+
+    def _split_content_blocks(self, blocks: Any) -> tuple[str, str]:
+        """
+        拆分 content block 列表为正文与 reasoning。
+        """
+        text_parts: list[str] = []
+        reasoning_parts: list[str] = []
+
+        for block in blocks:
+            if isinstance(block, str):
+                text_parts.append(block)
+                continue
+
+            block_type = None
+            if isinstance(block, dict):
+                block_type = block.get("type")
+                if block_type == "text":
+                    text_parts.append(block.get("text", "") or "")
+                elif block_type in ("reasoning", "thinking"):
+                    reasoning_parts.append(self._extract_reasoning_text(block))
+                elif block_type in ("image", "audio", "video", "file"):
+                    text_parts.append(f"\n[{str(block_type).upper()} OUTPUT]\n")
+                elif block_type in ("tool_use", "tool_call", "input_json", "function_call"):
+                    # 工具调用走 tool_calls 字段，不写入 text
+                    continue
+                else:
+                    logger.warning("unsupported content block type discarded: %s", block_type)
+            elif hasattr(block, "type"):
+                block_type = getattr(block, "type", None)
+                if block_type == "text":
+                    text_parts.append(getattr(block, "text", "") or "")
+                elif block_type in ("reasoning", "thinking"):
+                    reasoning_parts.append(self._extract_reasoning_text(block))
+                else:
+                    logger.warning("unsupported content block type discarded: %s", block_type)
+            else:
+                logger.warning("unsupported content block discarded: %r", type(block))
+
+        text = "".join(text_parts)
+        reasoning = "\n".join(part for part in reasoning_parts if part).strip()
+        return text, reasoning
+
+    @staticmethod
+    def _extract_reasoning_text(block: Any) -> str:
+        """从 reasoning / thinking block 提取文本。"""
+        if isinstance(block, dict):
+            reasoning = block.get("reasoning") or block.get("thinking") or ""
+            if reasoning:
+                return str(reasoning)
+            summary = block.get("summary")
+            if isinstance(summary, list):
+                parts = []
+                for item in summary:
+                    if isinstance(item, dict):
+                        parts.append(item.get("text", "") or "")
+                    elif isinstance(item, str):
+                        parts.append(item)
+                return "".join(parts)
+            return ""
+        return (
+            getattr(block, "reasoning", None)
+            or getattr(block, "thinking", None)
+            or ""
+        )
 
     def _normalize_tool_calls(self, raw_tool_calls) -> list[ToolCall]:
         """

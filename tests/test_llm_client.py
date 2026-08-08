@@ -29,10 +29,14 @@ def test_llm_invoke():
             history=history,
         )
         print("\nAssistant:")
-        print(result.content)
+        print("--- 思考过程 ---")
+        print(result.reasoning or "")
+
+        print("\n--- 最终回答 ---")
+        print(result.text)
 
         history.append(Message(role=Role.USER, content=user_text))
-        history.append(Message(role=Role.ASSISTANT, content=result.content))
+        history.append(Message(role=Role.ASSISTANT, content=result.text))
 
         print("\n------------------------------\n")
 
@@ -54,16 +58,23 @@ def test_llm_stream():
             break
 
         print("\nAssistant (streaming):")
+        print("--- 思考过程 ---")
 
         full_text = ""
+        full_reasoning = ""
         for chunk in llm.stream(
             prompt="You are a helpful assistant. Be concise.",
             user_input=UserInput(text=user_text),
             history=history,
         ):
-            content = getattr(chunk, "content", "")
-            print(content, end="", flush=True)
-            full_text += content
+            if chunk.reasoning:
+                print(chunk.reasoning, end="", flush=True)
+                full_reasoning += chunk.reasoning
+            if chunk.text:
+                if full_reasoning and not full_text:
+                    print("\n\n--- 最终回答 ---")
+                print(chunk.text, end="", flush=True)
+                full_text += chunk.text
 
         print("\n")
 

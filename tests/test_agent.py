@@ -41,10 +41,10 @@ class LLMInvokeNode(Node):
             history=history,
         )
         return {
-            "response": result.content,
+            "response": result.text,
             "messages": [
                 Message(role=Role.USER, content=user_input.text),
-                Message(role=Role.ASSISTANT, content=result.content),
+                Message(role=Role.ASSISTANT, content=result.text),
             ],
         }
 

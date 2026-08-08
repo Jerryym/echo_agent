@@ -343,7 +343,7 @@ def test_iter_agent_events_yields_error_then_reraises():
             raise AssertionError("should not reach done path")
 
     async def _failing_stream():
-        yield ("ignored",)  # map_stream_chunk returns []
+        yield ("ignored",)  # map_stream_chunk returns None
         raise RuntimeError("boom")
 
     async def _run():

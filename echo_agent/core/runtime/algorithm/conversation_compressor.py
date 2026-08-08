@@ -122,14 +122,11 @@ class ConversationCompressor:
         """
         构建用户输入
         """
-        lines = []
-        for message in messages:
-            if message.role == Role.SYSTEM:
-                continue
-            text = message.content if isinstance(message.content, str) else str(message.content)
-            if not (text or "").strip():
-                continue
-            lines.append(f"[{message.role.value}] {text}")
+        lines = [
+            f"[{m.role.value}] {m.content}"
+            for m in messages
+            if m.role != Role.SYSTEM and (m.content or "").strip()
+        ]
         prior = (
             prior_summary.model_dump_json(indent=2)
             if prior_summary is not None

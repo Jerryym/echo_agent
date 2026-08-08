@@ -42,12 +42,12 @@ class FinalNode(Node):
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
         # 更新状态
-        preview = response.content[:300]
-        suffix = "..." if len(response.content) > 300 else ""
+        preview = response.text[:300]
+        suffix = "..." if len(response.text) > 300 else ""
         logger.info("response=%s%s", preview, suffix)
         return {
-            "response": response.content,
-            "trajectory": [Message(role=Role.ASSISTANT, content=response.content)],
+            "response": response.text,
+            "trajectory": [Message(role=Role.ASSISTANT, content=response.text)],
         }
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> dict:
@@ -71,12 +71,12 @@ class FinalNode(Node):
         )
         self._accumulate_token_usage(runtime.context, response.token_usage)
         # 更新状态
-        preview = response.content[:300]
-        suffix = "..." if len(response.content) > 300 else ""
+        preview = response.text[:300]
+        suffix = "..." if len(response.text) > 300 else ""
         logger.info("response=%s%s", preview, suffix)
         return {
-            "response": response.content,
-            "trajectory": [Message(role=Role.ASSISTANT, content=response.content)],
+            "response": response.text,
+            "trajectory": [Message(role=Role.ASSISTANT, content=response.text)],
         }
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:

@@ -31,7 +31,7 @@ class LLMClientCase(BaseCase):
             user_input=UserInput(text=text),
             history=runtime.history,
         )
-        content = result.content if isinstance(result.content, str) else str(result.content)
+        content = result.text if isinstance(result.text, str) else str(result.text)
         runtime.history.append(UserInput(text=text).to_human_message())
         runtime.history.append(AIMessage(content=content))
         return CaseResult(reply=content, debug=f"session={session_id} history={len(runtime.history)}")
