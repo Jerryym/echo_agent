@@ -21,6 +21,7 @@ from .exception import (
     LLMInvokeError,
     LLMResponseDecodeError,
 )
+from .content import split_ai_content
 from .llm_config import LLMConfig
 from .llm_result import LLMResult
 
@@ -415,7 +416,7 @@ class LLMClient:
         messages.extend(MessageAdapter.to_langchain_messages(history or []))
         # 添加用户输入
         if isinstance(user_input, UserInput):
-            messages.append(HumanMessage(content=user_input.text))
+            messages.append(MessageAdapter.to_human_message(user_input))
         elif isinstance(user_input, str):
             messages.append(HumanMessage(content=user_input))
         elif isinstance(user_input, dict):
@@ -497,15 +498,17 @@ class LLMClient:
         解析 LLM 响应
         """
         try:
-            content = self._normalize_content(response.content)
+            content, reasoning = self._normalize_content(response.content)
+            usage_metadata = getattr(response, "usage_metadata", None) or {}
             return LLMResult(
                     content=content,
+                    reasoning=reasoning,
                     tool_calls=self._normalize_tool_calls(getattr(response, "tool_calls", None)),
                     raw=response,
                     response_metadata=getattr(response, "response_metadata", None),
                     token_usage=TokenUsage(
-                        input_tokens=getattr(response, "usage_metadata", {}).get("input_tokens", 0),
-                        output_tokens=getattr(response, "usage_metadata", {}).get("output_tokens", 0),
+                        input_tokens=usage_metadata.get("input_tokens", 0),
+                        output_tokens=usage_metadata.get("output_tokens", 0),
                     )
                 )
         except Exception as e:
@@ -532,14 +535,17 @@ class LLMClient:
                     message="structured response missing parsed message",
                 )
 
+            content, reasoning = self._normalize_content(raw.content)
+            usage_metadata = getattr(raw, "usage_metadata", None) or {}
             return LLMResult(
-                content=self._normalize_content(raw.content),
+                content=content,
+                reasoning=reasoning,
                 raw=raw,
                 structured=parsed,
-                response_metadata=getattr(raw, "response_metadata", {}),
+                response_metadata=getattr(raw, "response_metadata", None) or {},
                 token_usage=TokenUsage(
-                    input_tokens=getattr(raw, "usage_metadata", {}).get("input_tokens", 0),
-                    output_tokens=getattr(raw, "usage_metadata", {}).get("output_tokens", 0),
+                    input_tokens=usage_metadata.get("input_tokens", 0),
+                    output_tokens=usage_metadata.get("output_tokens", 0),
                 )
             )
         except Exception as e:
@@ -548,21 +554,9 @@ class LLMClient:
                 detail=str(e),
             )
 
-    def _normalize_content(self, content: Any):
-        """
-        规范化内容
-        """
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts = []
-            for block in content:
-                if isinstance(block, str):
-                    parts.append(block)
-                elif isinstance(block, dict) and block.get("type") == "text":
-                    parts.append(block.get("text", ""))
-            return "".join(parts)
-        return str(content) if content is not None else ""
+    def _normalize_content(self, content: Any) -> tuple[str, str]:
+        """规范化 AIMessage content；委托 split_ai_content（与 Adapter 同源）。"""
+        return split_ai_content(content)
 
     def _normalize_tool_calls(self, raw_tool_calls) -> list[ToolCall]:
         """

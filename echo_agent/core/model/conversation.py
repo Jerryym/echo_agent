@@ -32,12 +32,9 @@ class ConversationState(BaseModel):
     参数:
         messages: 消息列表, 即历史记录
         summary: 对话摘要
+
+    追加消息请使用 ``append_messages`` 写回 ``messages``，与 trajectory
+    等 LangGraph reducer 语义保持一致。
     """
     messages: list[Message] = Field(default_factory=list)
     summary: ConversationSummary | None = None
-
-    def append(self, *messages: Message) -> None:
-        """
-        追加消息
-        """
-        self.messages.extend(messages)

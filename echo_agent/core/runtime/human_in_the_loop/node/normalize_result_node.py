@@ -28,7 +28,7 @@ class NormalizeResultNode(Node):
         }
 
     async def arun(self, state: HITLState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None) -> dict:
-        raise NotImplementedError("NormalizeResultNode is sync-only")
+        return self.run(state, runtime, config)
 
     def _resolve_status(
         self,

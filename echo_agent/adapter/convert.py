@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from echo_agent.core.agent.agent_config import AgentConfig
 from echo_agent.core.llm.llm_config import LLMConfig
@@ -163,7 +163,11 @@ def attachment_from_fields(*, type: str, data: str) -> Attachment:
     att_type = (type or "").strip()
     if att_type not in ("image", "audio", "file"):
         raise ValueError(f"unsupported attachment type: {att_type!r}")
-    return Attachment(type=att_type, data=data)  # type: ignore[arg-type]
+    raw = (data or "").strip()
+    fmt: Literal["url", "base64"] = (
+        "url" if raw.startswith(("http://", "https://")) else "base64"
+    )
+    return Attachment(type=att_type, format=fmt, data=raw)  # type: ignore[arg-type]
 
 
 def user_input_from_fields(

@@ -12,11 +12,9 @@ class Node(ABC):
 
     Attributes:
         name: 节点名称
-        is_async: 是否异步
     """
-    def __init__(self, name: str, is_async: bool = False):
+    def __init__(self, name: str):
         self._name = name
-        self._is_async = is_async
 
     @property
     def name(self) -> str:
@@ -25,13 +23,6 @@ class Node(ABC):
         """
         return self._name
 
-    @property
-    def is_async(self) -> bool:
-        """
-        是否异步
-        """
-        return self._is_async
-    
     @abstractmethod
     def run(self, state: BaseState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None,) -> dict:
         """

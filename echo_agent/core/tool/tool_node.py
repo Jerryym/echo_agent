@@ -23,7 +23,7 @@ class ToolNode(Node):
         message_field: 消息字段名称
     """
     def __init__(self, name: str, tool_executor: ToolExecutor, message_field: str | None = None):
-        super().__init__(name, is_async=True)
+        super().__init__(name)
         self._tool_executor = tool_executor
         self._message_field = message_field
 

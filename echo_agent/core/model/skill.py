@@ -12,6 +12,15 @@ class SkillType(Enum):
     HTTP = "http"  # 远端url地址
 
 
+class SkillStatus(Enum):
+    """
+    Skill 状态
+    """
+    UNLOADED = "unloaded"  # 未加载
+    LOADED = "loaded"  # 已加载
+    DISCARDED = "discarded"  # 废弃
+
+
 class SkillFrontmatter(BaseModel):
     """
     Skill Frontmatter 模型: 用于描述SKILL.md中的 YAML frontmatter
@@ -28,7 +37,7 @@ class SkillFrontmatter(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def fold_extra_fields_into_metadata(cls, data: Any) -> Any:
-        """Keep name/description; fold all other top-level fields into metadata."""
+        """保持 name/description；将所有其他顶层字段折叠到 metadata 中"""
         if not isinstance(data, dict):
             return data
 
@@ -55,12 +64,12 @@ class SkillFrontmatter(BaseModel):
 
     @property
     def allowed_tools(self) -> list[str] | None:
-        """Return metadata.allowed_tools, normalized to non-empty names."""
+        """返回 metadata.allowed_tools，并将其标准化为非空名称列表"""
         if self.metadata is None or "allowed_tools" not in self.metadata:
             return None
         value = self.metadata["allowed_tools"]
         if not isinstance(value, list):
-            return []
+            raise ValueError(f"Skill {self.name!r}: metadata.allowed_tools must be a list, got {type(value).__name__}; treating as unset (no restriction).")
         return [
             name.strip()
             for name in value
@@ -92,15 +101,6 @@ class SkillPackage(BaseModel):
     references: list[str] = Field(default_factory=list)
     assets: list[str] = Field(default_factory=list)
     additional_resources: dict[str, list[str]] = Field(default_factory=dict)
-
-
-class SkillStatus(Enum):
-    """
-    Skill 状态
-    """
-    UNLOADED = "unloaded"  # 未加载
-    LOADED = "loaded"  # 已加载
-    DISCARDED = "discarded"  # 废弃
 
 
 class SkillRuntimeContext(BaseModel):

@@ -132,4 +132,4 @@ class HITLNode(Node):
         }
 
     async def arun(self, state: BaseState, runtime: Runtime[BaseContext], config=None) -> dict:
-        raise NotImplementedError("HITLNode is sync-only")
+        return self.run(state, runtime, config)

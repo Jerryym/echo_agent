@@ -1,4 +1,4 @@
-from .emums import StrategyType
+from .enums import StrategyType
 from .strategy_factory import StrategyFactory
 
 

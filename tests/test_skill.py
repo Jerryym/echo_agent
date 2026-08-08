@@ -13,13 +13,14 @@ Skill 能力单元测试（无需 LLM / 网络）
 from __future__ import annotations
 
 import asyncio
+import warnings
 from pathlib import Path
 
 from echo_agent.core.capability.skill import SkillLoader, SkillManager, SkillParser
 from echo_agent.core.graph.schema import BaseContext
 from echo_agent.core.llm.llm_client import LLMClient
 from echo_agent.core.model.agent_state import AgentState
-from echo_agent.core.model.skill import SkillStatus, SkillType
+from echo_agent.core.model.skill import SkillFrontmatter, SkillStatus, SkillType
 from echo_agent.core.tool.toolkit import (
     create_load_skill_tool,
     create_read_skill_resource_tool,
@@ -52,6 +53,40 @@ def test_skill_parser() -> None:
     except FileNotFoundError:
         pass
 
+    print("ok")
+
+
+def test_allowed_tools_semantics() -> None:
+    """None = unset; [] = explicit deny; illegal type warns and returns None."""
+    _print("allowed_tools semantics")
+
+    unset = SkillFrontmatter(name="a", description="d")
+    assert unset.allowed_tools is None
+
+    no_key = SkillFrontmatter(name="a", description="d", metadata={"other": 1})
+    assert no_key.allowed_tools is None
+
+    empty = SkillFrontmatter(
+        name="a", description="d", metadata={"allowed_tools": []}
+    )
+    assert empty.allowed_tools == []
+
+    named = SkillFrontmatter(
+        name="a",
+        description="d",
+        metadata={"allowed_tools": [" render_pdf ", "", 1, "ok"]},
+    )
+    assert named.allowed_tools == ["render_pdf", "ok"]
+
+    illegal = SkillFrontmatter(
+        name="bad", description="d", metadata={"allowed_tools": "render_pdf"}
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = illegal.allowed_tools
+    assert result is None
+    assert any(issubclass(w.category, UserWarning) for w in caught)
+    assert any("must be a list" in str(w.message) for w in caught)
     print("ok")
 
 
@@ -193,6 +228,7 @@ async def test_llm_build_prompt_no_global_catalog() -> None:
 async def main() -> None:
     assert PDF_SKILL_DIR.is_dir(), f"fixture missing: {PDF_SKILL_DIR}"
     test_skill_parser()
+    test_allowed_tools_semantics()
     test_skill_loader_and_manager()
     test_active_skills_dict_identity_survives_context_rebuild()
     await test_load_and_read_tools()

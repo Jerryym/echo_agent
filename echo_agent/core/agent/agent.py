@@ -11,7 +11,7 @@ from ..llm import LLMClient
 from ..mcp import MCPClient
 from ..model.agent_state import AgentState
 from ..model.input import UserInput
-from ..model.message import Message, Role
+from ..model.message import Message, Role, append_messages
 from ..model.skill import SkillRuntimeContext
 from ..runtime import RuntimeConfig
 from ..runtime.algorithm import (
@@ -566,15 +566,19 @@ class Agent:
         if agent_state.session_id != session_id:
             raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
 
-        agent_state.conversation.append(
-            Message(
-                role=Role.USER,
-                content=self._input_text(pending_input),
-            ),
-            Message(
-                role=Role.ASSISTANT,
-                content=str(response),
-            ),
+        conversation = agent_state.conversation
+        conversation.messages = append_messages(
+            conversation.messages,
+            [
+                Message(
+                    role=Role.USER,
+                    content=self._input_text(pending_input),
+                ),
+                Message(
+                    role=Role.ASSISTANT,
+                    content=str(response),
+                ),
+            ],
         )
         self._pending_inputs.pop(session_id, None)
 

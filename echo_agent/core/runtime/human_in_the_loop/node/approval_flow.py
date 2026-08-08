@@ -41,7 +41,7 @@ class ApprovalFlow(Node):
         }
 
     async def arun(self, state: HITLState, runtime: Runtime[BaseContext]) -> dict:
-        raise NotImplementedError("ApprovalFlow is sync-only")
+        return self.run(state, runtime)
 
     def _resolve_status(self, response: Any) -> Literal["completed", "cancelled"]:
         """

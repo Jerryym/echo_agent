@@ -31,7 +31,7 @@ class ActionNode(Node):
     Action Node：动作节点
     """
     def __init__(self, name: str, llm_config: LLMConfig, tool_list: list[ToolDefinition] | None = None):
-        super().__init__(name, is_async=True)
+        super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
         self._tool_list = tool_list or []

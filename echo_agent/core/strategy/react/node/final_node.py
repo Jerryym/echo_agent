@@ -17,7 +17,7 @@ class FinalNode(Node):
     Final Node：最终节点
     """
     def __init__(self, name: str, llm_config: LLMConfig):
-        super().__init__(name, is_async=True)
+        super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/final.md")
 

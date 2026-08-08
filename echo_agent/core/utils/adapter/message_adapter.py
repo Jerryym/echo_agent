@@ -4,6 +4,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from ...model.message import Message, Role
+from ...model.input import UserInput
 from .tool_adapter import ToolAdapter
 
 
@@ -37,6 +38,49 @@ class MessageAdapter:
         if not messages:
             return []
         return [MessageAdapter.to_langchain_message(message) for message in messages]
+
+    @staticmethod
+    def to_human_message(user_input: UserInput) -> HumanMessage:
+        """
+        转换为HumanMessage
+        """
+        # 无附件
+        if not user_input.attachments:
+            return HumanMessage(content=user_input.text)
+        # 有附件
+        content = [
+            {
+                "type": "text",
+                "text": user_input.text,
+            }
+        ]
+        for attachment in user_input.attachments:
+            if attachment.format == "base64":
+                if attachment.type == "image":
+                    content.append({
+                        "type": attachment.type,
+                        "base64": attachment.data,
+                        "mime_type": "image/jpeg",
+                    })
+                elif attachment.type == "audio":
+                    content.append({
+                        "type": attachment.type,
+                        "base64": attachment.data,
+                        "mime_type": "audio/wav"
+                    })
+                elif attachment.type == "file":
+                    content.append({
+                        "type": attachment.type,
+                        "base64": attachment.data,
+                        "mime_type": "application/pdf",
+                    })
+            elif attachment.format == "url":
+                content.append({
+                    "type": attachment.type,
+                    "url": attachment.data,
+                })
+
+        return HumanMessage(content=content)
 
     @staticmethod
     def to_message(message: BaseMessage) -> Message:

@@ -8,10 +8,12 @@ class Attachment(BaseModel):
     附件
 
     参数:
-        type: 附件类型
-        data: 附件数据(Base64编码 或 Url)
+        type: 附件类型(image, audio, file)
+        format: 附件格式(base64 或 url)
+        data: 附件数据
     """
     type: Literal["image", "audio", "file"]
+    format: Literal["base64", "url"]
     data: str
 
 

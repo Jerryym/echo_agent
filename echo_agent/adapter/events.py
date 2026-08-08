@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Iterator
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
 from echo_agent import Agent
+from echo_agent.core.llm.content import split_ai_content
 
 from .schema import AgentEvent, AgentInvokeResult
 
@@ -59,60 +60,60 @@ def to_invoke_result(agent: Agent, session_id: str, result: Any) -> AgentInvokeR
 
 
 def _message_content(message: BaseMessage) -> str:
-    content = getattr(message, "content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
-                parts.append(str(block.get("text", "")))
-        return "".join(parts)
-    return str(content) if content is not None else ""
+    text, _reasoning = split_ai_content(getattr(message, "content", ""))
+    return text
 
 
-def map_stream_chunk(chunk: Any) -> AgentEvent | None:
-    """将 LangGraph messages 流 chunk 映射为 AgentEvent；无法识别则返回 None。"""
+def map_stream_chunk(chunk: Any) -> list[AgentEvent]:
+    """将 LangGraph messages 流 chunk 映射为 AgentEvent 列表（可含 reasoning + message）。"""
     message = _unwrap_message(chunk)
     if message is None:
-        return None
+        return []
 
     if isinstance(message, AIMessage):
-        text = _message_content(message)
-        if not text and not getattr(message, "tool_calls", None):
-            return None
-        data: dict[str, Any] = {"role": "assistant", "content": text}
+        text, reasoning = split_ai_content(getattr(message, "content", ""))
         tool_calls = getattr(message, "tool_calls", None) or []
-        if tool_calls:
-            data["tool_calls"] = tool_calls
-        return AgentEvent(type="message", data=data)
+        events: list[AgentEvent] = []
+        if reasoning:
+            events.append(AgentEvent(type="reasoning", data={"text": reasoning}))
+        # 无 reasoning 时发送 content（message）；有 reasoning 时正文仍单独作为 message
+        if text or tool_calls:
+            data: dict[str, Any] = {"role": "assistant", "content": text}
+            if tool_calls:
+                data["tool_calls"] = tool_calls
+            events.append(AgentEvent(type="message", data=data))
+        return events
 
     if isinstance(message, HumanMessage):
-        return AgentEvent(
-            type="message",
-            data={"role": "user", "content": _message_content(message)},
-        )
+        return [
+            AgentEvent(
+                type="message",
+                data={"role": "user", "content": _message_content(message)},
+            )
+        ]
 
     if isinstance(message, ToolMessage):
-        return AgentEvent(
-            type="tool_result",
+        return [
+            AgentEvent(
+                type="tool_result",
+                data={
+                    "role": "tool",
+                    "content": _message_content(message),
+                    "tool_call_id": getattr(message, "tool_call_id", None),
+                    "name": getattr(message, "name", None),
+                },
+            )
+        ]
+
+    return [
+        AgentEvent(
+            type="message",
             data={
-                "role": "tool",
+                "role": getattr(message, "type", "unknown"),
                 "content": _message_content(message),
-                "tool_call_id": getattr(message, "tool_call_id", None),
-                "name": getattr(message, "name", None),
             },
         )
-
-    return AgentEvent(
-        type="message",
-        data={
-            "role": getattr(message, "type", "unknown"),
-            "content": _message_content(message),
-        },
-    )
+    ]
 
 
 def _unwrap_message(chunk: Any) -> BaseMessage | None:
@@ -146,14 +147,12 @@ async def iter_agent_events(
     last_output = ""
     try:
         async for chunk in stream:
-            event = map_stream_chunk(chunk)
-            if event is None:
-                continue
-            if event.type == "message" and event.data.get("role") == "assistant":
-                content = event.data.get("content") or ""
-                if content:
-                    last_output = str(content)
-            yield event
+            for event in map_stream_chunk(chunk):
+                if event.type == "message" and event.data.get("role") == "assistant":
+                    content = event.data.get("content") or ""
+                    if content:
+                        last_output = str(content)
+                yield event
 
         # 中断事件
         pending = get_pending_interrupt(agent, session_id)
@@ -184,14 +183,12 @@ def iter_agent_events_sync(
     last_output = ""
     try:
         for chunk in stream:
-            event = map_stream_chunk(chunk)
-            if event is None:
-                continue
-            if event.type == "message" and event.data.get("role") == "assistant":
-                content = event.data.get("content") or ""
-                if content:
-                    last_output = str(content)
-            yield event
+            for event in map_stream_chunk(chunk):
+                if event.type == "message" and event.data.get("role") == "assistant":
+                    content = event.data.get("content") or ""
+                    if content:
+                        last_output = str(content)
+                yield event
 
         # 中断事件
         pending = get_pending_interrupt(agent, session_id)

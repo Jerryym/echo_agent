@@ -3,6 +3,7 @@ from typing import Any, Callable
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.utils.runnable import RunnableCallable
 
 from .node import Node
 from .schema import BaseContext, BaseInput, BaseOutput, BaseState
@@ -79,12 +80,16 @@ class Graph(ABC):
             kwargs["output_schema"] = self._output_schema
         builder = StateGraph(**kwargs)
 
-        # 注册节点
+        # 注册节点：同步 / 异步路径同时挂上，避免 is_async 标记与实现不一致时硬失败
         for node in self._nodes.values():
-            if node.is_async:
-                builder.add_node(node.name, node.arun)
-            else:
-                builder.add_node(node.name, node.run)
+            builder.add_node(
+                node.name,
+                RunnableCallable(
+                    func=node.run,
+                    afunc=node.arun,
+                    name=node.name,
+                ),
+            )
 
         # 注册子图
         for name, subgraph in self._subgraphs.items():

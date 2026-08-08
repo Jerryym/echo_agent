@@ -4,7 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-class HITLType(str, Enum):
+class HITLType(Enum):
     """
     HITL类型
     """

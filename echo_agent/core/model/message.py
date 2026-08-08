@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -26,7 +27,7 @@ class Message(BaseModel):
         tool_calls: 工具调用列表
     """
     role: Role
-    content: str = Field(default="")
+    content: str | list[str | dict[str, Any]] = Field(default="")
     tool_call_id: str | None = None
     tool_calls: list[ToolCall] = Field(default_factory=list)
 

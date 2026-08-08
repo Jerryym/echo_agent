@@ -137,7 +137,7 @@ class ReActNode(Node):
     ReActStrategy Node: ReAct策略子图节点
     """
     def __init__(self, name: str, strategy: ReActStrategy):
-        super().__init__(name, is_async=True)
+        super().__init__(name)
         self._strategy = strategy
 
     def run(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:

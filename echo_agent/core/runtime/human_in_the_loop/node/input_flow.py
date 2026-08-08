@@ -41,7 +41,7 @@ class InputFlow(Node):
         }
 
     async def arun(self, state: HITLState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None) -> dict:
-        raise NotImplementedError("InputFlow is sync-only")
+        return self.run(state, runtime, config)
 
     def _resolve_status(self, response: Any) -> Literal["completed", "cancelled"]:
         """

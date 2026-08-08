@@ -77,7 +77,7 @@ class ReasonNode(Node):
         3. 工具执行
     """
     def __init__(self, name: str, llm_config: LLMConfig):
-        super().__init__(name, is_async=True)
+        super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
 
