@@ -10,21 +10,6 @@ class StrategyFactory:
     """
     策略工厂
     """
-    # TODO: v0.1.0发版前删除 create_as_subgraph 方法
-    @staticmethod
-    def create_as_subgraph(strategy_type: StrategyType, **kwargs) -> CompiledStateGraph:
-        """
-        创建策略子图，对应 LangGraph 子图接入方式：Add a subgraph as a node
-        """
-        if strategy_type == StrategyType.REACT:# ReAct 策略
-            strategy =  ReActStrategy(**kwargs)
-        elif strategy_type == StrategyType.PLAN_EXECUTE:# Plan Execute 策略
-            strategy =  PlanExecuteStrategy(**kwargs)
-        else:
-            raise ValueError(f"Unsupported strategy type: {strategy_type}")
-        # 返回策略子图
-        return strategy.as_subgraph()
-
     @staticmethod
     def create_as_node(strategy_type: StrategyType, **kwargs) -> Node:
         """

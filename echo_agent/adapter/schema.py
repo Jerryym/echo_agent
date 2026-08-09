@@ -23,6 +23,14 @@ class AgentInvokeResult:
 
 @dataclass
 class AgentEvent:
-    """流式事件（Adapter 映射后的最小集合）。"""
+    """
+    流式事件（Adapter 映射后的最小集合）。
+
+    type:
+        agent_result — AgentResult 快照（text / reasoning / token_usage）
+        interrupt — HITL 中断
+        done — 本轮正常结束
+        error / cancelled — 失败或取消
+    """
     type: str
     data: dict[str, Any] = field(default_factory=dict)

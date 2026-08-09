@@ -2,7 +2,7 @@ from typing import Any
 
 import requests
 
-from .exception import HttpClientError, HttpRequestError, HttpResponseError
+from .exception import HttpRequestError, HttpResponseError
 
 class HttpClient:
     """

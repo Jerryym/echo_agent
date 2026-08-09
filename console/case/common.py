@@ -70,6 +70,9 @@ def get_pending_interrupt(agent: Agent, session_id: str) -> dict | None:
 def extract_reply(result: Any) -> str:
     if result is None:
         return ""
+    text = getattr(result, "text", None)
+    if isinstance(text, str) and text:
+        return text
     if isinstance(result, dict):
         response = result.get("response")
         if response is not None:

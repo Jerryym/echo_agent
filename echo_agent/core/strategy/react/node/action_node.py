@@ -15,7 +15,7 @@ from ....model.tool import ToolCall, ToolResult, ToolState
 from ....runtime.interrupt import InterruptField
 from ....tool import ToolDefinition
 from ....tool.utils import get_tool_definition
-from ....trace import TokenUsage
+from .....utils import update_agent_result
 from ..observation import ObservationBuilder
 from ..schema import ReActContext, ReActState
 
@@ -64,6 +64,10 @@ class ActionNode(Node):
     def _available_tools(self, context: ReActContext) -> list[ToolDefinition]:
         """Return tools visible to the model for the current skill state."""
         default_tools = self._default_tools()
+
+        if not context.skill_list:
+            return self._tool_list
+
         loaded_skills = [
             skill
             for skill in context.active_skills.values()
@@ -124,7 +128,7 @@ class ActionNode(Node):
             context=runtime.context,
             agent_prompt=runtime.context.agent_prompt,
         )
-        self._accumulate_token_usage(runtime.context, response.token_usage)
+        update_agent_result(runtime.context, response.text, response.token_usage)
         logger.debug("tool_selection_response=%s", response)
         logger.info("tool_selection_response.tool_calls=%s", response.tool_calls)
 
@@ -186,7 +190,7 @@ class ActionNode(Node):
             context=runtime.context,
             agent_prompt=runtime.context.agent_prompt,
         )
-        self._accumulate_token_usage(runtime.context, response.token_usage)
+        update_agent_result(runtime.context, response.text, response.token_usage)
         logger.debug("tool_selection_response=%s", response)
         logger.info("tool_selection_response.tool_calls=%s", response.tool_calls)
 
@@ -232,12 +236,6 @@ class ActionNode(Node):
             *state.conversation,
             *state.trajectory,
         ]
-
-    @staticmethod
-    def _accumulate_token_usage(context: ReActContext | None, token_usage: TokenUsage) -> None:
-        if context is None or context.trace is None:
-            return
-        context.trace.token_usage = context.trace.token_usage.add(token_usage)
 
     def _handle_tool_calls(self, state: ReActState) -> Command:
         """

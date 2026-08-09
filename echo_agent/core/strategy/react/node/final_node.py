@@ -3,10 +3,10 @@ from langgraph.runtime import Runtime
 
 from .....common import get_logger, log_messages
 from .....prompt import PromptLoader
+from .....utils import update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message, Role
-from ....trace import TokenUsage
 from ..schema import ReActContext, ReActState
 
 logger = get_logger("react.final")
@@ -40,7 +40,7 @@ class FinalNode(Node):
             agent_prompt=runtime.context.agent_prompt,
             config=config,
         )
-        self._accumulate_token_usage(runtime.context, response.token_usage)
+        update_agent_result(runtime.context, response.text, response.token_usage)
         # 更新状态
         preview = response.text[:300]
         suffix = "..." if len(response.text) > 300 else ""
@@ -69,7 +69,8 @@ class FinalNode(Node):
             agent_prompt=runtime.context.agent_prompt,
             config=config,
         )
-        self._accumulate_token_usage(runtime.context, response.token_usage)
+        update_agent_result(runtime.context, response.text, response.token_usage)
+
         # 更新状态
         preview = response.text[:300]
         suffix = "..." if len(response.text) > 300 else ""
@@ -89,12 +90,6 @@ class FinalNode(Node):
             *state.conversation,
             *state.trajectory,
         ]
-
-    @staticmethod
-    def _accumulate_token_usage(context: ReActContext | None, token_usage: TokenUsage) -> None:
-        if context is None or context.trace is None:
-            return
-        context.trace.token_usage = context.trace.token_usage.add(token_usage)
 
     def _build_input(self, state: ReActState) -> dict:
         """

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ....common.network import HttpClient, HttpClientError
-from ....utils.url_utils import join_url
+from ....utils import join_url
 from ...model.skill import SkillPackage, SkillRuntimeContext, SkillStatus, SkillType
 
 

@@ -3,8 +3,8 @@ from typing import Sequence
 from langchain_core.messages import BaseMessage
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from ...model.message import Message, Role
-from ...model.input import UserInput
+from ..core.model.message import Message, Role
+from ..core.model.input import UserInput
 from .tool_adapter import ToolAdapter
 
 

@@ -9,12 +9,12 @@ from pydantic import BaseModel
 
 from ...common import get_logger
 from ...prompt import PromptAssembler, PromptLoader
+from ...utils import MessageAdapter
 from ..graph.schema import BaseContext
 from ..model.input import UserInput
 from ..model.message import Message
+from ..model.token_usage import TokenUsage
 from ..model.tool import ToolCall
-from ..trace import TokenUsage
-from ..utils.adapter.message_adapter import MessageAdapter
 from .exception import (
     LLMException,
     LLMInitializeError,

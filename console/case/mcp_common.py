@@ -120,15 +120,15 @@ async def _abuild_react_mcp_agent(
     await agent.register_mcp_tools()
     apply_approval_flags(agent.tool_registry, approval_required)
 
-    react_subgraph = StrategyFactory.create_as_subgraph(
+    react_node = StrategyFactory.create_as_node(
         StrategyType.REACT,
         llm_config=llm_config,
         tool_registry=agent.tool_registry,
     )
     graph = RootGraph(state_schema=State)
-    graph.add_subgraph("ReAct", react_subgraph)
-    graph.add_edge(START_NODE, "ReAct")
-    graph.add_edge("ReAct", END_NODE)
+    graph.add_node(react_node)
+    graph.add_edge(START_NODE, react_node.name)
+    graph.add_edge(react_node.name, END_NODE)
 
     agent._graph = graph
     agent._compiled_graph = graph.compile(runtime_config)

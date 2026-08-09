@@ -25,8 +25,9 @@ class ReActState(BaseState):
     ReAct 状态模型
 
     参数:
-        reasoning: 推理
+        task: 任务
         conversation: 对话上下文
+        reasoning: 推理结果
         task_status: 任务状态
             in_progress: 进行中
             human_in_the_loop: 需要人类干预

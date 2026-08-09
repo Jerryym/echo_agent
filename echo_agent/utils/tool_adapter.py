@@ -1,6 +1,6 @@
 from langchain_core.messages import ToolCall
 
-from ...model.tool import ToolCall as ModelToolCall
+from ..core.model.tool import ToolCall as ModelToolCall
 
 
 class ToolAdapter:

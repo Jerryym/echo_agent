@@ -115,7 +115,7 @@ class ReActStrategy(BaseStrategy):
             agent_prompt=context.agent_prompt,
             skill_list=context.skill_list,
             active_skills=active_skills,
-            trace=context.trace,
+            agent_result=context.agent_result,
             max_steps=self._max_steps,
             retry_max_count=self._retry_max_count,
         )

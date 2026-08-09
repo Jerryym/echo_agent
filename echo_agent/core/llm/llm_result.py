@@ -3,7 +3,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..model.tool import ToolCall
-from ..trace import TokenUsage
+from ..model.token_usage import TokenUsage
 
 
 class LLMResult(BaseModel):

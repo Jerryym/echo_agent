@@ -1,13 +1,12 @@
-"""LangGraph messages 流 → Adapter AgentEvent 最小映射。"""
+"""AgentResult 流 → Adapter AgentEvent 映射。"""
 
 from __future__ import annotations
 
 import json
 from typing import Any, AsyncIterator, Iterator
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
-
 from echo_agent import Agent
+from echo_agent.core.model.agent_result import AgentResult
 
 from .schema import AgentEvent, AgentInvokeResult
 
@@ -15,6 +14,11 @@ from .schema import AgentEvent, AgentInvokeResult
 def extract_output(result: Any) -> str:
     if result is None:
         return ""
+    if isinstance(result, AgentResult):
+        return result.text or ""
+    text = getattr(result, "text", None)
+    if isinstance(text, str) and text:
+        return text
     if isinstance(result, dict):
         response = result.get("response")
         if response is not None:
@@ -58,82 +62,28 @@ def to_invoke_result(agent: Agent, session_id: str, result: Any) -> AgentInvokeR
     return AgentInvokeResult(output=extract_output(result), interrupted=False)
 
 
-def _message_content(message: BaseMessage) -> str:
-    content = getattr(message, "content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
-                parts.append(str(block.get("text", "")))
-        return "".join(parts)
-    return str(content) if content is not None else ""
-
-
-def map_stream_chunk(chunk: Any) -> AgentEvent | None:
-    """将 LangGraph messages 流 chunk 映射为 AgentEvent；无法识别则返回 None。"""
-    message = _unwrap_message(chunk)
-    if message is None:
-        return None
-
-    if isinstance(message, AIMessage):
-        text = _message_content(message)
-        if not text and not getattr(message, "tool_calls", None):
-            return None
-        data: dict[str, Any] = {"role": "assistant", "content": text}
-        tool_calls = getattr(message, "tool_calls", None) or []
-        if tool_calls:
-            data["tool_calls"] = tool_calls
-        return AgentEvent(type="message", data=data)
-
-    if isinstance(message, HumanMessage):
-        return AgentEvent(
-            type="message",
-            data={"role": "user", "content": _message_content(message)},
-        )
-
-    if isinstance(message, ToolMessage):
-        return AgentEvent(
-            type="tool_result",
-            data={
-                "role": "tool",
-                "content": _message_content(message),
-                "tool_call_id": getattr(message, "tool_call_id", None),
-                "name": getattr(message, "name", None),
-            },
-        )
-
-    return AgentEvent(
-        type="message",
-        data={
-            "role": getattr(message, "type", "unknown"),
-            "content": _message_content(message),
+def agent_result_event_data(result: AgentResult) -> dict[str, Any]:
+    """AgentResult → AgentEvent.data（稳定 JSON 形态）。"""
+    usage = result.token_usage
+    return {
+        "text": result.text,
+        "reasoning": list(result.reasoning),
+        "token_usage": {
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens,
         },
-    )
+    }
 
 
-def _unwrap_message(chunk: Any) -> BaseMessage | None:
-    if isinstance(chunk, BaseMessage):
+def map_agent_result(result: AgentResult) -> AgentEvent:
+    """将本轮 AgentResult 快照映射为流式事件。"""
+    return AgentEvent(type="agent_result", data=agent_result_event_data(result))
+
+
+def _as_agent_result(chunk: Any) -> AgentResult | None:
+    if isinstance(chunk, AgentResult):
         return chunk
-    if isinstance(chunk, tuple):
-        # subgraphs=True: (namespace, (message, metadata)) 或 (message, metadata)
-        if len(chunk) == 2:
-            first, second = chunk
-            if isinstance(second, tuple) and second:
-                candidate = second[0]
-                if isinstance(candidate, BaseMessage):
-                    return candidate
-            if isinstance(first, BaseMessage):
-                return first
-            if isinstance(second, BaseMessage):
-                return second
-        for item in chunk:
-            found = _unwrap_message(item)
-            if found is not None:
-                return found
     return None
 
 
@@ -142,32 +92,32 @@ async def iter_agent_events(
     session_id: str,
     stream: AsyncIterator[Any],
 ) -> AsyncIterator[AgentEvent]:
-    """消费 astream / astream_resume，产出归一化事件，并以 interrupt/done/error 收尾。"""
-    last_output = ""
+    """消费 astream / astream_resume 的 AgentResult，产出归一化事件并以 interrupt/done/error 收尾。"""
+    last_result: AgentResult | None = None
     try:
         async for chunk in stream:
-            event = map_stream_chunk(chunk)
-            if event is None:
+            result = _as_agent_result(chunk)
+            if result is None:
                 continue
-            if event.type == "message" and event.data.get("role") == "assistant":
-                content = event.data.get("content") or ""
-                if content:
-                    last_output = str(content)
-            yield event
+            last_result = result
+            yield map_agent_result(result)
 
-        # 中断事件
         pending = get_pending_interrupt(agent, session_id)
         if pending is not None:
             yield AgentEvent(type="interrupt", data=pending)
             return
 
-        if not last_output:
+        output = extract_output(last_result) if last_result is not None else ""
+        if not output:
             state = agent.get_state(session_id)
             values = getattr(state, "values", None) or {}
             if isinstance(values, dict) and values.get("response"):
-                last_output = str(values["response"])
+                output = str(values["response"])
 
-        yield AgentEvent(type="done", data={"output": last_output})
+        done_data: dict[str, Any] = {"output": output}
+        if last_result is not None:
+            done_data["agent_result"] = agent_result_event_data(last_result)
+        yield AgentEvent(type="done", data=done_data)
     except Exception as exc:  # noqa: BLE001 — 先 error 事件，再抛出供上层 abort
         yield AgentEvent(
             type="error",
@@ -181,31 +131,31 @@ def iter_agent_events_sync(
     session_id: str,
     stream: Iterator[Any],
 ) -> Iterator[AgentEvent]:
-    last_output = ""
+    last_result: AgentResult | None = None
     try:
         for chunk in stream:
-            event = map_stream_chunk(chunk)
-            if event is None:
+            result = _as_agent_result(chunk)
+            if result is None:
                 continue
-            if event.type == "message" and event.data.get("role") == "assistant":
-                content = event.data.get("content") or ""
-                if content:
-                    last_output = str(content)
-            yield event
+            last_result = result
+            yield map_agent_result(result)
 
-        # 中断事件
         pending = get_pending_interrupt(agent, session_id)
         if pending is not None:
             yield AgentEvent(type="interrupt", data=pending)
             return
 
-        if not last_output:
+        output = extract_output(last_result) if last_result is not None else ""
+        if not output:
             state = agent.get_state(session_id)
             values = getattr(state, "values", None) or {}
             if isinstance(values, dict) and values.get("response"):
-                last_output = str(values["response"])
+                output = str(values["response"])
 
-        yield AgentEvent(type="done", data={"output": last_output})
+        done_data: dict[str, Any] = {"output": output}
+        if last_result is not None:
+            done_data["agent_result"] = agent_result_event_data(last_result)
+        yield AgentEvent(type="done", data=done_data)
     except Exception as exc:  # noqa: BLE001
         yield AgentEvent(
             type="error",

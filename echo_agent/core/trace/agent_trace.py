@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from ..model.message import Message
 from ..model.tool import ToolCall, ToolResult
-from .token_usage import TokenUsage
+from ..model.token_usage import TokenUsage
 
 
 class AgentTrace(BaseModel):

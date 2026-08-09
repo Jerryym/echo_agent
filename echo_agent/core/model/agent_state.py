@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
-from ..trace import TokenUsage
 from .conversation import ConversationState
+from .token_usage import TokenUsage
 
 
 class AgentState(BaseModel):

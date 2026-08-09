@@ -10,7 +10,7 @@ from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message
 from ....model.tool import ToolState
-from ....trace import TokenUsage
+from .....utils import update_agent_result
 from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState
 
@@ -104,8 +104,8 @@ class ReasonNode(Node):
             context=runtime.context,
             agent_prompt=runtime.context.agent_prompt,
         )
-        self._accumulate_token_usage(runtime.context, response.token_usage)
         result = response.structured
+        update_agent_result(runtime.context, result.reasoning, response.token_usage)
         logger.info(
             "thought=%s reasoning=%s task_status=%s",
             result.thought,
@@ -138,8 +138,8 @@ class ReasonNode(Node):
             context=runtime.context,
             agent_prompt=runtime.context.agent_prompt,
         )
-        self._accumulate_token_usage(runtime.context, response.token_usage)
         result = response.structured
+        update_agent_result(runtime.context, result.reasoning, response.token_usage)
         logger.info(
             "thought=%s reasoning=%s task_status=%s",
             result.thought,
@@ -159,12 +159,6 @@ class ReasonNode(Node):
             *state.conversation,
             *state.trajectory,
         ]
-
-    @staticmethod
-    def _accumulate_token_usage(context: ReActContext | None, token_usage: TokenUsage) -> None:
-        if context is None or context.trace is None:
-            return
-        context.trace.token_usage = context.trace.token_usage.add(token_usage)
 
     def _build_input(self, state: ReActState) -> dict:
         """
@@ -219,6 +213,7 @@ class ReasonNode(Node):
         """
         result = {
             "reasoning": response.reasoning,
+            "observations": state.observations + self._build_observations(state),
         }
 
         if state.task_status in ("in_progress", "no_tool_calls"):

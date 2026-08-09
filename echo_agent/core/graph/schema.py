@@ -2,12 +2,12 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, PlainValidator
 
+from ..model.agent_result import AgentResult
 from ..model.agent_state import AgentState
 from ..model.hitl import HITLInteraction
 from ..model.input import UserInput
 from ..model.skill import SkillFrontmatter, SkillRuntimeContext
 from ..model.tool import ToolState
-from ..trace import AgentTrace
 
 
 def _preserve_active_skills_dict(value: Any) -> dict[str, SkillRuntimeContext]:
@@ -25,10 +25,27 @@ def _preserve_active_skills_dict(value: Any) -> dict[str, SkillRuntimeContext]:
     return value
 
 
+def _preserve_agent_result(value: Any) -> AgentResult | None:
+    """Keep the same AgentResult instance across Context construction."""
+    if value is None:
+        return None
+    if isinstance(value, AgentResult):
+        return value
+    if isinstance(value, dict):
+        return AgentResult.model_validate(value)
+    raise TypeError(f"agent_result must be AgentResult | None, got {type(value)!r}")
+
+
 # Session-scoped mutable map; must retain object identity.
 ActiveSkillsMap = Annotated[
     dict[str, SkillRuntimeContext],
     PlainValidator(_preserve_active_skills_dict),
+]
+
+# Turn-scoped mutable result; must retain object identity across Parent/Strategy Context.
+AgentResultRef = Annotated[
+    AgentResult | None,
+    PlainValidator(_preserve_agent_result),
 ]
 
 
@@ -73,7 +90,7 @@ class BaseContext(BaseModel):
         skill_list: Skill列表
         active_skills: 可用的Skill列表（会话级可变 dict，构造时保持同一引用）
         kb_list: 知识库列表（预留）
-        trace: 智能体跟踪
+        agent_result: 本轮交互的顶层输出（运行中由节点增量写入）
     """
     agent_state: AgentState
     agent_prompt: str | None = None
@@ -83,4 +100,4 @@ class BaseContext(BaseModel):
     # Knowledge Base
     kb_list: dict[str, Any] | None = Field(default_factory=dict)
 
-    trace: AgentTrace | None = None
+    agent_result: AgentResultRef = None
