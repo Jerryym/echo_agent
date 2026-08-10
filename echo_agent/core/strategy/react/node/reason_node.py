@@ -8,7 +8,7 @@ from .....common import get_logger, log_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model.message import Message
+from ....model.message import Message, Role
 from ....model.tool import ToolState
 from .....utils import update_agent_result
 from ..observation import Observation, ObservationBuilder
@@ -157,6 +157,7 @@ class ReasonNode(Node):
             raise ValueError("ReActContext is required for ReasonNode")
         return [
             *state.conversation,
+            Message(role=Role.USER, content=state.task.description or state.task.goal), 
             *state.trajectory,
         ]
 
@@ -166,7 +167,7 @@ class ReasonNode(Node):
         """
         return {
             "task": state.task.model_dump(),
-            "trajectory": state.trajectory,
+            # "trajectory": state.trajectory,
             "observations": state.observations + self._build_observations(state),
         }
 

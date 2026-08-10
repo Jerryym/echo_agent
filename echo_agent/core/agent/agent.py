@@ -498,8 +498,14 @@ class Agent:
         生成结果
         """
         self._append_conversation(session_id, result)
-
         agent_result = context.agent_result or self._pending_results.get(session_id) or AgentResult()
+        snapshot = self.get_state(session_id)
+
+        if snapshot.next:
+            agent_result.text = ""
+            self._pending_results[session_id] = agent_result
+            return agent_result.model_copy(deep=True)
+
         response_text = self._extract_response_text(result)
         if not response_text:
             snapshot = self.get_state(session_id)

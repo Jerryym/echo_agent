@@ -105,7 +105,7 @@ class ToolNode(Node):
                     if isinstance(tool_result.result, str):
                         content = tool_result.result
                     else:
-                        content = json.dumps(tool_result.result, ensure_ascii=False, default=str)
+                        content = json.dumps(tool_result.result, ensure_ascii=False)
                 else:
                     content = tool_result.error or "unknown error"
                 tool_messages.append(Message(

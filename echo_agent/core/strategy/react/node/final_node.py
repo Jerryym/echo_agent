@@ -88,6 +88,7 @@ class FinalNode(Node):
             raise ValueError("ReActContext is required for FinalNode")
         return [
             *state.conversation,
+            Message(role=Role.USER, content=state.task.description or state.task.goal), 
             *state.trajectory,
         ]
 
@@ -97,7 +98,7 @@ class FinalNode(Node):
         """
         return {
             "task": state.task.model_dump(),
-            "trajectory": state.trajectory,
+            # "trajectory": state.trajectory,
             "reasoning": state.reasoning,
             "observations": state.observations,
         }

@@ -234,6 +234,7 @@ class ActionNode(Node):
             raise ValueError("ReActContext is required for ActionNode")
         return [
             *state.conversation,
+            Message(role=Role.USER, content=state.task.description or state.task.goal), 
             *state.trajectory,
         ]
 
