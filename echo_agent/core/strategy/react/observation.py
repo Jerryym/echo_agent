@@ -46,3 +46,7 @@ class ObservationBuilder:
             },
         )
         return observation
+
+
+def append_observations(current_observations: list[Observation], new_observations: list[Observation]) -> list[Observation]:
+    return current_observations + new_observations

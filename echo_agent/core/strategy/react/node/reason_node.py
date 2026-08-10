@@ -9,7 +9,7 @@ from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message, Role
-from ....model.tool import ToolState
+from ....model.tool import ToolResult, ToolState
 from .....utils import update_agent_result
 from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState
@@ -86,15 +86,18 @@ class ReasonNode(Node):
         Run the node
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
+
+        # 构建Observation
+        observation_list = self._build_observations(state.tool_state.tool_results)
+        # 构建历史记录
         history = self._build_history(state, runtime.context)
         log_messages(logger, "reason", history)
-
         # 检查工具执行失败
         if self._has_tool_error(state):
-            return self._handle_tool_error(state, runtime.context)
+            return self._handle_tool_error(state, runtime.context, observation_list)
 
         # 构建输入
-        input = self._build_input(state)
+        input = self._build_input(state, observation_list)
         # 调用llm-结构化输出
         response = self._llm_client.invoke_structured(
             prompt=self._prompt,
@@ -105,30 +108,31 @@ class ReasonNode(Node):
             agent_prompt=runtime.context.agent_prompt,
         )
         result = response.structured
+        
+        # 更新AgentResult
         update_agent_result(runtime.context, result.reasoning, response.token_usage)
-        logger.info(
-            "thought=%s reasoning=%s task_status=%s",
-            result.thought,
-            result.reasoning,
-            result.task_status,
-        )
+        logger.info("thought=%s reasoning=%s task_status=%s", result.thought, result.reasoning, result.task_status)
 
-        return self._handle_result(result, state, runtime.context)
+        # 处理Reason结果
+        return self._handle_result(result, state, runtime.context, observation_list)
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
         异步运行
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
+
+        # 构建Observation
+        observation_list = self._build_observations(state.tool_state.tool_results)
+        # 构建历史记录
         history = self._build_history(state, runtime.context)
         log_messages(logger, "reason", history)
-
         # 检查工具执行失败
         if self._has_tool_error(state):
-            return self._handle_tool_error(state, runtime.context)
+            return self._handle_tool_error(state, runtime.context, observation_list)
 
         # 构建输入
-        input = self._build_input(state)
+        input = self._build_input(state, observation_list)
         # 调用llm-结构化输出
         response = await self._llm_client.ainvoke_structured(
             prompt=self._prompt,
@@ -139,15 +143,23 @@ class ReasonNode(Node):
             agent_prompt=runtime.context.agent_prompt,
         )
         result = response.structured
-        update_agent_result(runtime.context, result.reasoning, response.token_usage)
-        logger.info(
-            "thought=%s reasoning=%s task_status=%s",
-            result.thought,
-            result.reasoning,
-            result.task_status,
-        )
 
-        return self._handle_result(result, state, runtime.context)
+        # 更新AgentResult
+        update_agent_result(runtime.context, result.reasoning, response.token_usage)
+        logger.info("thought=%s reasoning=%s task_status=%s", result.thought, result.reasoning, result.task_status)
+
+        # 处理Reason结果
+        return self._handle_result(result, state, runtime.context, observation_list)
+
+    def _build_observations(self, tool_results: list[ToolResult]) -> list[Observation]:
+        """
+        构建Observation
+        """
+        observations = []
+        for tool_result in tool_results:
+            observation = ObservationBuilder.build(tool_result)
+            observations.append(observation)
+        return observations
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """
@@ -161,25 +173,15 @@ class ReasonNode(Node):
             *state.trajectory,
         ]
 
-    def _build_input(self, state: ReActState) -> dict:
+    def _build_input(self, state: ReActState, observation_list: list[Observation]) -> dict:
         """
         构建输入
         """
         return {
             "task": state.task.model_dump(),
             # "trajectory": state.trajectory,
-            "observations": state.observations + self._build_observations(state),
+            "observations": state.observations + observation_list, # 本次ReAct Loop完整的观察结果
         }
-
-    def _build_observations(self, state: ReActState) -> list[Observation]:
-        """
-        构建观察结果
-        """
-        observations = []
-        for tool_result in state.tool_state.tool_results:
-            observation = ObservationBuilder.build(tool_result)
-            observations.append(observation)
-        return observations
 
     def _has_tool_error(self, state: ReActState) -> bool:
         """
@@ -187,7 +189,7 @@ class ReasonNode(Node):
         """
         return any(not result.success for result in state.tool_state.tool_results)
 
-    def _handle_tool_error(self, state: ReActState, context: ReActContext | None) -> Command:
+    def _handle_tool_error(self, state: ReActState, context: ReActContext | None, observation_list: list[Observation]) -> Command:
         """
         处理工具错误
         """
@@ -198,7 +200,7 @@ class ReasonNode(Node):
         result = {
             "retry_count": retry_count,
             "tool_state": ToolState(tool_calls=[], tool_results=[]), # 清空工具调用和执行结果
-            "observations": self._build_observations(state), # 包含工具执行失败的结果
+            "observations": observation_list, # 包含工具执行失败的结果
         }
 
         # 重试次数达到最大，则返回失败
@@ -208,13 +210,13 @@ class ReasonNode(Node):
 
         return self._router(state, context, result)
 
-    def _handle_result(self, response: ReasonStructuredOutput, state: ReActState, context: ReActContext | None) -> Command:
+    def _handle_result(self, response: ReasonStructuredOutput, state: ReActState, context: ReActContext | None, observation_list: list[Observation]) -> Command:
         """
         处理Reason结果
         """
         result = {
             "reasoning": response.reasoning,
-            "observations": state.observations + self._build_observations(state),
+            "observations": observation_list, # 更新observations
         }
 
         if state.task_status in ("in_progress", "no_tool_calls"):

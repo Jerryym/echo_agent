@@ -26,6 +26,8 @@ class FinalNode(Node):
         Run the node
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
+        logger.info("observations=%s", [observation.model_dump_json() for observation in state.observations])
+
         history = self._build_history(state, runtime.context)
         log_messages(logger, "final", history)
 
@@ -55,6 +57,8 @@ class FinalNode(Node):
         异步运行
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
+        logger.info("observations=%s", [observation.model_dump_json() for observation in state.observations])
+
         history = self._build_history(state, runtime.context)
         log_messages(logger, "final", history)
 

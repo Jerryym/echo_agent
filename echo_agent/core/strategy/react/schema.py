@@ -5,7 +5,7 @@ from pydantic import Field
 from ...graph import BaseContext, BaseInput, BaseOutput, BaseState
 from ...model.message import Message, append_messages
 from ..strategy_task import StrategyTask
-from .observation import Observation
+from .observation import Observation, append_observations
 
 
 class ReActInput(BaseInput):
@@ -44,7 +44,7 @@ class ReActState(BaseState):
     conversation: list[Message] = Field(default_factory=list)
     reasoning: str = ""
     task_status: Literal["in_progress", "human_in_the_loop", "no_tool_calls", "completed", "cancelled", "failed"] = "in_progress"
-    observations: list[Observation] = Field(default_factory=list)
+    observations: Annotated[list[Observation], append_observations] = Field(default_factory=list)
     trajectory: Annotated[list[Message], append_messages] = Field(default_factory=list)
     step_count: int = Field(default=0)
     retry_count: int = Field(default=0)

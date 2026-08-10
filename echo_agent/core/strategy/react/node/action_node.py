@@ -107,6 +107,7 @@ class ActionNode(Node):
         Run the node
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
+        logger.info("observations=%s", [observation.model_dump_json() for observation in state.observations])
 
         # 如果存在工具调用，则跳过工具选择
         logger.debug("state.tool_calls=%s", state.tool_state.tool_calls)
@@ -169,6 +170,7 @@ class ActionNode(Node):
         异步运行
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
+        logger.info("observations=%s", [observation.model_dump_json() for observation in state.observations])
 
         # 如果存在工具调用，则跳过工具选择
         logger.debug("state.tool_calls=%s", state.tool_state.tool_calls)
