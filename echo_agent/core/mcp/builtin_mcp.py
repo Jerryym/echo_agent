@@ -15,8 +15,8 @@ from pathlib import Path
 
 from .schema import MCPConnectionConfig
 
-FETCH_SERVER_NAME = "fetch"
-FILESYSTEM_SERVER_NAME = "filesystem"
+FETCH_SERVER = "fetch"
+FILESYSTEM_SERVER = "filesystem"
 
 
 def builtin_fetch_config() -> MCPConnectionConfig:
@@ -24,7 +24,7 @@ def builtin_fetch_config() -> MCPConnectionConfig:
     内置 Fetch MCP Server 配置（stdio / uvx）。
     """
     return MCPConnectionConfig(
-        name=FETCH_SERVER_NAME,
+        name=FETCH_SERVER,
         type="stdio",
         command="uvx",
         args=["--with", "mcp<2", "mcp-server-fetch"],
@@ -44,14 +44,14 @@ def builtin_filesystem_config(allowed_directories: str | list[str]) -> MCPConnec
     if sys.platform == "win32":
         # Windows 上 npx 需经 cmd /c 启动，否则易失败
         return MCPConnectionConfig(
-            name=FILESYSTEM_SERVER_NAME,
+            name=FILESYSTEM_SERVER,
             type="stdio",
             command="cmd",
             args=["/c", "npx", "-y", package, *roots],
         )
 
     return MCPConnectionConfig(
-        name=FILESYSTEM_SERVER_NAME,
+        name=FILESYSTEM_SERVER,
         type="stdio",
         command="npx",
         args=["-y", package, *roots],

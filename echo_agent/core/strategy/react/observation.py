@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -46,6 +46,38 @@ class ObservationBuilder:
             },
         )
         return observation
+
+    @staticmethod
+    def build_from_task_status(task_status: Literal["no_tool_calls", "invalid_tools", "failed"], details: str | list[str] | None = None) -> Observation:
+        """
+        根据任务状态构建 Observation
+        """
+        if task_status == "no_tool_calls":
+            content = (
+                "Action produced no tool calls. "
+                "Re-evaluate whether execution is still required, "
+                "or whether the objective can be marked completed."
+            )
+        elif task_status == "invalid_tools":
+            if isinstance(details, list):
+                detail_text  = ', '.join(details)
+            else:
+                detail_text = details or ""
+            content = (
+                "Action selected tools that are not in the available tool set"
+                + (f": {detail_text}." if detail_text else ".")
+                + " Re-plan the next capability without unavailable tools."
+            )
+        elif task_status == "failed":
+            content = details or "Action failed to execute."
+        return Observation(
+            source="system",
+            content=content,
+            metadata={
+                "event": task_status,
+                "success": False,
+            },
+        )
 
 
 def append_observations(current_observations: list[Observation], new_observations: list[Observation]) -> list[Observation]:

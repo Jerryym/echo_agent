@@ -17,6 +17,23 @@ def to_tool_list(tool_json_schema: list[dict[str, Any]]) -> list[ToolDefinition]
     return tool_list
 
 
+def to_openai_tool_json_schema(tool_list: list[ToolDefinition]) -> list[dict[str, Any]]:
+    """
+    将工具列表转换为 OpenAI Tool JSON Schema
+    """
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
+            },
+        }
+        for tool in tool_list
+    ]
+
+
 def to_tool_definition(tool: BaseTool, tool_type: ToolType = ToolType.FUNCTION) -> ToolDefinition:
     """
     将 LangChain Tool 转换为工具定义

@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from ..core.model.message import Message, Role
 from ..core.model.input import UserInput
+from ..core.model.tool import ToolCall
 from .tool_adapter import ToolAdapter
 
 
@@ -83,6 +84,16 @@ class MessageAdapter:
         return HumanMessage(content=content)
 
     @staticmethod
+    def to_tool_call_message(tool_calls: list[ToolCall]) -> Message:
+        """
+        转换为带工具调用的Assistant Message
+        """
+        return Message(
+            role=Role.ASSISTANT,
+            tool_calls=tool_calls,
+        )
+
+    @staticmethod
     def to_message(message: BaseMessage) -> Message:
         """
         转换为消息
@@ -92,7 +103,11 @@ class MessageAdapter:
         if isinstance(message, SystemMessage):
             return Message(role=Role.SYSTEM, content=message.content)
         if isinstance(message, AIMessage):
-            return Message(role=Role.ASSISTANT, content=message.content, tool_calls=ToolAdapter.to_model_tool_calls(message.tool_calls))
+            return Message(
+                role=Role.ASSISTANT, 
+                content=message.content, 
+                tool_calls=ToolAdapter.to_model_tool_calls(message.tool_calls)
+                )
         if isinstance(message, ToolMessage):
             return Message(role=Role.TOOL, content=message.content, tool_call_id=message.tool_call_id)
         raise NotImplementedError(f"Message '{message}' is not supported yet.")

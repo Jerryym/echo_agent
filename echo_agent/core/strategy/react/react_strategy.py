@@ -40,11 +40,12 @@ class ReActStrategy(BaseStrategy):
             output_schema=self.output_schema,
         )
 
+        # 定义节点
         reason_node = ReasonNode(name="reason", llm_config=self._llm_config)
         action_node = ActionNode(
             name="action",
             llm_config=self._llm_config,
-            tool_list=self._tool_registry.list_definitions(),
+            tool_registry=self._tool_registry,
         )
         tool_node = ToolNode(name="tool", tool_executor=self._tool_executor, message_field="trajectory")
         final_node = FinalNode(name="final", llm_config=self._llm_config)
@@ -141,10 +142,7 @@ class ReActNode(Node):
         self._strategy = strategy
 
     def run(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
-        # user_text = getattr(state.input, "text", state.input)
-        # print(f"\n[ReAct] ===== 开始 ===== input={user_text!r}")
         result = self._strategy.invoke(state, runtime.context)
-        # print(f"[ReAct] ===== 结束 ===== response={result.get('response', '')!r}\n")
         return result
 
     async def arun(self, state: BaseState, runtime: Runtime[BaseContext], config=None) -> dict:

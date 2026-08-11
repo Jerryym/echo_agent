@@ -134,7 +134,10 @@ async def test_react_skill_empty_list() -> None:
 
 def test_action_tools_follow_skill_metadata() -> None:
     _print("ReAct action tool visibility")
-    tools = [
+    from echo_agent.core.model.skill import SkillFrontmatter
+
+    registry = ToolRegistry()
+    for tool in (
         ToolDefinition(name="load_skill", description="", parameters={}),
         ToolDefinition(name="read_skill_resource", description="", parameters={}),
         ToolDefinition(
@@ -157,25 +160,42 @@ def test_action_tools_follow_skill_metadata() -> None:
                 "original_name": "delete_pdf",
             },
         ),
-    ]
+    ):
+        registry.register(tool, handler=None)
+
     node = ActionNode(
         name="action",
         llm_config=_dummy_llm_config(),
-        tool_list=tools,
+        tool_registry=registry,
     )
-    context = ReActContext(agent_state=AgentState(session_id="test"))
+    # 有 skill_list 且未 load → 仅 meta（渐进披露）
+    context = ReActContext(
+        agent_state=AgentState(session_id="test"),
+        skill_list={
+            "pdf": SkillFrontmatter(name="pdf", description="pdf skill"),
+        },
+    )
 
     initial_names = {tool.name for tool in node._available_tools(context)}
     assert initial_names == {"load_skill", "read_skill_resource"}
 
     manager = SkillManager({"pdf": str(PDF_SKILL_DIR)})
     manager.load_skill(context, manager.build_skill_package("pdf"))
+    # PDF fixture 无 allowed_tools → load 后暴露全量注册工具
     loaded_names = {tool.name for tool in node._available_tools(context)}
     assert loaded_names == {
         "load_skill",
         "read_skill_resource",
         "eicad_mcp_render_pdf",
+        "eicad_mcp_delete_pdf",
     }
+
+    # 构图后再注册的工具应对 Action 可见（活 registry，非快照）
+    registry.register(
+        ToolDefinition(name="late_tool", description="", parameters={}),
+        handler=None,
+    )
+    assert "late_tool" in {tool.name for tool in node._available_tools(context)}
     print("ok")
 
 

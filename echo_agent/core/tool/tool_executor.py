@@ -12,10 +12,7 @@ class ToolExecutor:
 
     def get_definition(self, name: str) -> ToolDefinition | None:
         """按名称获取工具定义；未注册时返回 None。"""
-        try:
-            return self._registry.get(name)
-        except KeyError:
-            return None
+        return self._registry.get(name)
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
         """

@@ -47,7 +47,7 @@ class ReasonStructuredOutput(BaseModel):
         description=(
             "Reason-owned lifecycle signal only. "
             "Allowed values: 'in_progress' | 'completed'. "
-            "Do NOT output human_in_the_loop, no_tool_calls, cancelled, or failed "
+            "Do NOT output human_in_the_loop, no_tool_calls, invalid_tools, cancelled, or failed "
             "(those are set by Action/runtime). "
             "'in_progress': the user objective is not yet achieved; further execution "
             "is required. Put the next required capability in 'reasoning'. "
@@ -88,7 +88,7 @@ class ReasonNode(Node):
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
 
         # 构建Observation
-        observation_list = self._build_observations(state.tool_state.tool_results)
+        observation_list = self._build_observations(state)
         # 构建历史记录
         history = self._build_history(state, runtime.context)
         log_messages(logger, "reason", history)
@@ -123,7 +123,7 @@ class ReasonNode(Node):
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
 
         # 构建Observation
-        observation_list = self._build_observations(state.tool_state.tool_results)
+        observation_list = self._build_observations(state)
         # 构建历史记录
         history = self._build_history(state, runtime.context)
         log_messages(logger, "reason", history)
@@ -151,14 +151,27 @@ class ReasonNode(Node):
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
 
-    def _build_observations(self, tool_results: list[ToolResult]) -> list[Observation]:
+    def _build_observations(self, state: ReActState) -> list[Observation]:
         """
         构建Observation
         """
         observations = []
-        for tool_result in tool_results:
-            observation = ObservationBuilder.build(tool_result)
+
+        if state.task_status == "in_progress":
+            for tool_result in state.tool_state.tool_results:
+                observation = ObservationBuilder.build(tool_result)
+                observations.append(observation)
+        elif state.task_status == "invalid_tools": # 非法工具
+            invalid_tools = [tool.name for tool in state.tool_state.tool_calls]
+            observation = ObservationBuilder.build_from_task_status(state.task_status, invalid_tools)
             observations.append(observation)
+        elif state.task_status == "no_tool_calls": # 没有工具调用
+            observation = ObservationBuilder.build_from_task_status(state.task_status)
+            observations.append(observation)
+        elif state.task_status == "failed": # 失败
+            observation = ObservationBuilder.build_from_task_status(state.task_status)
+            observations.append(observation)
+
         return observations
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
@@ -219,8 +232,11 @@ class ReasonNode(Node):
             "observations": observation_list, # 更新observations
         }
 
-        if state.task_status in ("in_progress", "no_tool_calls"):
+        if state.task_status in ("in_progress", "no_tool_calls", "invalid_tools"):
             result["task_status"] = response.task_status
+
+        if state.task_status == "invalid_tools":
+            result["tool_state"] = ToolState(tool_calls=[], tool_results=[])
 
         return self._router(state, context, result)
 
