@@ -39,7 +39,7 @@ class ReActState(BaseState):
         observations: 观察
         trajectory: 轨迹列表
         step_count: 步数
-        retry_count: 重试次数
+        retry_count: 当前 ReAct 执行过程中，因异常（no_tool_calls、invalid_tools）导致重新尝试的次数。
     """
     task: StrategyTask = Field(default_factory=StrategyTask)
     conversation: list[Message] = Field(default_factory=list)

@@ -23,6 +23,13 @@ logger = get_logger("react.action")
 class ActionNode(Node):
     """
     Action Node：动作节点
+
+    节点职责：
+        1. 工具选择
+        2. 工具参数生成
+        3. 工具参数校验
+        4. 工具执行
+        5. HITL 交互处理
     """
     def __init__(self, name: str, llm_config: LLMConfig, tool_registry: ToolRegistry):
         super().__init__(name)
@@ -35,8 +42,9 @@ class ActionNode(Node):
         Run the node
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
-        if state.tool_state.tool_calls:
-            return self._handle_tool_calls(state)
+        # 已存在待处理的 HITL 请求或响应，仅允许通过 HITL 恢复流程继续
+        if state.hitl_state.request or state.hitl_state.response:
+            return self._handle_hitl(state)
 
         available_tools = self._available_tools(runtime.context)
         response = self._llm_client.invoke(
@@ -55,8 +63,9 @@ class ActionNode(Node):
         异步运行
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
-        if state.tool_state.tool_calls:
-            return self._handle_tool_calls(state)
+        # 已存在待处理的 HITL 请求或响应，仅允许通过 HITL 恢复流程继续
+        if state.hitl_state.request or state.hitl_state.response:
+            return self._handle_hitl(state)
 
         available_tools = self._available_tools(runtime.context)
         response = await self._llm_client.ainvoke(
@@ -70,16 +79,11 @@ class ActionNode(Node):
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, response.tool_calls, available_tools)
 
-    def _route_after_tool_selection(
-        self,
-        state: ReActState,
-        tool_calls: list[ToolCall] | None,
-        available_tools: list[ToolDefinition],
-    ) -> Command:
-        """LLM 选型后的公共分支（run / arun 共用）。"""
+    def _route_after_tool_selection(self, state: ReActState, tool_calls: list[ToolCall] | None, available_tools: list[ToolDefinition]) -> Command:
         if not tool_calls:
             return self._handle_no_tool_calls(state)
 
+        # 判断是否存在非法工具
         invalid_names = self._get_invalid_tools(tool_calls, available_tools)
         if invalid_names:
             logger.warning(
@@ -91,10 +95,12 @@ class ActionNode(Node):
             invalid_tools = [tc for tc in tool_calls if tc.name in invalid_names]
             return self._handle_invalid_tools(invalid_tools, state)
 
+        # 判断是否存在缺失参数
         missing_parameters_map = self._get_missing_parameters(tool_calls)
         if missing_parameters_map:
             return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
 
+        # 判断是否需要人工审核
         if self._need_approval(tool_calls):
             return self._handle_approval(tool_calls, state)
 
@@ -112,9 +118,9 @@ class ActionNode(Node):
             *state.trajectory,
         ]
 
-    def _handle_tool_calls(self, state: ReActState) -> Command:
+    def _handle_hitl(self, state: ReActState) -> Command:
         """
-        处理工具调用的情况
+        处理 HITL 恢复场景
         """
         hitl_state = state.hitl_state
         if hitl_state.response:
@@ -124,46 +130,13 @@ class ActionNode(Node):
                     "task_status": "cancelled",
                     "tool_state": ToolState(tool_calls=[]),
                     "hitl_state": HITLInteraction(request=None, response=None),
-                    "step_count": state.step_count + 1,
                 })
 
             if hitl_state.request:
                 if hitl_state.request.type == HITLType.INPUT:# INPUT 类型
-                    tool_calls = self._fill_tool_calls(state.tool_state.tool_calls, hitl_state.response)
-                    missing_map = self._get_missing_parameters(tool_calls)
-                    if missing_map:# 仍缺参：再走一轮 INPUT HITL（可顺带清掉本次已消费的 response）
-                        return self._handle_missing_parameters(tool_calls, missing_map, state)
-                    tool_calls = self._mark_missing_parameters(tool_calls, {})
-                    # 判断是否需要人工审核
-                    if self._need_approval(tool_calls):
-                        return self._handle_approval(tool_calls, state)
-                    return self._router(state, {
-                        "task_status": "in_progress",
-                        "tool_state": ToolState(tool_calls=tool_calls),
-                        "hitl_state": HITLInteraction(request=None, response=None),
-                        "trajectory": [
-                            MessageAdapter.to_tool_call_message(tool_calls)
-                        ],
-                        "step_count": state.step_count + 1,
-                    })
+                    return self._handle_hitl_input(state, hitl_state)
                 if hitl_state.request.type == HITLType.APPROVAL:# APPROVAL 类型
-                    approved = (hitl_state.response.result or {}).get("approved")
-                    if approved is not True:
-                        return self._router(state, {
-                            "task_status": "cancelled",
-                            "tool_state": ToolState(tool_calls=[]),
-                            "hitl_state": HITLInteraction(request=None, response=None),
-                            "step_count": state.step_count + 1,
-                        })
-                    return self._router(state, {
-                        "task_status": "in_progress",
-                        "tool_state": ToolState(tool_calls=state.tool_state.tool_calls),
-                        "hitl_state": HITLInteraction(request=None, response=None),
-                        "trajectory": [
-                            MessageAdapter.to_tool_call_message(state.tool_state.tool_calls)
-                        ],
-                        "step_count": state.step_count + 1,
-                    })
+                    return self._handle_hitl_approval(state, hitl_state)
 
         logger.warning(
             "tool_calls present without hitl response; refuse execution | tools=%s",
@@ -173,7 +146,52 @@ class ActionNode(Node):
             "task_status": "failed",
             "tool_state": ToolState(tool_calls=[], tool_results=[]),
             "hitl_state": HITLInteraction(request=None, response=None),
-            "step_count": state.step_count + 1,
+        })
+
+    def _handle_hitl_input(self, state: ReActState, hitl_interaction: HITLInteraction) -> Command:
+        """
+        处理 HITL INPUT 类型
+        """
+        tool_calls = self._fill_tool_calls(state.tool_state.tool_calls, hitl_interaction.response)
+        
+        # 二次参数校验
+        missing_map = self._get_missing_parameters(tool_calls)
+        if missing_map:
+            return self._handle_missing_parameters(tool_calls, missing_map, state)
+        # 参数完整，清理 missing_args
+        tool_calls = self._mark_missing_parameters(tool_calls, {})
+        # 判断是否需要人工审核
+        if self._need_approval(tool_calls):
+            return self._handle_approval(tool_calls, state)
+        
+        return self._router(state, {
+            "task_status": "in_progress",
+            "tool_state": ToolState(tool_calls=tool_calls),
+            "hitl_state": HITLInteraction(request=None, response=None),
+            "trajectory": [
+                MessageAdapter.to_tool_call_message(tool_calls)
+            ],
+        })
+
+    def _handle_hitl_approval(self, state: ReActState, hitl_interaction: HITLInteraction) -> Command:
+        """
+        处理 HITL APPROVAL 类型
+        """
+        approved = (hitl_interaction.response.result or {}).get("approved")
+        if approved is not True:
+            return self._router(state, {
+                "task_status": "cancelled",
+                "tool_state": ToolState(tool_calls=[]),
+                "hitl_state": HITLInteraction(request=None, response=None),
+            })
+        
+        return self._router(state, {
+            "task_status": "in_progress",
+            "tool_state": ToolState(tool_calls=state.tool_state.tool_calls),
+            "hitl_state": HITLInteraction(request=None, response=None),
+            "trajectory": [
+                MessageAdapter.to_tool_call_message(state.tool_state.tool_calls)
+            ],
         })
 
     def _handle_no_tool_calls(self, state: ReActState) -> Command:
@@ -182,7 +200,6 @@ class ActionNode(Node):
         """
         return self._router(state, {
             "task_status": "no_tool_calls", # 没有工具调用
-            "step_count": state.step_count + 1,
             "retry_count": state.retry_count + 1,
         })
 
@@ -193,7 +210,6 @@ class ActionNode(Node):
         return self._router(state, {
             "task_status": "invalid_tools", # 非法工具
             "tool_state": ToolState(tool_calls=invalid_tools), # 传入非法工具
-            "step_count": state.step_count + 1,
             "retry_count": state.retry_count + 1,
         })
 
@@ -207,15 +223,9 @@ class ActionNode(Node):
             "trajectory": [
                 MessageAdapter.to_tool_call_message(tool_calls)
             ],
-            "step_count": state.step_count + 1,
         })
 
-    def _handle_missing_parameters(
-        self,
-        tool_calls: list[ToolCall],
-        missing_parameters_map: dict[str, list[str]],
-        state: ReActState,
-    ) -> Command:
+    def _handle_missing_parameters(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]], state: ReActState) -> Command:
         """
         处理缺少参数状态
         """

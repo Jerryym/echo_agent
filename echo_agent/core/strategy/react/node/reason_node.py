@@ -66,15 +66,13 @@ class ReasonNode(Node):
     """
     Reason Node：推理节点
 
-    职责：
-        1. 判断当前任务状态
-        2. 判断信息是否满足下一步执行要求
-        3. 生成下一步动作意图
-
-    不负责：
-        1. 工具选择
-        2. 参数生成
-        3. 工具执行
+    节点职责：
+        1. 分析当前 ReAct Loop 的执行结果与观察信息
+        2. 判断当前任务状态及是否满足下一步执行要求
+        3. 基于当前任务上下文和 Observation 生成下一步动作意图
+        4. 管理 ReAct Loop 的 step_count，并判断是否达到最大执行步数
+        5. 根据任务状态、执行步数和重试次数决定下一节点
+        6. 将当前 ReAct Loop 的 Observation 累积到 ReActState
     """
     def __init__(self, name: str, llm_config: LLMConfig):
         super().__init__(name)
@@ -92,6 +90,13 @@ class ReasonNode(Node):
         # 构建历史记录
         history = self._build_history(state, runtime.context)
         log_messages(logger, "reason", history)
+
+        # 如果任务状态为取消或失败，则直接返回
+        if state.task_status in ("cancelled", "failed"):
+            return self._router(state, runtime.context, {
+                "task_status": state.task_status,
+                "observations": observation_list,
+            })
         # 检查工具执行失败
         if self._has_tool_error(state):
             return self._handle_tool_error(state, runtime.context, observation_list)
@@ -127,6 +132,13 @@ class ReasonNode(Node):
         # 构建历史记录
         history = self._build_history(state, runtime.context)
         log_messages(logger, "reason", history)
+
+        # 如果任务状态为取消或失败，则直接返回
+        if state.task_status in ("cancelled", "failed"):
+            return self._router(state, runtime.context, {
+                "task_status": state.task_status,
+                "observations": observation_list,
+            })
         # 检查工具执行失败
         if self._has_tool_error(state):
             return self._handle_tool_error(state, runtime.context, observation_list)
@@ -171,6 +183,9 @@ class ReasonNode(Node):
         elif state.task_status == "failed": # 失败
             observation = ObservationBuilder.build_from_task_status(state.task_status)
             observations.append(observation)
+        elif state.task_status == "cancelled": # 取消
+            observation = ObservationBuilder.build_from_task_status(state.task_status)
+            observations.append(observation)
 
         return observations
 
@@ -209,18 +224,11 @@ class ReasonNode(Node):
         failed_tools = [r.name for r in state.tool_state.tool_results if r.error]
         logger.warning("tool error detected: %s", failed_tools)
 
-        retry_count = state.retry_count + 1
         result = {
-            "retry_count": retry_count,
+            "step_count": state.step_count + 1,
             "tool_state": ToolState(tool_calls=[], tool_results=[]), # 清空工具调用和执行结果
             "observations": observation_list, # 包含工具执行失败的结果
         }
-
-        # 重试次数达到最大，则返回失败
-        if context and retry_count >= context.retry_max_count: 
-            result["task_status"] = "failed"
-            result["reasoning"] = "Tool execution failed and retry limit reached."
-
         return self._router(state, context, result)
 
     def _handle_result(self, response: ReasonStructuredOutput, state: ReActState, context: ReActContext | None, observation_list: list[Observation]) -> Command:
@@ -230,6 +238,7 @@ class ReasonNode(Node):
         result = {
             "reasoning": response.reasoning,
             "observations": observation_list, # 更新observations
+            "step_count": state.step_count + 1,
         }
 
         if state.task_status in ("in_progress", "no_tool_calls", "invalid_tools"):

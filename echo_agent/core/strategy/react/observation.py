@@ -48,7 +48,7 @@ class ObservationBuilder:
         return observation
 
     @staticmethod
-    def build_from_task_status(task_status: Literal["no_tool_calls", "invalid_tools", "failed"], details: str | list[str] | None = None) -> Observation:
+    def build_from_task_status(task_status: Literal["no_tool_calls", "invalid_tools", "failed", "cancelled"], details: str | list[str] | None = None) -> Observation:
         """
         根据任务状态构建 Observation
         """
@@ -70,6 +70,8 @@ class ObservationBuilder:
             )
         elif task_status == "failed":
             content = details or "Action failed to execute."
+        elif task_status == "cancelled":
+            content = "Task was cancelled." + (f": {details}." if details else ".")
         return Observation(
             source="system",
             content=content,
