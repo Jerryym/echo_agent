@@ -78,24 +78,26 @@ class ReActStrategy(BaseStrategy):
         """
         将 Parent State 映射为 Strategy Input
         """
+        # 构建Task
         text = state.input.text if isinstance(state.input, UserInput) else str(state.input or "")
         task = StrategyTask(
             name="react",
             description=text,
             goal=text,
         )
+
+        # 构建Conversation
         conversation = context.agent_state.conversation if context else None
         messages = conversation.messages if conversation else []
         view: list[Message] = []
         if conversation is not None and conversation.summary is not None:
-            view.append(
-                Message(
-                    role=Role.SYSTEM,
-                    content=ConversationCompressor.render(conversation.summary),
-                )
-            )
+            view.append(Message(role=Role.SYSTEM, content=ConversationCompressor.render(conversation.summary)))
         view.extend(trim_conversation(messages))
         logger.info("to_strategy_input | task=%s, messages=%s", task, len(view))
+
+        # 增加User Input
+        view.append(Message(role=Role.USER, content=text))
+        
         return ReActInput(
             task=task,
             conversation=view,

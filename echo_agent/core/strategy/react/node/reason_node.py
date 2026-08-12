@@ -197,7 +197,6 @@ class ReasonNode(Node):
             raise ValueError("ReActContext is required for ReasonNode")
         return [
             *state.conversation,
-            Message(role=Role.USER, content=state.task.description or state.task.goal), 
             *state.trajectory,
         ]
 
@@ -207,7 +206,6 @@ class ReasonNode(Node):
         """
         return {
             "task": state.task.model_dump(),
-            # "trajectory": state.trajectory,
             "observations": state.observations + observation_list, # 本次ReAct Loop完整的观察结果
         }
 
@@ -236,16 +234,18 @@ class ReasonNode(Node):
         处理Reason结果
         """
         result = {
+            "task_status": response.task_status,
             "reasoning": response.reasoning,
             "observations": observation_list, # 更新observations
-            "step_count": state.step_count + 1,
         }
 
-        if state.task_status in ("in_progress", "no_tool_calls", "invalid_tools"):
-            result["task_status"] = response.task_status
-
+        # 非法工具时，清空工具状态
         if state.task_status == "invalid_tools":
             result["tool_state"] = ToolState(tool_calls=[], tool_results=[])
+
+        # 只有确定进入下一次 Action 执行时，才消耗 step
+        if response.task_status == "in_progress":
+            result["step_count"] = state.step_count + 1
 
         return self._router(state, context, result)
 
