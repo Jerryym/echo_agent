@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from langchain.tools import BaseTool
@@ -56,3 +57,8 @@ def get_tool_definition(tool_list: list[ToolDefinition], tool_name: str) -> Tool
         if tool.name == tool_name:
             return tool
     return None
+
+def format_tool_content(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, default=str)

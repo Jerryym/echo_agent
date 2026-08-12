@@ -56,21 +56,18 @@ def create_load_skill_tool(skill_manager: SkillManager):
         Args:
             name: Skill name declared in AgentConfig.skill_list.
         """
-        try:
-            context = get_skill_runtime_context()
-            skill_package = skill_manager.build_skill_package(name)
-            skill_manager.load_skill(context=context, skill_package=skill_package)
-            resources = [
-                *skill_package.scripts,
-                *skill_package.references,
-                *skill_package.assets,
-            ]
-            if resources:
-                listed = ", ".join(resources)
-                return f"Skill {name} loaded. Available resources: {listed}"
-            return f"Skill {name} loaded."
-        except Exception as exc:
-            return str(exc)
+        context = get_skill_runtime_context()
+        skill_package = skill_manager.build_skill_package(name)
+        skill_manager.load_skill(context=context, skill_package=skill_package)
+        resources = [
+            *skill_package.scripts,
+            *skill_package.references,
+            *skill_package.assets,
+        ]
+        if resources:
+            listed = ", ".join(resources)
+            return f"Skill {name} loaded. Available resources: {listed}"
+        return f"Skill {name} loaded."
 
     return load_skill
 
@@ -94,17 +91,14 @@ def create_read_skill_resource_tool(skill_manager: SkillManager):
         relative = _validate_resource_path(path)
         if relative is None:
             if not (path or "").strip():
-                return "Resource path is required."
-            return f"Invalid resource path: {path}"
+                raise ValueError("Resource path is required.")
+            raise ValueError(f"Invalid resource path: {path}")
 
-        try:
-            context = get_skill_runtime_context()
-            skill_package = skill_manager.build_skill_package(name)
-            content = await _aread_package_resource(skill_package, relative)
-            skill_manager.touch_skill(context, name)
-            return content
-        except Exception as exc:
-            return f"Failed to read skill resource '{path}' from '{name}': {exc}"
+        context = get_skill_runtime_context()
+        skill_package = skill_manager.build_skill_package(name)
+        content = await _aread_package_resource(skill_package, relative)
+        skill_manager.touch_skill(context, name)
+        return content
 
     return read_skill_resource
 

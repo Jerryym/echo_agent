@@ -23,8 +23,8 @@ class ToolRegistry:
         self._handlers[tool.name] = handler
 
     def unregister(self, name: str):
-        self._tools.pop(name)
-        self._handlers.pop(name)
+        self._tools.pop(name, None)
+        self._handlers.pop(name, None)
 
     def get_tools(self) -> list[dict[str, Any]]:
         return to_openai_tool_json_schema(self.list_definitions())

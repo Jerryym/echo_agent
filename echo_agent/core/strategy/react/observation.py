@@ -1,9 +1,9 @@
-import json
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
 from ...model.tool import ToolResult
+from ...tool.utils import format_tool_content
 
 
 class Observation(BaseModel):
@@ -27,11 +27,7 @@ class ObservationBuilder:
     @staticmethod
     def build(tool_result: ToolResult) -> Observation:
         if tool_result.success:
-            content = json.dumps(
-                tool_result.result,
-                ensure_ascii=False,
-                default=str
-            )
+            content = format_tool_content(tool_result.result)
         else:
             content = (
                 f"Tool execution failed: "

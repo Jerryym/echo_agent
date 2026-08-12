@@ -1,5 +1,3 @@
-import json
-
 from langgraph.runtime import Runtime
 
 from ...common import format_value, get_logger
@@ -7,6 +5,7 @@ from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseState, Node
 from ..model.message import Message, Role
 from ..model.tool import ToolCall, ToolResult, ToolState
+from .utils import format_tool_content
 from .tool_executor import ToolExecutor
 from .toolkit import reset_skill_runtime_context, set_skill_runtime_context
 
@@ -102,10 +101,7 @@ class ToolNode(Node):
             for tool_result in tool_results:
                 if tool_result.success:
                     # 字符串结果直接作为 ToolMessage content，避免 json.dumps 多包一层引号
-                    if isinstance(tool_result.result, str):
-                        content = tool_result.result
-                    else:
-                        content = json.dumps(tool_result.result, ensure_ascii=False)
+                    content = format_tool_content(tool_result.result)
                 else:
                     content = tool_result.error or "unknown error"
                 tool_messages.append(Message(
