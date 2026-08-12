@@ -5,9 +5,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, RootGraph, UserInput
 from echo_agent.common import format_value
-from echo_agent.core.graph import START_NODE, END_NODE
+from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions
 from echo_agent.core.llm import LLMConfig
-from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.runtime.human_in_the_loop import (
     HITLInput,
     HITLOutput,
@@ -69,8 +68,8 @@ def build_hitl_agent(hitl_type: HITLType) -> Agent:
         ),
         mcp_allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    return Agent(agent_config, runtime_config, graph)
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
+    return Agent(agent_config, compile_options, graph)
 
 
 def get_pending_interrupt(agent: Agent, session_id: str) -> dict | None:

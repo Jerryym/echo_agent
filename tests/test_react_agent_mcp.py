@@ -31,9 +31,8 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
-from echo_agent.core.graph import END_NODE, START_NODE
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.mcp import MCPConnectionConfig
-from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolRegistry
 from env_config import build_config
@@ -83,11 +82,11 @@ async def build_react_agent(
         enable_builtin_fetch=True,
         enable_builtin_filesystem=True,
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
 
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(agent_config, runtime_config, placeholder)
+    agent = Agent(agent_config, compile_options, placeholder)
     assert agent.mcp_client is not None
 
     definitions = await agent.register_mcp_tools()
@@ -106,7 +105,7 @@ async def build_react_agent(
     graph.add_edge(react_subgraph.name, END_NODE)
 
     agent._graph = graph
-    agent._compiled_graph = graph.compile(runtime_config)
+    agent._compiled_graph = graph.compile(compile_options)
     return agent, agent.tool_registry
 
 

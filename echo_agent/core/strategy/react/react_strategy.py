@@ -115,8 +115,7 @@ class ReActStrategy(BaseStrategy):
         active_skills = context.active_skills
         react_context = ReActContext(
             agent_state=context.agent_state,
-            agent_prompt=context.agent_prompt,
-            skill_list=context.skill_list,
+            resources=context.resources,
             active_skills=active_skills,
             agent_result=context.agent_result,
             max_steps=self._max_steps,

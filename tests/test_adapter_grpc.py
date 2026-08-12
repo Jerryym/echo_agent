@@ -289,6 +289,7 @@ def test_agent_build_runnable_config_puts_metadata():
         },
     )
     assert cfg["configurable"]["thread_id"] == "sess-1"
+    assert cfg["configurable"]["session_id"] == "sess-1"
     meta = cfg["configurable"]["metadata"]
     assert meta["trace_id"] == "t1"
     assert meta[METADATA_HTTP_HEADERS_KEY] == {"Authorization": "Bearer x"}

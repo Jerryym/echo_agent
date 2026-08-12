@@ -2,11 +2,12 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, PlainValidator
 
+from ..model.agent_resources import AgentResources
 from ..model.agent_result import AgentResult
 from ..model.agent_state import AgentState
 from ..model.hitl import HITLInteraction
 from ..model.input import UserInput
-from ..model.skill import SkillFrontmatter, SkillRuntimeContext
+from ..model.skill import SkillRuntimeContext
 from ..model.tool import ToolState
 
 
@@ -86,18 +87,11 @@ class BaseContext(BaseModel):
 
     参数:
         agent_state: 智能体状态
-        agent_prompt: Agent 系统提示词（可空）
-        skill_list: Skill列表
-        active_skills: 可用的Skill列表（会话级可变 dict，构造时保持同一引用）
-        kb_list: 知识库列表（预留）
+        resources: 静态资源目录（system_prompt / skill_list / kb_list）
+        active_skills: 已加载 Skill（会话级可变 dict，构造时保持同一引用）
         agent_result: 本轮交互的顶层输出（运行中由节点增量写入）
     """
     agent_state: AgentState
-    agent_prompt: str | None = None
-    # Skill
-    skill_list: dict[str, SkillFrontmatter] = Field(default_factory=dict)
+    resources: AgentResources = Field(default_factory=AgentResources)
     active_skills: ActiveSkillsMap = Field(default_factory=dict)
-    # Knowledge Base
-    kb_list: dict[str, Any] | None = Field(default_factory=dict)
-
     agent_result: AgentResultRef = None

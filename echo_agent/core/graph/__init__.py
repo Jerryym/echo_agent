@@ -3,6 +3,8 @@ from .node import Node
 from .rootgraph import RootGraph
 from .schema import BaseContext, BaseInput, BaseOutput, BaseState
 from .subgraph import SubGraph
+from .compile_options import GraphCompileOptions
+
 
 __all__ = [
     "BaseInput",
@@ -15,4 +17,5 @@ __all__ = [
     "START_NODE",
     "END_NODE",
     "RootGraph",
+    "GraphCompileOptions",
 ]

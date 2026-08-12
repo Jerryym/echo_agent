@@ -7,6 +7,7 @@ from .....utils import update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message, Role
+from ....runtime.runtime_config import RuntimeConfig
 from ..schema import ReActContext, ReActState
 
 logger = get_logger("react.final")
@@ -39,8 +40,8 @@ class FinalNode(Node):
             user_input=input,
             history=history,
             context=runtime.context,
-            agent_prompt=runtime.context.agent_prompt,
-            config=config,
+            agent_resources=runtime.context.resources,
+            config=self._build_runnable_config(config),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         # 更新状态
@@ -70,8 +71,8 @@ class FinalNode(Node):
             user_input=input,
             history=history,
             context=runtime.context,
-            agent_prompt=runtime.context.agent_prompt,
-            config=config,
+            agent_resources=runtime.context.resources,
+            config=self._build_runnable_config(config),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
 
@@ -83,6 +84,15 @@ class FinalNode(Node):
             "response": response.text,
             "trajectory": [Message(role=Role.ASSISTANT, content=response.text)],
         }
+
+    def _build_runnable_config(self, config: RunnableConfig | None) -> RunnableConfig:
+        conf = (config or {}).get("configurable") or {}
+        thread_id = str(conf.get("thread_id") or "")
+        return RuntimeConfig(
+            thread_id=thread_id,
+            session_id=str(conf.get("session_id") or thread_id),
+            metadata=dict(conf.get("metadata") or {}),
+        ).to_llm_runnable_config()
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """

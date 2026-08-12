@@ -16,8 +16,7 @@ from echo_agent import (
     RootGraph,
     UserInput,
 )
-from echo_agent.core.graph import START_NODE, END_NODE
-from echo_agent.core.runtime import RuntimeConfig
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 
 from case.base import BaseCase, CaseResult
 from case.common import extract_reply
@@ -71,8 +70,8 @@ def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
         system_prompt=system_prompt,
         mcp_allowed_directories=REPO_ROOT,
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    return Agent(agent_config, runtime_config, graph)
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
+    return Agent(agent_config, compile_options, graph)
 
 
 class AgentCase(BaseCase):

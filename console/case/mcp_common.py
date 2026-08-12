@@ -9,9 +9,8 @@ from pathlib import Path
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph
-from echo_agent.core.graph import END_NODE, START_NODE
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.mcp import MCPConnectionConfig
-from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
@@ -109,11 +108,11 @@ async def _abuild_react_mcp_agent(
         enable_builtin_fetch=True,
         enable_builtin_filesystem=True,
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
 
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(agent_config, runtime_config, placeholder)
+    agent = Agent(agent_config, compile_options, placeholder)
     if agent.mcp_client is None:
         raise RuntimeError("MCPClient 未创建：检查 AgentConfig.mcp_servers")
 
@@ -131,7 +130,7 @@ async def _abuild_react_mcp_agent(
     graph.add_edge(react_node.name, END_NODE)
 
     agent._graph = graph
-    agent._compiled_graph = graph.compile(runtime_config)
+    agent._compiled_graph = graph.compile(compile_options)
 
     tool_names = [d.name for d in agent.tool_registry.list_definitions()]
     return agent, tool_names

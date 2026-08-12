@@ -27,9 +27,9 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
-from echo_agent.core.graph import END_NODE, START_NODE
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
+from echo_agent.core.model.agent_resources import AgentResources
 from echo_agent.core.model.agent_state import AgentState
-from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.strategy.react.node import ActionNode
 from echo_agent.core.strategy.react.schema import ReActContext
@@ -65,11 +65,11 @@ async def build_react_skill_agent(
         mcp_allowed_directories=str(REPO_ROOT),
         skill_list=skill_list if skill_list is not None else dict(DEFAULT_SKILL_LIST),
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
 
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(agent_config, runtime_config, placeholder)
+    agent = Agent(agent_config, compile_options, placeholder)
 
     react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,
@@ -82,7 +82,7 @@ async def build_react_skill_agent(
     graph.add_edge(react_subgraph.name, END_NODE)
 
     agent._graph = graph
-    agent._compiled_graph = graph.compile(runtime_config)
+    agent._compiled_graph = graph.compile(compile_options)
     return agent, agent.tool_registry
 
 
@@ -171,9 +171,11 @@ def test_action_tools_follow_skill_metadata() -> None:
     # 有 skill_list 且未 load → 仅 meta（渐进披露）
     context = ReActContext(
         agent_state=AgentState(session_id="test"),
-        skill_list={
-            "pdf": SkillFrontmatter(name="pdf", description="pdf skill"),
-        },
+        resources=AgentResources(
+            skill_list={
+                "pdf": SkillFrontmatter(name="pdf", description="pdf skill"),
+            },
+        ),
     )
 
     initial_names = {tool.name for tool in node._available_tools(context)}

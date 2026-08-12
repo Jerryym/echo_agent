@@ -5,9 +5,7 @@ ReAct Agent + MCP 工具 + HITL 手动验证脚本
 HITL 由 ReAct ActionNode 触发（缺参 → INPUT，required_approval → APPROVAL），
 与 LangChain Tool Interceptor 无关。
 
-固定同时启用：
-  - builtin：Fetch + Filesystem（目录由 mcp_allowed_directories 传入）
-  - stdio：@modelcontextprotocol/server-everything
+固定启用：
   - http：本地 streamable HTTP（默认 http://localhost:8000/mcp）
 
 装配对齐：
@@ -22,7 +20,7 @@ HITL 由 ReAct ActionNode 触发（缺参 → INPUT，required_approval → APPR
 
 提示：
   - INPUT：省略必填参数即可触发
-  - APPROVAL：create_refund / filesystem 写操作，话术参数齐全
+  - APPROVAL：create_refund，话术参数齐全
 """
 
 from __future__ import annotations
@@ -37,9 +35,8 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
-from echo_agent.core.graph import END_NODE, START_NODE
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.mcp import MCPConnectionConfig
-from echo_agent.core.runtime import RuntimeConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolRegistry
 from env_config import build_config
@@ -54,18 +51,9 @@ MCP_HTTP_URL = "http://localhost:8000/mcp"
 # 写操作需人工审批；测 APPROVAL 时用参数齐全的话术，避免先进 INPUT
 APPROVAL_REQUIRED_TOOLS = {
     "create_refund",
-    "write_file",
-    "edit_file",
-    "move_file",
 }
 
 MCP_SERVERS: list[MCPConnectionConfig] = [
-    MCPConnectionConfig(
-        name="everything",
-        type="stdio",
-        command="npx",
-        args=["-y", "@modelcontextprotocol/server-everything"],
-    ),
     MCPConnectionConfig(
         name="remote",
         type="http",
@@ -91,7 +79,7 @@ async def build_react_agent(
     llm_config: LLMConfig,
 ) -> tuple[Agent, ToolRegistry]:
     """
-    AgentConfig → 内置 MCP + stdio/http → Agent.register_mcp_tools。
+    AgentConfig → http MCP → Agent.register_mcp_tools。
 
     因 Strategy 构建需要已注册工具，先用占位图创建 Agent，
     注册后再构建 ReAct 图并重新编译到同一 Agent。
@@ -100,16 +88,15 @@ async def build_react_agent(
         name=name,
         description=name,
         llm_config=llm_config,
-        mcp_allowed_directories=str(Path(__file__).resolve().parents[1]),
         mcp_servers=MCP_SERVERS,
-        enable_builtin_fetch=True,
-        enable_builtin_filesystem=True,
+        enable_builtin_fetch=False,
+        enable_builtin_filesystem=False,
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
 
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(agent_config, runtime_config, placeholder)
+    agent = Agent(agent_config, compile_options, placeholder)
     assert agent.mcp_client is not None
 
     definitions = await agent.register_mcp_tools()
@@ -131,7 +118,7 @@ async def build_react_agent(
     graph.add_edge(react_subgraph.name, END_NODE)
 
     agent._graph = graph
-    agent._compiled_graph = graph.compile(runtime_config)
+    agent._compiled_graph = graph.compile(compile_options)
     return agent, agent.tool_registry
 
 

@@ -14,10 +14,9 @@ from echo_agent import (
     RootGraph,
 )
 from echo_agent.core.agent import AgentConfig
-from echo_agent.core.graph import START_NODE, END_NODE
+from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions
 from echo_agent.core.model.message import Message, Role
 from echo_agent.core.model.input import UserInput
-from echo_agent.core.runtime import RuntimeConfig
 from env_config import build_config
 
 # 状态
@@ -66,8 +65,8 @@ def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
         system_prompt=system_prompt,
         mcp_allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    return Agent(agent_config, runtime_config, graph)
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
+    return Agent(agent_config, compile_options, graph)
 
 
 def _message_chunk_text(message: AIMessageChunk) -> str:

@@ -7,9 +7,10 @@ from langgraph.types import Command
 
 from ...common import get_logger
 from ..capability.skill import SkillManager
-from ..graph import BaseContext, BaseInput, RootGraph
+from ..graph import BaseContext, BaseInput, GraphCompileOptions, RootGraph
 from ..llm import LLMClient
 from ..mcp import MCPClient
+from ..model.agent_resources import AgentResources
 from ..model.agent_result import AgentResult
 from ..model.agent_state import AgentState
 from ..model.input import UserInput
@@ -32,11 +33,11 @@ logger = get_logger("agent")
 
 class Agent:
     """
-    Agent 类：用于定义 Agent 的运行实体，包括 AgentConfig、RuntimeConfig、RootGraph 等。
+    Agent 类：用于定义 Agent 的运行实体，包括 AgentConfig、GraphCompileOptions、RootGraph 等。
 
     Attributes:
         agent_config: Agent 配置
-        runtime_config: Runtime 配置
+        graph_compile_options: 图编译选项
         graph: RootGraph 根图
         compiled_graph: 编译后的图
         tool_registry: 工具注册器
@@ -44,14 +45,14 @@ class Agent:
         mcp_client: MCP 客户端（由 AgentConfig.mcp_servers 在构造时内部创建；
             可选合并内置 Fetch / Filesystem，默认关闭）
     """
-    def __init__(self, agent_config: AgentConfig, runtime_config: RuntimeConfig, graph: RootGraph):
+    def __init__(self, agent_config: AgentConfig, compile_options: GraphCompileOptions, graph: RootGraph):
         # 配置
         self._agent_config = agent_config
-        self._runtime_config = runtime_config
+        self._graph_compile_options = compile_options
 
         # 图
         self._graph = graph
-        self._compiled_graph = self._graph.compile(runtime_config)
+        self._compiled_graph = self._graph.compile(compile_options)
 
         self._tool_registry = ToolRegistry()
         self._skill_manager = SkillManager(agent_config.skill_list)
@@ -416,15 +417,17 @@ class Agent:
         metadata: Mapping[str, Any] | None = None,
     ) -> RunnableConfig:
         """
-        构建 RunnableConfig。
+        构建图级 RunnableConfig。
 
-        metadata 经规范化后写入 configurable["metadata"]（包含默认键 http_headers, {"Authorization":"Bearer x"}）。
+        经 RuntimeConfig 规范化 metadata 后调用 to_graph_runnable_config()
+        （configurable 含 thread_id / session_id / metadata；http_headers 等在 metadata 内）。
         """
-        configurable: dict[str, Any] = {
-            "thread_id": session_id,
-            "metadata": self._normalize_invoke_metadata(metadata),
-        }
-        return RunnableConfig(configurable=configurable)
+        runtime = RuntimeConfig(
+            thread_id=session_id,
+            session_id=session_id,
+            metadata=self._normalize_invoke_metadata(metadata),
+        )
+        return runtime.to_graph_runnable_config()
 
     def _build_context(self, session_id: str, *, resume: bool = False) -> BaseContext:
         """
@@ -446,8 +449,10 @@ class Agent:
             self._pending_results[session_id] = agent_result
         context = BaseContext(
             agent_state=agent_state,
-            agent_prompt=self._agent_config.system_prompt,
-            skill_list=self._skill_manager.skill_frontmatter_list,
+            resources=AgentResources(
+                system_prompt=self._agent_config.system_prompt,
+                skill_list=self._skill_manager.skill_frontmatter_list,
+            ),
             active_skills=active_skills,
             agent_result=agent_result,
         )

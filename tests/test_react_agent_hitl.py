@@ -10,8 +10,7 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
-from echo_agent.core.graph import START_NODE, END_NODE
-from echo_agent.core.runtime import RuntimeConfig
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolDefinition, ToolRegistry
 from env_config import build_config
@@ -99,8 +98,8 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
         llm_config=config,
         mcp_allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    return Agent(agent_config, runtime_config, graph)
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
+    return Agent(agent_config, compile_options, graph)
 
 
 def _message_chunk_text(message: AIMessageChunk) -> str:

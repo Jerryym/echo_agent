@@ -76,7 +76,7 @@ class ConversationCompressor:
             prompt=self._policy,
             user_input=payload,
             context=None,       # 不注入 agent/skill prompt
-            agent_prompt=None,
+            agent_resources=None,
             strict=True,
         )
         summary = result.structured
@@ -94,7 +94,7 @@ class ConversationCompressor:
             prompt=self._policy,
             user_input=payload,
             context=None,
-            agent_prompt=None,
+            agent_resources=None,
             strict=True,
         )
         summary = result.structured

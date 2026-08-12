@@ -6,8 +6,7 @@ from pathlib import Path
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
-from echo_agent.core.graph import START_NODE, END_NODE
-from echo_agent.core.runtime import RuntimeConfig
+from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from case.base import BaseCase, CaseResult
 from case.common import (
@@ -60,11 +59,11 @@ async def _abuild_react_agent(
         mcp_allowed_directories=REPO_ROOT,
         skill_list=skill_list or {},
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
 
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(agent_config, runtime_config, placeholder)
+    agent = Agent(agent_config, compile_options, placeholder)
 
     # 业务工具挂到 Agent 同一份 registry（内置 skill 工具已在构造时注册）
     business_registry = build_tool_registry(
@@ -85,7 +84,7 @@ async def _abuild_react_agent(
     graph.add_edge(react_node.name, END_NODE)
 
     agent._graph = graph
-    agent._compiled_graph = graph.compile(runtime_config)
+    agent._compiled_graph = graph.compile(compile_options)
     return agent
 
 

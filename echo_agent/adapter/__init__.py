@@ -3,7 +3,7 @@ Runtime Adapter：跨语言 gRPC 接入 + 可注入 Agent 工厂（不侵入 ech
 """
 
 from .agent_runtime import AgentFactory, AgentLimitExceededError, AgentRuntime
-from .runtime_config import build_runtime_config
+from .runtime_config import build_graph_compile_options
 from .schema import AgentEvent, AgentInvokeResult, RuntimeOptions
 
 __all__ = [
@@ -13,5 +13,5 @@ __all__ = [
     "AgentEvent",
     "AgentInvokeResult",
     "RuntimeOptions",
-    "build_runtime_config",
+    "build_graph_compile_options",
 ]

@@ -1,7 +1,7 @@
 from typing import Literal
 
 from langgraph.runtime import Runtime
-from langgraph.types import Command
+from langgraph.types import Command, RunnableConfig
 from pydantic import BaseModel, Field
 
 from .....common import get_logger, log_messages
@@ -10,6 +10,7 @@ from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message, Role
 from ....model.tool import ToolResult, ToolState
+from ....runtime.runtime_config import RuntimeConfig
 from .....utils import update_agent_result
 from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState
@@ -79,7 +80,7 @@ class ReasonNode(Node):
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
 
-    def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
+    def run(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
         Run the node
         """
@@ -110,7 +111,8 @@ class ReasonNode(Node):
             history=history,
             schema=ReasonStructuredOutput,
             context=runtime.context,
-            agent_prompt=runtime.context.agent_prompt,
+            agent_resources=runtime.context.resources,
+            config=self._build_runnable_config(config),
         )
         result = response.structured
         
@@ -121,7 +123,7 @@ class ReasonNode(Node):
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
 
-    async def arun(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
+    async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
         异步运行
         """
@@ -152,7 +154,8 @@ class ReasonNode(Node):
             history=history,
             schema=ReasonStructuredOutput,
             context=runtime.context,
-            agent_prompt=runtime.context.agent_prompt,
+            agent_resources=runtime.context.resources,
+            config=self._build_runnable_config(config),
         )
         result = response.structured
 
@@ -162,6 +165,15 @@ class ReasonNode(Node):
 
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
+
+    def _build_runnable_config(self, config: RunnableConfig | None) -> RunnableConfig:
+        conf = (config or {}).get("configurable") or {}
+        thread_id = str(conf.get("thread_id") or "")
+        return RuntimeConfig(
+            thread_id=thread_id,
+            session_id=str(conf.get("session_id") or thread_id),
+            metadata=dict(conf.get("metadata") or {}),
+        ).to_llm_runnable_config()
 
     def _build_observations(self, state: ReActState) -> list[Observation]:
         """

@@ -60,8 +60,7 @@ from pathlib import Path
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
-from echo_agent.core.graph import END_NODE, START_NODE
-from echo_agent.core.runtime import RuntimeConfig
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolRegistry
 
@@ -91,8 +90,8 @@ def build_agent(llm_config: LLMConfig) -> Agent:
         mcp_allowed_directories=str(Path.cwd()),
         # skill_list={"pdf": "/path/to/skills/pdf"},
     )
-    runtime_config = RuntimeConfig(checkpointer=InMemorySaver())
-    return Agent(agent_config, runtime_config, graph)
+    compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
+    return Agent(agent_config, compile_options, graph)
 
 
 agent = build_agent(LLMConfig(...))

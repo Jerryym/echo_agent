@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from echo_agent import Agent, AgentConfig, BaseState, RootGraph
-from echo_agent.adapter.runtime_config import build_runtime_config
+from echo_agent.adapter.runtime_config import build_graph_compile_options
 from echo_agent.adapter.schema import RuntimeOptions
 from echo_agent.core.graph import END_NODE, START_NODE
 from echo_agent.core.strategy import StrategyFactory, StrategyType
@@ -22,11 +22,11 @@ async def build_agent(
 
     本示例使用 ReAct 子图作为自定义拓扑示意；集成方可替换为任意 RootGraph。
     """
-    runtime_config = build_runtime_config(runtime_options)
+    compile_options = build_graph_compile_options(runtime_options)
 
     placeholder = RootGraph(state_schema=_IntegratorState)
     placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(config, runtime_config, placeholder)
+    agent = Agent(config, compile_options, placeholder)
 
     await agent.register_mcp_tools()
 
@@ -41,5 +41,5 @@ async def build_agent(
     graph.add_edge(react_node.name, END_NODE)
 
     agent._graph = graph
-    agent._compiled_graph = graph.compile(runtime_config)
+    agent._compiled_graph = graph.compile(compile_options)
     return agent

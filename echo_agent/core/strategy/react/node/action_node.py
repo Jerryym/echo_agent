@@ -15,6 +15,7 @@ from ....runtime.interrupt import InterruptField
 from ....tool import ToolDefinition, ToolRegistry
 from ....tool.utils import to_openai_tool_json_schema
 from .....utils import MessageAdapter, update_agent_result
+from ....runtime.runtime_config import RuntimeConfig
 from ..schema import ReActContext, ReActState
 
 logger = get_logger("react.action")
@@ -53,7 +54,8 @@ class ActionNode(Node):
             history=self._build_history(state, runtime.context),
             tool_list=to_openai_tool_json_schema(available_tools),
             context=runtime.context,
-            agent_prompt=runtime.context.agent_prompt,
+            agent_resources=runtime.context.resources,
+            config=self._build_runnable_config(config),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, response.tool_calls, available_tools)
@@ -74,7 +76,8 @@ class ActionNode(Node):
             history=self._build_history(state, runtime.context),
             tool_list=to_openai_tool_json_schema(available_tools),
             context=runtime.context,
-            agent_prompt=runtime.context.agent_prompt,
+            agent_resources=runtime.context.resources,
+            config=self._build_runnable_config(config),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, response.tool_calls, available_tools)
@@ -105,6 +108,15 @@ class ActionNode(Node):
             return self._handle_approval(tool_calls, state)
 
         return self._handle_ready(tool_calls, state)
+
+    def _build_runnable_config(self, config: RunnableConfig | None) -> RunnableConfig:
+        conf = (config or {}).get("configurable") or {}
+        thread_id = str(conf.get("thread_id") or "")
+        return RuntimeConfig(
+            thread_id=thread_id,
+            session_id=str(conf.get("session_id") or thread_id),
+            metadata=dict(conf.get("metadata") or {}),
+        ).to_llm_runnable_config()
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """
@@ -309,7 +321,7 @@ class ActionNode(Node):
         tool_list = self._tool_registry.list_definitions()
         default_tools = self._tool_registry.default_tools()
 
-        if not context.skill_list:
+        if not context.resources.skill_list:
             return tool_list
 
         loaded_skills = [

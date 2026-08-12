@@ -1,20 +1,22 @@
-"""由 RuntimeOptions 构建 RuntimeConfig（供集成方工厂复用）。"""
+"""由 RuntimeOptions 构建 GraphCompileOptions（供集成方工厂复用）。"""
 
 from __future__ import annotations
 
 from langgraph.checkpoint.memory import InMemorySaver
 
-from echo_agent.core.runtime import RuntimeConfig
+from echo_agent.core.graph import GraphCompileOptions
 
 from .schema import RuntimeOptions
 
 
-def build_runtime_config(options: RuntimeOptions | None = None) -> RuntimeConfig:
-    """根据 RuntimeOptions 构建 RuntimeConfig。v0.1 默认 InMemorySaver。"""
+def build_graph_compile_options(
+    options: RuntimeOptions | None = None,
+) -> GraphCompileOptions:
+    """根据 RuntimeOptions 构建 GraphCompileOptions。v0.1 默认 InMemorySaver。"""
     kind = (options.checkpointer_kind if options else "memory") or "memory"
     kind = kind.strip().lower()
     if kind in ("memory", "mem", "inmemory", ""):
-        return RuntimeConfig(checkpointer=InMemorySaver())
+        return GraphCompileOptions(checkpointer=InMemorySaver())
     if kind == "sqlite":
         raise ValueError(
             "checkpointer_kind=sqlite is not enabled in v0.1; use memory "
