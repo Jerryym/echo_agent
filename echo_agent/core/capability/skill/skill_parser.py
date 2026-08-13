@@ -4,7 +4,6 @@ from urllib.parse import urlparse
 import yaml
 
 from ....common.network import HttpClient, HttpClientError
-from ....utils import join_url
 from ...model.skill import SkillFrontmatter, SkillPackage, SkillType
 
 
@@ -69,22 +68,55 @@ class SkillParser:
         """
         解析HTTP Skill
         """
-        for name in SkillParser.SKILL_FILE_CANDIDATES:
-            try:
-                # 拼接url
-                url = join_url(skill_url, name)
-                content = HttpClient.get(url)
-                break
-            except HttpClientError:
-                continue
+        try:
+            # 获取HTTP Skill的manifest
+            payload = HttpClient.get_json(skill_url)
+        except HttpClientError as exc:
+            raise FileNotFoundError(
+                f"Failed to fetch HTTP skill manifest: {skill_url}"
+            ) from exc
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid HTTP skill manifest JSON: {skill_url}"
+            ) from exc
 
-        frontmatter = SkillParser._parse_frontmatter(content)
+        if not isinstance(payload, dict):
+            raise ValueError(
+                f"HTTP skill manifest must be a JSON object: {skill_url}"
+            )
+
+        # 获取Skill文件名
+        skill_file = SkillParser._normalize_relative_path(payload.get("skill_file"))
+        if skill_file is None:
+            raise ValueError(
+                f"HTTP skill manifest missing valid skill_file: {skill_url}"
+            )
+        # 获取frontmatter
+        frontmatter_data = payload.get("frontmatter")
+        if not isinstance(frontmatter_data, dict):
+            raise ValueError(
+                f"HTTP skill manifest missing frontmatter object: {skill_url}"
+            )
+        frontmatter = SkillFrontmatter.model_validate(frontmatter_data)
+        # 获取scripts
+        scripts = SkillParser._normalize_path_list(payload.get("scripts"), "scripts")
+        # 获取references
+        references = SkillParser._normalize_path_list(payload.get("references"), "references")
+        # 获取assets
+        assets = SkillParser._normalize_path_list(payload.get("assets"), "assets")
+        # 获取additional_resources
+        additional_resources = SkillParser._normalize_additional_resources(payload.get("additional_resources"))
+
         return SkillPackage(
-            type=SkillType.HTTP,
-            url=skill_url, # 远端url地址
-            skill_file=name,
-            frontmatter=frontmatter,
-        )
+            type=SkillType.HTTP, 
+            url=skill_url, 
+            skill_file=skill_file, 
+            frontmatter=frontmatter, 
+            scripts=scripts, 
+            references=references, 
+            assets=assets, 
+            additional_resources=additional_resources
+            )
 
     @staticmethod
     def _find_skill_file(skill_dir: Path) -> Path:
@@ -189,3 +221,49 @@ class SkillParser:
         for key in additional_resources:
             additional_resources[key] = sorted(additional_resources[key])
         return additional_resources
+
+    @staticmethod
+    def _normalize_relative_path(path: object) -> str | None:
+        if not isinstance(path, str):
+            return None
+        relative = path.strip().replace("\\", "/")
+        if not relative or relative in (".", "/"):
+            return None
+        if relative.startswith("/") or relative.startswith("../") or "/../" in f"/{relative}/":
+            return None
+        return relative
+
+    @staticmethod
+    def _normalize_path_list(value: object, field_name: str) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError(f"HTTP skill manifest {field_name} must be a list")
+        paths: list[str] = []
+        for item in value:
+            relative = SkillParser._normalize_relative_path(item)
+            if relative is None:
+                raise ValueError(
+                    f"HTTP skill manifest {field_name} contains invalid path: {item!r}"
+                )
+            paths.append(relative)
+        return paths
+
+    @staticmethod
+    def _normalize_additional_resources(value: object) -> dict[str, list[str]]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError(
+                "HTTP skill manifest additional_resources must be an object"
+            )
+        additional: dict[str, list[str]] = {}
+        for key, paths in value.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError(
+                    f"HTTP skill manifest additional_resources has invalid key: {key!r}"
+                )
+            additional[key] = SkillParser._normalize_path_list(
+                paths, f"additional_resources[{key}]"
+            )
+        return additional

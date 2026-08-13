@@ -8,6 +8,8 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
+from ....common.network import HttpClient, HttpClientError
+from ....utils import join_url
 from ...capability.skill import SkillManager
 from ...graph.schema import BaseContext
 from ...model.skill import SkillPackage, SkillType
@@ -41,6 +43,57 @@ def _validate_resource_path(path: str) -> str | None:
     if relative.startswith("/") or relative.startswith("../") or "/../" in f"/{relative}/":
         return None
     return relative
+
+
+def _declared_resource_paths(package: SkillPackage) -> set[str]:
+    paths = {
+        *package.scripts,
+        *package.references,
+        *package.assets,
+        package.skill_file,
+    }
+    for group in package.additional_resources.values():
+        paths.update(group)
+    return {p for p in paths if p}
+
+
+async def _aread_package_resource(package: SkillPackage, relative: str) -> str:
+    """
+    异步读取 skill 包中的资源
+    """
+    if package.type == SkillType.FILE:
+        return await _aread_file_resource(package, relative)
+    if package.type == SkillType.HTTP:
+        return await _aread_http_resource(package, relative)
+    raise NotImplementedError(f"Unsupported skill type for resource read: {package.type}")
+
+
+async def _aread_file_resource(package: SkillPackage, relative: str) -> str:
+    root = Path(package.url).resolve()
+    target = (root / relative).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Path escapes skill package root: {relative}") from exc
+    if not target.is_file():
+        raise FileNotFoundError(f"Skill resource not found: {relative}")
+
+    def _read_text() -> str:
+        return target.read_text(encoding="utf-8")
+
+    return await asyncio.to_thread(_read_text)
+
+
+async def _aread_http_resource(package: SkillPackage, relative: str) -> str:
+    if relative not in _declared_resource_paths(package):
+        raise ValueError(f"Resource path is not declared in skill package: {relative}")
+
+    url = join_url(package.url, relative)
+    try:
+        return await asyncio.to_thread(HttpClient.get, url)
+    except HttpClientError as exc:
+        raise FileNotFoundError(f"Skill resource not found: {relative}") from exc
+
 
 def create_load_skill_tool(skill_manager: SkillManager):
     """创建绑定到指定 SkillManager 的 load_skill 工具。"""
@@ -101,25 +154,3 @@ def create_read_skill_resource_tool(skill_manager: SkillManager):
         return content
 
     return read_skill_resource
-
-
-async def _aread_package_resource(package: SkillPackage, relative: str) -> str:
-    """
-    异步读取 skill 包中的资源
-    """
-    if package.type != SkillType.FILE:
-        raise NotImplementedError(f"Unsupported skill type for resource read: {package.type}")
-
-    root = Path(package.url).resolve()
-    target = (root / relative).resolve()
-    try:
-        target.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"Path escapes skill package root: {relative}") from exc
-    if not target.is_file():
-        raise FileNotFoundError(f"Skill resource not found: {relative}")
-
-    def _read_text() -> str:
-        return target.read_text(encoding="utf-8")
-
-    return await asyncio.to_thread(_read_text)

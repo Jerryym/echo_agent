@@ -42,7 +42,7 @@ class SkillLoader:
     @staticmethod
     def _load_http(skill_package: SkillPackage) -> str:
         """
-        加载HTTP内容
+        按远端返回的manifest拉取SKILL.md
         """
         if not skill_package.skill_file:
             raise ValueError("Skill file is required for HTTP skill")
@@ -50,8 +50,8 @@ class SkillLoader:
         url = join_url(skill_package.url, skill_package.skill_file)
         try:
             content = HttpClient.get(url)
-        except HttpClientError:
-            raise ValueError(f"Failed to load HTTP skill: {url}")
+        except HttpClientError as exc:
+            raise ValueError(f"Failed to load HTTP skill: {url}") from exc
         return SkillLoader._extract_instruction(content)
 
     @staticmethod
