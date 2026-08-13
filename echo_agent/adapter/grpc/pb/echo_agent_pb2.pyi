@@ -130,8 +130,23 @@ class Attachment(_message.Message):
     data: str
     def __init__(self, type: _Optional[str] = ..., data: _Optional[str] = ...) -> None: ...
 
+class HttpRequest(_message.Message):
+    __slots__ = ("url", "headers")
+    class HeadersEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    URL_FIELD_NUMBER: _ClassVar[int]
+    HEADERS_FIELD_NUMBER: _ClassVar[int]
+    url: str
+    headers: _containers.ScalarMap[str, str]
+    def __init__(self, url: _Optional[str] = ..., headers: _Optional[_Mapping[str, str]] = ...) -> None: ...
+
 class InvokeRequest(_message.Message):
-    __slots__ = ("agent_id", "session_id", "input", "metadata")
+    __slots__ = ("agent_id", "session_id", "input", "metadata", "http_request")
     class MetadataEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -143,11 +158,13 @@ class InvokeRequest(_message.Message):
     SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     INPUT_FIELD_NUMBER: _ClassVar[int]
     METADATA_FIELD_NUMBER: _ClassVar[int]
+    HTTP_REQUEST_FIELD_NUMBER: _ClassVar[int]
     agent_id: str
     session_id: str
     input: UserInput
     metadata: _containers.ScalarMap[str, str]
-    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., input: _Optional[_Union[UserInput, _Mapping]] = ..., metadata: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    http_request: HttpRequest
+    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., input: _Optional[_Union[UserInput, _Mapping]] = ..., metadata: _Optional[_Mapping[str, str]] = ..., http_request: _Optional[_Union[HttpRequest, _Mapping]] = ...) -> None: ...
 
 class AgentResponse(_message.Message):
     __slots__ = ("output", "interrupted", "interrupt_json")
@@ -160,7 +177,7 @@ class AgentResponse(_message.Message):
     def __init__(self, output: _Optional[str] = ..., interrupted: _Optional[bool] = ..., interrupt_json: _Optional[str] = ...) -> None: ...
 
 class ResumeRequest(_message.Message):
-    __slots__ = ("agent_id", "session_id", "values_json", "metadata")
+    __slots__ = ("agent_id", "session_id", "values_json", "metadata", "http_request")
     class MetadataEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -172,11 +189,13 @@ class ResumeRequest(_message.Message):
     SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     VALUES_JSON_FIELD_NUMBER: _ClassVar[int]
     METADATA_FIELD_NUMBER: _ClassVar[int]
+    HTTP_REQUEST_FIELD_NUMBER: _ClassVar[int]
     agent_id: str
     session_id: str
     values_json: str
     metadata: _containers.ScalarMap[str, str]
-    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., values_json: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    http_request: HttpRequest
+    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., values_json: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ..., http_request: _Optional[_Union[HttpRequest, _Mapping]] = ...) -> None: ...
 
 class CancelRequest(_message.Message):
     __slots__ = ("agent_id", "session_id")

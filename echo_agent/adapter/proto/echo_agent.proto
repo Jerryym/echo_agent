@@ -128,13 +128,21 @@ message Attachment {
   string data = 2;
 }
 
+message HttpRequest {
+  // 可选；Skill 包根仍以 skill_list 为准
+  string url = 1;
+  map<string, string> headers = 2;
+}
+
 message InvokeRequest {
   string agent_id = 1;
   // 必填 → LangGraph thread_id
   string session_id = 2;
   UserInput input = 3;
-  // 元数据：自定义字段（包含默认键 http_headers, {"Authorization":"Bearer x"}）
+  // 元数据：自定义字段（不再承载鉴权头）
   map<string, string> metadata = 4;
+  // 本次出站 HTTP（可空）
+  HttpRequest http_request = 5;
 }
 
 message AgentResponse {
@@ -155,8 +163,10 @@ message ResumeRequest {
   string session_id = 2;
   // HITL resume 载荷，如 {"values":{...}} / {"cancelled":true}
   string values_json = 3;
-  // 元数据：自定义字段（包含默认键 http_headers, {"Authorization":"Bearer x"}）
+  // 元数据：自定义字段（不再承载鉴权头）
   map<string, string> metadata = 4;
+  // 本次出站 HTTP（可空）
+  HttpRequest http_request = 5;
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from echo_agent.common.network import HttpRequest
 from echo_agent.core.agent.agent_config import AgentConfig
 from echo_agent.core.model.input import UserInput
 
@@ -35,13 +36,14 @@ class AgentHandleBody(BaseModel):
 
 class InvokeBody(BaseModel):
     input: UserInput
-    # 与 proto map<string,string> 对齐；保留键 http_headers 值为 JSON object 字符串
+    http_request: HttpRequest | None = None
     metadata: dict[str, str] | None = None
 
 
 class ResumeBody(BaseModel):
     # 必填（可为空对象）；对齐 gRPC values_json 须为 JSON object
     values: dict[str, Any]
+    http_request: HttpRequest | None = None
     metadata: dict[str, str] | None = None
 
 

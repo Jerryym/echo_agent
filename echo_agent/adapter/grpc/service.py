@@ -14,6 +14,7 @@ from .convert_grpc import (
     agent_config_from_proto,
     agent_event_to_proto,
     agent_response_to_proto,
+    http_request_from_proto,
     runtime_options_from_proto,
     user_input_from_proto,
 )
@@ -69,9 +70,15 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
 
     async def Invoke(self, request: pb.InvokeRequest, context: grpc.aio.ServicerContext):
         try:
-            agent_id, session_id, user_input, metadata = self._parse_invoke(request)
+            agent_id, session_id, user_input, http_request, metadata = self._parse_invoke(
+                request
+            )
             result = await self._runtime.invoke(
-                agent_id, session_id, user_input, metadata=metadata
+                agent_id,
+                session_id,
+                user_input,
+                http_request=http_request,
+                metadata=metadata,
             )
             return agent_response_to_proto(
                 output=result.output,
@@ -97,9 +104,15 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
         agent_id = ""
         session_id = ""
         try:
-            agent_id, session_id, user_input, metadata = self._parse_invoke(request)
+            agent_id, session_id, user_input, http_request, metadata = self._parse_invoke(
+                request
+            )
             async for event in self._runtime.stream(
-                agent_id, session_id, user_input, metadata=metadata
+                agent_id,
+                session_id,
+                user_input,
+                http_request=http_request,
+                metadata=metadata,
             ):
                 if context.cancelled():
                     break
@@ -135,9 +148,15 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
 
     async def Resume(self, request: pb.ResumeRequest, context: grpc.aio.ServicerContext):
         try:
-            agent_id, session_id, values, metadata = self._parse_resume(request)
+            agent_id, session_id, values, http_request, metadata = self._parse_resume(
+                request
+            )
             result = await self._runtime.resume(
-                agent_id, session_id, values, metadata=metadata
+                agent_id,
+                session_id,
+                values,
+                http_request=http_request,
+                metadata=metadata,
             )
             return agent_response_to_proto(
                 output=result.output,
@@ -163,9 +182,15 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
         agent_id = ""
         session_id = ""
         try:
-            agent_id, session_id, values, metadata = self._parse_resume(request)
+            agent_id, session_id, values, http_request, metadata = self._parse_resume(
+                request
+            )
             async for event in self._runtime.stream_resume(
-                agent_id, session_id, values, metadata=metadata
+                agent_id,
+                session_id,
+                values,
+                http_request=http_request,
+                metadata=metadata,
             ):
                 if context.cancelled():
                     break
@@ -250,13 +275,18 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
             raise ValueError("session_id is required")
         if not request.HasField("input"):
             raise ValueError("input is required")
+        http_request = (
+            http_request_from_proto(request.http_request)
+            if request.HasField("http_request")
+            else None
+        )
         metadata = dict(request.metadata) if request.metadata else None
-        return agent_id, session_id, user_input_from_proto(request.input), metadata
+        return agent_id, session_id, user_input_from_proto(request.input), http_request, metadata
 
     @staticmethod
     def _parse_resume(
         request: pb.ResumeRequest,
-    ) -> tuple[str, str, dict[str, Any], dict[str, str] | None]:
+    ):
         agent_id = (request.agent_id or "").strip()
         session_id = (request.session_id or "").strip()
         if not agent_id:
@@ -272,5 +302,10 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
             raise ValueError(f"values_json is not valid JSON: {exc}") from exc
         if not isinstance(values, dict):
             raise ValueError("values_json must be a JSON object")
+        http_request = (
+            http_request_from_proto(request.http_request)
+            if request.HasField("http_request")
+            else None
+        )
         metadata = dict(request.metadata) if request.metadata else None
-        return agent_id, session_id, values, metadata
+        return agent_id, session_id, values, http_request, metadata

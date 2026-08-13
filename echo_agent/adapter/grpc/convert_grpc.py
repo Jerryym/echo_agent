@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from echo_agent.common.network import HttpRequest
 from echo_agent.core.agent.agent_config import AgentConfig
 from echo_agent.core.llm.llm_config import LLMConfig
 from echo_agent.core.mcp.schema import MCPConnectionConfig
@@ -22,6 +23,14 @@ from ..convert import (
 )
 from ..schema import RuntimeOptions
 from .pb import echo_agent_pb2 as pb
+
+
+def http_request_from_proto(msg: pb.HttpRequest | None) -> HttpRequest | None:
+    if msg is None:
+        return None
+    url = (msg.url or "").strip() or None
+    headers = dict(msg.headers) if msg.headers else {}
+    return HttpRequest(url=url, headers=headers)
 
 
 def runtime_options_from_proto(msg: pb.RuntimeOptions | None) -> RuntimeOptions | None:

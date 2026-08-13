@@ -6,6 +6,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import Command
 
 from ...common import get_logger
+from ...common.network import HttpRequest
 from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseInput, GraphCompileOptions, RootGraph
 from ..llm import LLMClient
@@ -26,7 +27,6 @@ from ..tool import ToolDefinition, ToolRegistry
 from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_tool
 from ..tool.utils import to_tool_definition
 from .agent_config import AgentConfig
-from .runnable_metadata import METADATA_HTTP_HEADERS_KEY
 
 logger = get_logger("agent")
 
@@ -101,6 +101,7 @@ class Agent:
         self,
         session_id: str,
         input: UserInput | type[BaseInput],
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentResult:
         """
@@ -109,10 +110,11 @@ class Agent:
         Args:
             session_id: 会话 ID
             input: UserInput 用户输入 或 BaseInput 输入类型
+            http_request: 本次出站 HTTP 配置（可空；鉴权头等，不经 metadata）
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         graph_input = self._build_input(input)
-        runnable_config = self._build_runnable_config(session_id, metadata)
+        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
         context = self._build_context(session_id, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -123,13 +125,14 @@ class Agent:
         self,
         session_id: str,
         input: UserInput | type[BaseInput],
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentResult:
         """
         调用 Agent 执行（异步）
         """
         graph_input = self._build_input(input)
-        runnable_config = self._build_runnable_config(session_id, metadata)
+        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
         context = self._build_context(session_id, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -141,6 +144,7 @@ class Agent:
         session_id: str,
         input: UserInput | type[BaseInput],
         version: str = "v2",
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> Iterator[AgentResult]:
         """
@@ -150,10 +154,11 @@ class Agent:
             session_id: 会话 ID
             input: UserInput 用户输入 或 BaseInput 输入类型
             version: 版本
+            http_request: HTTP请求配置
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         graph_input = self._build_input(input)
-        runnable_config = self._build_runnable_config(session_id, metadata)
+        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
         context = self._build_context(session_id, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -164,13 +169,14 @@ class Agent:
         session_id: str,
         input: UserInput | type[BaseInput],
         version: str = "v2",
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[AgentResult]:
         """
         流式调用 Agent 执行（异步）
         """
         graph_input = self._build_input(input)
-        runnable_config = self._build_runnable_config(session_id, metadata)
+        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
         context = self._build_context(session_id, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -180,6 +186,7 @@ class Agent:
         self,
         session_id: str,
         values: dict,
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentResult:
         """
@@ -188,9 +195,10 @@ class Agent:
         Args:
             session_id: 会话 ID
             values: 输入
+            http_request: HTTP请求配置
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
-        runnable_config = self._build_runnable_config(session_id, metadata)
+        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
         context = self._build_context(session_id, resume=True)
         result = self._compiled_graph.invoke(Command(resume=values), runnable_config, context=context)
         return self._generate_result(session_id, context, result)
@@ -199,12 +207,13 @@ class Agent:
         self,
         session_id: str,
         values: dict,
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentResult:
         """
         恢复 Agent 执行（异步）
         """
-        runnable_config = self._build_runnable_config(session_id, metadata)
+        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
         context = self._build_context(session_id, resume=True)
         result = await self._compiled_graph.ainvoke(Command(resume=values), runnable_config, context=context)
         return await self._agenerate_result(session_id, context, result)
@@ -214,6 +223,7 @@ class Agent:
         session_id: str,
         values: dict,
         version: str = "v2",
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> Iterator[AgentResult]:
         """
@@ -223,9 +233,10 @@ class Agent:
             session_id: 会话 ID
             values: 输入
             version: 版本
+            http_request: HTTP请求配置
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
-        runnable_config = self._build_runnable_config(session_id, metadata)
+        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
         context = self._build_context(session_id, resume=True)
         return self._stream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
@@ -234,15 +245,15 @@ class Agent:
         session_id: str,
         values: dict,
         version: str = "v2",
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[AgentResult]:
         """
         流式恢复 Agent 执行（异步）
         """
-        runnable_config = self._build_runnable_config(session_id, metadata)
+        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
         context = self._build_context(session_id, resume=True)
         return self._astream_iterator(Command(resume=values), runnable_config, context, session_id, version)
-
 
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
         """
@@ -414,18 +425,17 @@ class Agent:
     def _build_runnable_config(
         self,
         session_id: str,
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> RunnableConfig:
         """
         构建图级 RunnableConfig。
-
-        经 RuntimeConfig 规范化 metadata 后调用 to_graph_runnable_config()
-        （configurable 含 thread_id / session_id / metadata；http_headers 等在 metadata 内）。
         """
         runtime = RuntimeConfig(
             thread_id=session_id,
             session_id=session_id,
-            metadata=self._normalize_invoke_metadata(metadata),
+            http_request=http_request,
+            metadata=dict(metadata) if metadata else {},
         )
         return runtime.to_graph_runnable_config()
 
@@ -671,52 +681,3 @@ class Agent:
         if isinstance(value, str):
             return value
         return json.dumps(value, ensure_ascii=False, default=str)
-
-    def _normalize_invoke_metadata(self, metadata: Mapping[str, Any] | None) -> dict[str, Any]:
-        """
-        规范化调用 metadata，写入 configurable["metadata"]。
-
-        - 其它键原样拷贝（不解释业务语义）
-        - 保留键 http_headers：JSON 字符串或已是 dict → 统一为 dict[str, str]
-        """
-        if not metadata:
-            return {}
-
-        out: dict[str, Any] = dict(metadata)
-        if METADATA_HTTP_HEADERS_KEY not in out:
-            return out
-
-        raw = out[METADATA_HTTP_HEADERS_KEY]
-        if raw is None or raw == "":
-            del out[METADATA_HTTP_HEADERS_KEY]
-            return out
-
-        if isinstance(raw, str):
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"metadata.{METADATA_HTTP_HEADERS_KEY} is not valid JSON: {exc}"
-                ) from exc
-        elif isinstance(raw, dict):
-            parsed = raw
-        else:
-            raise ValueError(
-                f"metadata.{METADATA_HTTP_HEADERS_KEY} must be a JSON object string "
-                f"or dict[str, str], got {type(raw).__name__}"
-            )
-
-        if not isinstance(parsed, dict):
-            raise ValueError(
-                f"metadata.{METADATA_HTTP_HEADERS_KEY} must be a JSON object"
-            )
-        headers: dict[str, str] = {}
-        for key, value in parsed.items():
-            if not isinstance(key, str) or not isinstance(value, str):
-                raise ValueError(
-                    f"metadata.{METADATA_HTTP_HEADERS_KEY} entries must be string keys "
-                    "and string values"
-                )
-            headers[key] = value
-        out[METADATA_HTTP_HEADERS_KEY] = headers
-        return out

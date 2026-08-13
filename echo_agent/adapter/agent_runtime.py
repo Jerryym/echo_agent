@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, TypeAlias
 
 from echo_agent import Agent, AgentConfig, UserInput
+from echo_agent.common.network import HttpRequest
 
 from .events import iter_agent_events, to_invoke_result
 from .schema import AgentEvent, AgentInvokeResult, RuntimeOptions
@@ -151,13 +152,16 @@ class AgentRuntime:
         agent_id: str,
         session_id: str,
         input: UserInput,
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentInvokeResult:
         self._require_session_id(session_id)
         agent = self.get_agent(agent_id)
 
         async def _runner() -> AgentInvokeResult:
-            result = await agent.ainvoke(session_id, input, metadata=metadata)
+            result = await agent.ainvoke(
+                session_id, input, http_request=http_request, metadata=metadata
+            )
             return to_invoke_result(agent, session_id, result)
 
         return await self._run_unary(agent_id, session_id, agent, _runner)
@@ -167,6 +171,7 @@ class AgentRuntime:
         agent_id: str,
         session_id: str,
         input: UserInput,
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[AgentEvent]:
         self._require_session_id(session_id)
@@ -174,7 +179,9 @@ class AgentRuntime:
 
         async def _producer(queue: asyncio.Queue[Any]) -> None:
             try:
-                stream = await agent.astream(session_id, input, metadata=metadata)
+                stream = await agent.astream(
+                    session_id, input, http_request=http_request, metadata=metadata
+                )
                 async for event in iter_agent_events(agent, session_id, stream):
                     await queue.put(event)
             finally:
@@ -189,13 +196,16 @@ class AgentRuntime:
         agent_id: str,
         session_id: str,
         values: dict[str, Any],
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentInvokeResult:
         self._require_session_id(session_id)
         agent = self.get_agent(agent_id)
 
         async def _runner() -> AgentInvokeResult:
-            result = await agent.aresume(session_id, values, metadata=metadata)
+            result = await agent.aresume(
+                session_id, values, http_request=http_request, metadata=metadata
+            )
             return to_invoke_result(agent, session_id, result)
 
         return await self._run_unary(agent_id, session_id, agent, _runner)
@@ -205,6 +215,7 @@ class AgentRuntime:
         agent_id: str,
         session_id: str,
         values: dict[str, Any],
+        http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[AgentEvent]:
         self._require_session_id(session_id)
@@ -213,7 +224,10 @@ class AgentRuntime:
         async def _producer(queue: asyncio.Queue[Any]) -> None:
             try:
                 stream = await agent.astream_resume(
-                    session_id, values, metadata=metadata
+                    session_id,
+                    values,
+                    http_request=http_request,
+                    metadata=metadata,
                 )
                 async for event in iter_agent_events(agent, session_id, stream):
                     await queue.put(event)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -64,10 +63,8 @@ def test_create_invoke_resume_cancel_delete_happy_path():
         "/v1/agents/aid-1/sessions/sid-1/invoke",
         json={
             "input": {"text": "hi"},
-            "metadata": {
-                "trace_id": "t1",
-                "http_headers": json.dumps({"Authorization": "Bearer x"}),
-            },
+            "http_request": {"headers": {"Authorization": "Bearer x"}},
+            "metadata": {"trace_id": "t1"},
         },
     )
     assert resp.status_code == 200
@@ -82,6 +79,7 @@ def test_create_invoke_resume_cancel_delete_happy_path():
     assert isinstance(args[2], UserInput)
     assert args[2].text == "hi"
     assert kwargs["metadata"]["trace_id"] == "t1"
+    assert kwargs["http_request"].headers["Authorization"] == "Bearer x"
 
     resp = client.post(
         "/v1/agents/aid-1/sessions/sid-1/resume",

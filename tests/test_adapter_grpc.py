@@ -212,24 +212,24 @@ def test_servicer_parse_invoke_metadata():
         input=pb.UserInput(text="hi"),
         metadata={
             "trace_id": "t1",
-            "http_headers": json.dumps({"Authorization": "Bearer x"}),
         },
+        http_request=pb.HttpRequest(headers={"Authorization": "Bearer x"}),
     )
-    agent_id, session_id, user_input, metadata = EchoAgentServicer._parse_invoke(req)
+    agent_id, session_id, user_input, http_request, metadata = EchoAgentServicer._parse_invoke(req)
     assert agent_id == "aid"
     assert session_id == "sid"
     assert user_input.text == "hi"
-    assert metadata == {
-        "trace_id": "t1",
-        "http_headers": json.dumps({"Authorization": "Bearer x"}),
-    }
+    assert metadata == {"trace_id": "t1"}
+    assert http_request is not None
+    assert http_request.headers == {"Authorization": "Bearer x"}
 
     empty = pb.InvokeRequest(
         agent_id="aid",
         session_id="sid",
         input=pb.UserInput(text="hi"),
     )
-    *_, metadata_empty = EchoAgentServicer._parse_invoke(empty)
+    *_, http_request_empty, metadata_empty = EchoAgentServicer._parse_invoke(empty)
+    assert http_request_empty is None
     assert metadata_empty is None
 
 
@@ -242,57 +242,34 @@ def test_servicer_parse_resume_metadata():
         values_json=json.dumps({"approved": True}),
         metadata={"trace_id": "t2"},
     )
-    agent_id, session_id, values, metadata = EchoAgentServicer._parse_resume(req)
+    agent_id, session_id, values, http_request, metadata = EchoAgentServicer._parse_resume(req)
     assert agent_id == "aid"
     assert session_id == "sid"
     assert values == {"approved": True}
     assert metadata == {"trace_id": "t2"}
+    assert http_request is None
 
 
-def test_agent_normalize_metadata_http_headers_scheme_b():
+def test_agent_build_runnable_config_puts_http_request():
+    from echo_agent.common.network import HttpRequest
     from echo_agent.core.agent.agent import Agent
-    from echo_agent.core.agent.runnable_metadata import METADATA_HTTP_HEADERS_KEY
-
-    agent = object.__new__(Agent)
-    normalized = agent._normalize_invoke_metadata(
-        {
-            "trace_id": "t1",
-            METADATA_HTTP_HEADERS_KEY: json.dumps({"Authorization": "Bearer x"}),
-        }
-    )
-    assert normalized["trace_id"] == "t1"
-    assert normalized[METADATA_HTTP_HEADERS_KEY] == {"Authorization": "Bearer x"}
-
-    # already a dict
-    normalized2 = agent._normalize_invoke_metadata(
-        {METADATA_HTTP_HEADERS_KEY: {"X-Request-Id": "1"}}
-    )
-    assert normalized2[METADATA_HTTP_HEADERS_KEY] == {"X-Request-Id": "1"}
-
-    try:
-        agent._normalize_invoke_metadata({METADATA_HTTP_HEADERS_KEY: "{"})
-        raise AssertionError("expected ValueError")
-    except ValueError as exc:
-        assert "http_headers" in str(exc)
-
-
-def test_agent_build_runnable_config_puts_metadata():
-    from echo_agent.core.agent.agent import Agent
-    from echo_agent.core.agent.runnable_metadata import METADATA_HTTP_HEADERS_KEY
 
     agent = object.__new__(Agent)
     cfg = agent._build_runnable_config(
         "sess-1",
-        {
-            "trace_id": "t1",
-            METADATA_HTTP_HEADERS_KEY: json.dumps({"Authorization": "Bearer x"}),
-        },
+        HttpRequest(headers={"Authorization": "Bearer x"}),
+        {"trace_id": "t1"},
     )
     assert cfg["configurable"]["thread_id"] == "sess-1"
     assert cfg["configurable"]["session_id"] == "sess-1"
-    meta = cfg["configurable"]["metadata"]
-    assert meta["trace_id"] == "t1"
-    assert meta[METADATA_HTTP_HEADERS_KEY] == {"Authorization": "Bearer x"}
+    assert cfg["configurable"]["metadata"] == {"trace_id": "t1"}
+    assert cfg["configurable"]["http_request"]["headers"] == {
+        "Authorization": "Bearer x"
+    }
+
+    cfg_empty = agent._build_runnable_config("sess-1", metadata={"trace_id": "t1"})
+    assert cfg_empty["configurable"]["http_request"]["headers"] == {}
+    assert "http_headers" not in cfg_empty["configurable"]["metadata"]
 
 
 def test_agent_runtime_forwards_metadata():
@@ -301,9 +278,10 @@ def test_agent_runtime_forwards_metadata():
     captured: dict = {}
 
     class _FakeAgent:
-        async def ainvoke(self, session_id, input, metadata=None):
+        async def ainvoke(self, session_id, input, http_request=None, metadata=None):
             captured["session_id"] = session_id
             captured["input"] = input
+            captured["http_request"] = http_request
             captured["metadata"] = metadata
             return {"response": "ok"}
 
@@ -326,9 +304,11 @@ def test_agent_runtime_forwards_metadata():
             "aid",
             "sid",
             UserInput(text="hi"),
+            http_request=None,
             metadata={"trace_id": "t1"},
         )
         assert captured["session_id"] == "sid"
+        assert captured["http_request"] is None
         assert captured["metadata"] == {"trace_id": "t1"}
         assert result.output == "ok"
         assert result.interrupted is False

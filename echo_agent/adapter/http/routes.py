@@ -115,6 +115,7 @@ async def invoke(
             agent_id,
             session_id,
             body.input,
+            http_request=body.http_request,
             metadata=body.metadata,
         )
         return _agent_response(result)
@@ -143,6 +144,7 @@ async def resume(
             agent_id,
             session_id,
             body.values,
+            http_request=body.http_request,
             metadata=body.metadata,
         )
         return _agent_response(result)
@@ -190,6 +192,7 @@ async def stream(
         agent_id,
         session_id,
         body.input,
+        http_request=body.http_request,
         metadata=body.metadata,
     )
     return StreamingResponse(
@@ -219,6 +222,7 @@ async def stream_resume(
         agent_id,
         session_id,
         body.values,
+        http_request=body.http_request,
         metadata=body.metadata,
     )
     return StreamingResponse(
