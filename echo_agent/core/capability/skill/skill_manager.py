@@ -1,9 +1,18 @@
 from typing import Any
 
+from ....common import get_logger
+from ....common.network import HttpRequest
 from ...graph.schema import BaseContext
-from ...model.skill import SkillFrontmatter, SkillPackage, SkillRuntimeContext, SkillStatus
+from ...model.skill import (
+    SkillFrontmatter,
+    SkillPackage,
+    SkillRuntimeContext,
+    SkillStatus,
+)
 from .skill_loader import SkillLoader
 from .skill_parser import SkillParser
+
+logger = get_logger("skillmanager")
 
 
 class SkillManager:
@@ -24,10 +33,31 @@ class SkillManager:
 
     def __init__(self, skill_list: dict[str, Any]):
         self._skill_list = skill_list
-        self._skill_frontmatter_list = {
-            name: SkillParser.parse(skill_dir).frontmatter
-            for name, skill_dir in skill_list.items()
-        }
+        self._skill_frontmatter_list = {}
+
+    def build_skill_frontmatter_list(self, http_request: HttpRequest | None = None) -> dict[str, SkillFrontmatter] | None:
+        if not self._skill_list:
+            return None
+
+        if self._skill_frontmatter_list:
+            return self._skill_frontmatter_list
+
+        for name, skill_dir in self._skill_list.items():
+            self.build_skill_frontmatter(name, skill_dir, http_request)
+
+        return self._skill_frontmatter_list
+
+    def build_skill_frontmatter(self, skill_name: str, skill_dir: str, http_request: HttpRequest | None = None) -> None:
+        try:
+            fronmatter = SkillParser.parse(skill_dir, http_request).frontmatter
+            self._skill_frontmatter_list[skill_name] = fronmatter
+        except Exception as e:
+            logger.error(
+                "failed to parse skill frontmatter: name=%s, path=%s, error=%s",
+                skill_name,
+                skill_dir,
+                e,
+            )
 
     @property
     def skill_frontmatter_list(self) -> dict[str, SkillFrontmatter]:
@@ -55,7 +85,7 @@ class SkillManager:
             raise ValueError(f"Skill not found: {skill_name}")
         return SkillParser.parse(skill_dir)
 
-    def load_skill(self, context: BaseContext, skill_package: SkillPackage) -> SkillRuntimeContext:
+    def load_skill(self, context: BaseContext, skill_package: SkillPackage, http_request: HttpRequest | None = None) -> SkillRuntimeContext:
         """
         加载Skill（激活为 LOADED，并重置 idle）。
         """
@@ -68,27 +98,22 @@ class SkillManager:
             existing.idle_rounds = 0
             return existing
 
-        skill_context = SkillLoader.load(skill_package)
+        skill_context = SkillLoader.load(skill_package, http_request)
         skill_context.idle_rounds = 0
         context.active_skills[skill_name] = skill_context
         return skill_context
 
-    def touch_skill(self, context: BaseContext, skill_name: str) -> None:
-        """标记 Skill 在本轮用户交互中被使用，重置 idle_rounds。"""
+    def reset_idle_rounds(self, context: BaseContext, skill_name: str) -> None:
+        """重置 Skill 的 idle_rounds 为 0"""
         skill = context.active_skills.get(skill_name)
         if skill is None or skill.status != SkillStatus.LOADED:
             return
         skill.idle_rounds = 0
 
     @staticmethod
-    def touch_skills_for_tool(
-        context: BaseContext,
-        tool_name: str,
-        original_name: str | None = None,
-    ) -> None:
+    def reset_idle_rounds_for_tool(context: BaseContext, tool_name: str, original_name: str | None = None) -> None:
         """
-        执行工具时触达 Skill：若 LOADED skill 的 allowed_tools 包含该工具
-        （完整名或 original_name），则重置其 idle_rounds。
+        执行工具时重置 Skill 的 idle_rounds
         """
         candidates = {tool_name}
         if original_name:

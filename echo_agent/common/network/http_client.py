@@ -65,7 +65,7 @@ class HttpClient:
         return response.json()
 
     @staticmethod
-    def post(url: str, data: Any = None, json: Any = None, headers: dict[str, str] | None = None, timeout: float = DEFAULT_TIMEOUT) -> str:
+    def post(url: str, headers: dict[str, str] | None = None, data: Any = None, json: Any = None, timeout: float = DEFAULT_TIMEOUT) -> str:
         """
         POST 请求
         """

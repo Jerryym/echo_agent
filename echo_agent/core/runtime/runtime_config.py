@@ -1,6 +1,7 @@
 from typing import Any
 
 from langchain_core.runnables.config import RunnableConfig
+from langgraph.config import get_config
 from pydantic import BaseModel, Field
 
 from ...common.network import HttpRequest
@@ -38,4 +39,20 @@ class RuntimeConfig(BaseModel):
                 "http_request": (self.http_request or HttpRequest()).model_dump(),
             },
             metadata=self.metadata,
+        )
+
+    @staticmethod
+    def get_runtime_config() -> "RuntimeConfig":
+        """获取运行时配置"""
+        config: RunnableConfig = get_config()
+        configurable = config.get("configurable", {})
+        return RuntimeConfig(
+            thread_id=configurable["thread_id"],
+            session_id=configurable["session_id"],
+            http_request=(
+                HttpRequest.model_validate(configurable["http_request"])
+                if configurable.get("http_request") is not None
+                else None
+            ),
+            metadata=config.get("metadata", {}),
         )

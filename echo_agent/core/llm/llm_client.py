@@ -438,7 +438,7 @@ class LLMClient:
             return PromptAssembler.assemble(
                 agent_prompt=agent_resources.system_prompt if agent_resources else None,
                 system_prompt=prompt,
-                skill_list=agent_resources.skill_list if agent_resources else None,
+                skill_frontmatter_list=agent_resources.skill_frontmatter_list if agent_resources else None,
                 active_skills=context.active_skills if context else None,
             )
 

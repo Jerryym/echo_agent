@@ -172,9 +172,8 @@ def test_action_tools_follow_skill_metadata() -> None:
     context = ReActContext(
         agent_state=AgentState(session_id="test"),
         resources=AgentResources(
-            skill_list={
-                "pdf": SkillFrontmatter(name="pdf", description="pdf skill"),
-            },
+            skill_list=DEFAULT_SKILL_LIST,
+            skill_frontmatter_list=manager.build_skill_frontmatter_list(),
         ),
     )
 

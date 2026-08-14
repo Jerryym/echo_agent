@@ -7,12 +7,14 @@ from contextvars import ContextVar
 from pathlib import Path
 
 from langchain_core.tools import tool
+from langgraph.runtime import get_runtime
 
-from ....common.network import HttpClient, HttpClientError
+from ....common.network import HttpClient, HttpClientError, HttpRequest
 from ....utils import join_url
 from ...capability.skill import SkillManager
 from ...graph.schema import BaseContext
 from ...model.skill import SkillPackage, SkillType
+from ...runtime.runtime_config import RuntimeConfig
 
 _skill_runtime_context: ContextVar[BaseContext | None] = ContextVar(
     "skill_runtime_context",
@@ -20,20 +22,20 @@ _skill_runtime_context: ContextVar[BaseContext | None] = ContextVar(
 )
 
 
-def set_skill_runtime_context(context: BaseContext | None):
-    """在 ToolNode 执行期绑定 Runtime Context，供 skill 工具写入 active_skills。"""
-    return _skill_runtime_context.set(context)
+# def set_skill_runtime_context(context: BaseContext | None):
+#     """在 ToolNode 执行期绑定 Runtime Context，供 skill 工具写入 active_skills。"""
+#     return _skill_runtime_context.set(context)
 
 
-def reset_skill_runtime_context(token) -> None:
-    _skill_runtime_context.reset(token)
+# def reset_skill_runtime_context(token) -> None:
+#     _skill_runtime_context.reset(token)
 
 
-def get_skill_runtime_context() -> BaseContext:
-    context = _skill_runtime_context.get()
-    if context is None:
-        raise RuntimeError("Skill runtime context is not available")
-    return context
+# def get_skill_runtime_context() -> BaseContext:
+#     context = _skill_runtime_context.get()
+#     if context is None:
+#         raise RuntimeError("Skill runtime context is not available")
+#     return context
 
 
 def _validate_resource_path(path: str) -> str | None:
@@ -57,14 +59,14 @@ def _declared_resource_paths(package: SkillPackage) -> set[str]:
     return {p for p in paths if p}
 
 
-async def _aread_package_resource(package: SkillPackage, relative: str) -> str:
+async def _aread_package_resource(package: SkillPackage, relative: str, http_request: HttpRequest | None = None) -> str:
     """
     异步读取 skill 包中的资源
     """
     if package.type == SkillType.FILE:
         return await _aread_file_resource(package, relative)
     if package.type == SkillType.HTTP:
-        return await _aread_http_resource(package, relative)
+        return await _aread_http_resource(package, relative, http_request)
     raise NotImplementedError(f"Unsupported skill type for resource read: {package.type}")
 
 
@@ -84,13 +86,13 @@ async def _aread_file_resource(package: SkillPackage, relative: str) -> str:
     return await asyncio.to_thread(_read_text)
 
 
-async def _aread_http_resource(package: SkillPackage, relative: str) -> str:
+async def _aread_http_resource(package: SkillPackage, relative: str, http_request: HttpRequest) -> str:
     if relative not in _declared_resource_paths(package):
         raise ValueError(f"Resource path is not declared in skill package: {relative}")
 
     url = join_url(package.url, relative)
     try:
-        return await asyncio.to_thread(HttpClient.get, url)
+        return await asyncio.to_thread(HttpClient.get, url, headers=http_request.headers if http_request else None)
     except HttpClientError as exc:
         raise FileNotFoundError(f"Skill resource not found: {relative}") from exc
 
@@ -109,9 +111,14 @@ def create_load_skill_tool(skill_manager: SkillManager):
         Args:
             name: Skill name declared in AgentConfig.skill_list.
         """
-        context = get_skill_runtime_context()
+        # context = get_skill_runtime_context()
+        context = get_runtime().context
+        runtime_config = RuntimeConfig.get_runtime_config()
+        if context is None:
+            raise RuntimeError("Skill runtime context is not available")
+
         skill_package = skill_manager.build_skill_package(name)
-        skill_manager.load_skill(context=context, skill_package=skill_package)
+        skill_manager.load_skill(context=context, skill_package=skill_package, http_request=runtime_config.http_request)
         resources = [
             *skill_package.scripts,
             *skill_package.references,
@@ -147,10 +154,15 @@ def create_read_skill_resource_tool(skill_manager: SkillManager):
                 raise ValueError("Resource path is required.")
             raise ValueError(f"Invalid resource path: {path}")
 
-        context = get_skill_runtime_context()
+        # context = get_skill_runtime_context()
+        context = get_runtime().context
+        runtime_config = RuntimeConfig.get_runtime_config()
+        if context is None:
+            raise RuntimeError("Skill runtime context is not available")
+
         skill_package = skill_manager.build_skill_package(name)
-        content = await _aread_package_resource(skill_package, relative)
-        skill_manager.touch_skill(context, name)
+        content = await _aread_package_resource(skill_package, relative, http_request=runtime_config.http_request)
+        skill_manager.reset_idle_rounds(context, name)
         return content
 
     return read_skill_resource
