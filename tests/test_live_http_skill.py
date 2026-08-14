@@ -24,10 +24,7 @@ from echo_agent.core.tool.toolkit.skill import (
 from echo_agent.utils.url_utils import join_url
 
 LIVE_HTTP_SKILLS: dict[str, Any] = {
-    "eicad-alignment-info": "http://127.0.0.1:8080/skills/8e13425eed0449599e1f5ea5876c36b3",
-    "roadbase-template-rules": "http://127.0.0.1:8080/skills/9b445638972940969416adb7d343a9f7",
-    "road-model-cap-rules": "http://127.0.0.1:8080/skills/f80757a13ec44205bcfcf2adb5172a86",
-    "slope-template-rules": "http://127.0.0.1:8080/skills/05ad33cb483048599eedb6b00f327ef3",
+    "skill_name": "url"
 }
 
 
