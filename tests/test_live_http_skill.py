@@ -24,6 +24,7 @@ from echo_agent.core.tool.toolkit.skill import (
 from echo_agent.utils.url_utils import join_url
 
 LIVE_HTTP_SKILLS: dict[str, Any] = {
+    "skill-name": "url",
     "skill_name": "url"
 }
 
