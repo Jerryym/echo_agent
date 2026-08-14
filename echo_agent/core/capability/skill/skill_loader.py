@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from ....common.network import HttpClient, HttpClientError
+from ....common.network import HttpRequest
 from ....utils import join_url
 from ...model.skill import SkillPackage, SkillRuntimeContext, SkillStatus, SkillType
 
@@ -10,7 +11,7 @@ class SkillLoader:
     Skill Loader：Skill加载器, 负责将 SkillPackage 加载为 Runtime Skill
     """
     @staticmethod
-    def load(skill_package: SkillPackage) -> SkillRuntimeContext:
+    def load(skill_package: SkillPackage, http_request: HttpRequest | None = None) -> SkillRuntimeContext:
         """
         将 SkillPackage 加载为 Runtime Skill
         """
@@ -18,7 +19,7 @@ class SkillLoader:
             case SkillType.FILE:
                 content = SkillLoader._load_file(skill_package)
             case SkillType.HTTP:
-                content = SkillLoader._load_http(skill_package)
+                content = SkillLoader._load_http(skill_package, http_request)
             case _:
                 raise ValueError(f"Unsupported skill type: {skill_package.type}")
 
@@ -40,7 +41,7 @@ class SkillLoader:
         return SkillLoader._extract_instruction(content)
 
     @staticmethod
-    def _load_http(skill_package: SkillPackage) -> str:
+    def _load_http(skill_package: SkillPackage, http_request: HttpRequest | None = None) -> str:
         """
         按远端返回的manifest拉取SKILL.md
         """
@@ -49,7 +50,7 @@ class SkillLoader:
 
         url = join_url(skill_package.url, skill_package.skill_file)
         try:
-            content = HttpClient.get(url)
+            content = HttpClient.get(url, headers=http_request.headers if http_request else None)
         except HttpClientError as exc:
             raise ValueError(f"Failed to load HTTP skill: {url}") from exc
         return SkillLoader._extract_instruction(content)

@@ -11,17 +11,23 @@
 """
 
 from __future__ import annotations
-
 import asyncio
 from typing import Any
 
+from echo_agent.common.network import HttpRequest
 from echo_agent.core.capability.skill import SkillLoader, SkillParser
 from echo_agent.core.model.skill import SkillStatus, SkillType
-from echo_agent.core.tool.toolkit.skill import _aread_package_resource, _declared_resource_paths
+from echo_agent.core.tool.toolkit.skill import (
+    _aread_package_resource,
+    _declared_resource_paths,
+)
 from echo_agent.utils.url_utils import join_url
 
 LIVE_HTTP_SKILLS: dict[str, Any] = {
-    "skill-name": "url"
+    "eicad-alignment-info": "http://127.0.0.1:8080/skills/8e13425eed0449599e1f5ea5876c36b3",
+    "roadbase-template-rules": "http://127.0.0.1:8080/skills/9b445638972940969416adb7d343a9f7",
+    "road-model-cap-rules": "http://127.0.0.1:8080/skills/f80757a13ec44205bcfcf2adb5172a86",
+    "slope-template-rules": "http://127.0.0.1:8080/skills/05ad33cb483048599eedb6b00f327ef3",
 }
 
 
@@ -52,7 +58,7 @@ def test_fetch_manifest(skill_name: str, skill_url: str):
     _print("1. GET manifest")
     print(f"name: {skill_name}")
     print(f"url: {skill_url}")
-    package = SkillParser.parse(skill_url)
+    package = SkillParser.parse(skill_url, http_request=HttpRequest(headers={"Authorization": "Bearer 1234567890"}))
 
     assert package.type == SkillType.HTTP
     assert package.url == skill_url
@@ -74,7 +80,7 @@ def test_fetch_manifest(skill_name: str, skill_url: str):
 
 def test_read_contents(package) -> None:
     _print("2. GET skill_file + resource")
-    runtime = SkillLoader.load(package)
+    runtime = SkillLoader.load(package, http_request=HttpRequest(headers={"Authorization": "Bearer 1234567890"}))
     assert runtime.status == SkillStatus.LOADED
     assert runtime.instruction is not None
     assert runtime.instruction.strip()
@@ -89,7 +95,7 @@ def test_read_contents(package) -> None:
 
     declared = _declared_resource_paths(package)
     assert target in declared, f"resource not in manifest: {target}"
-    content = asyncio.run(_aread_package_resource(package, target))
+    content = asyncio.run(_aread_package_resource(package, target, http_request=HttpRequest(headers={"Authorization": "Bearer 1234567890"})))
     assert content is not None
     assert str(content).strip()
     print(f"resource: {target}")

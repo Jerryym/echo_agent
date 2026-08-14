@@ -159,7 +159,7 @@ class Agent:
         """
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, http_request, metadata)
-        context = self._build_context(session_id, resume=False)
+        context = self._build_context(session_id, http_request, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         return self._stream_iterator(graph_input, runnable_config, context, session_id, version)
@@ -177,7 +177,7 @@ class Agent:
         """
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, http_request, metadata)
-        context = self._build_context(session_id, resume=False)
+        context = self._build_context(session_id, http_request, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         return self._astream_iterator(graph_input, runnable_config, context, session_id, version)
@@ -199,7 +199,7 @@ class Agent:
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         runnable_config = self._build_runnable_config(session_id, http_request, metadata)
-        context = self._build_context(session_id, resume=True)
+        context = self._build_context(session_id, http_request, resume=True)
         result = self._compiled_graph.invoke(Command(resume=values), runnable_config, context=context)
         return self._generate_result(session_id, context, result)
 
@@ -214,7 +214,7 @@ class Agent:
         恢复 Agent 执行（异步）
         """
         runnable_config = self._build_runnable_config(session_id, http_request, metadata)
-        context = self._build_context(session_id, resume=True)
+        context = self._build_context(session_id, http_request, resume=True)
         result = await self._compiled_graph.ainvoke(Command(resume=values), runnable_config, context=context)
         return await self._agenerate_result(session_id, context, result)
 
@@ -237,7 +237,7 @@ class Agent:
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         runnable_config = self._build_runnable_config(session_id, http_request, metadata)
-        context = self._build_context(session_id, resume=True)
+        context = self._build_context(session_id, http_request, resume=True)
         return self._stream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
     async def astream_resume(
@@ -252,7 +252,7 @@ class Agent:
         流式恢复 Agent 执行（异步）
         """
         runnable_config = self._build_runnable_config(session_id, http_request, metadata)
-        context = self._build_context(session_id, resume=True)
+        context = self._build_context(session_id, http_request, resume=True)
         return self._astream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
@@ -439,7 +439,7 @@ class Agent:
         )
         return runtime.to_graph_runnable_config()
 
-    def _build_context(self, session_id: str, *, resume: bool = False) -> BaseContext:
+    def _build_context(self, session_id: str, http_request: HttpRequest | None = None, *, resume: bool = False) -> BaseContext:
         """
         构建上下文
 
@@ -461,7 +461,8 @@ class Agent:
             agent_state=agent_state,
             resources=AgentResources(
                 system_prompt=self._agent_config.system_prompt,
-                skill_list=self._skill_manager.skill_frontmatter_list,
+                skill_list=self._agent_config.skill_list,
+                skill_frontmatter_list=self._skill_manager.build_skill_frontmatter_list(http_request),
             ),
             active_skills=active_skills,
             agent_result=agent_result,

@@ -32,23 +32,35 @@ class ToolNode(Node):
         """
         logger.info("enter | calls=%s", [tc.name for tc in state.tool_state.tool_calls])
 
-        token = set_skill_runtime_context(runtime.context)
-        try:
-            tool_results: list[ToolResult] = []
-            for tool_call in state.tool_state.tool_calls:
-                logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
-                result = self._tool_executor.execute(tool_call)
-                logger.info(
-                    "result name=%s success=%s result=%s",
-                    result.name,
-                    result.success,
-                    format_value(result.result),
-                )
-                self._touch_skills_for_tool(runtime.context, tool_call)
-                tool_results.append(result)
-        finally:
-            reset_skill_runtime_context(token)
+        # token = set_skill_runtime_context(runtime.context)
+        # try:
+        #     tool_results: list[ToolResult] = []
+        #     for tool_call in state.tool_state.tool_calls:
+        #         logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
+        #         result = self._tool_executor.execute(tool_call)
+        #         logger.info(
+        #             "result name=%s success=%s result=%s",
+        #             result.name,
+        #             result.success,
+        #             format_value(result.result),
+        #         )
+        #         self._touch_skills_for_tool(runtime.context, tool_call)
+        #         tool_results.append(result)
+        # finally:
+        #     reset_skill_runtime_context(token)
 
+        tool_results: list[ToolResult] = []
+        for tool_call in state.tool_state.tool_calls:
+            logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
+            result = self._tool_executor.execute(tool_call)
+            logger.info(
+                "result name=%s success=%s result=%s",
+                result.name,
+                result.success,
+                format_value(result.result),
+            )
+            self._touch_skills_for_tool(runtime.context, tool_call)
+            tool_results.append(result)
         return self._build_result(tool_results)
 
     async def arun(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
@@ -57,23 +69,35 @@ class ToolNode(Node):
         """
         logger.info("enter | calls=%s", [tc.name for tc in state.tool_state.tool_calls])
 
-        token = set_skill_runtime_context(runtime.context)
-        try:
-            tool_results: list[ToolResult] = []
-            for tool_call in state.tool_state.tool_calls:
-                logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
-                result = await self._tool_executor.aexecute(tool_call)
-                logger.info(
-                    "result name=%s success=%s result=%s",
-                    result.name,
-                    result.success,
-                    format_value(result.result),
-                )
-                self._touch_skills_for_tool(runtime.context, tool_call)
-                tool_results.append(result)
-        finally:
-            reset_skill_runtime_context(token)
+        # token = set_skill_runtime_context(runtime.context)
+        # try:
+        #     tool_results: list[ToolResult] = []
+        #     for tool_call in state.tool_state.tool_calls:
+        #         logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
+        #         result = await self._tool_executor.aexecute(tool_call)
+        #         logger.info(
+        #             "result name=%s success=%s result=%s",
+        #             result.name,
+        #             result.success,
+        #             format_value(result.result),
+        #         )
+        #         self._touch_skills_for_tool(runtime.context, tool_call)
+        #         tool_results.append(result)
+        # finally:
+        #     reset_skill_runtime_context(token)
 
+        tool_results: list[ToolResult] = []
+        for tool_call in state.tool_state.tool_calls:
+            logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
+            result = await self._tool_executor.aexecute(tool_call)
+            logger.info(
+                "result name=%s success=%s result=%s",
+                result.name,
+                result.success,
+                format_value(result.result),
+            )
+            self._touch_skills_for_tool(runtime.context, tool_call)
+            tool_results.append(result)
         return self._build_result(tool_results)
 
     def _touch_skills_for_tool(self, context: BaseContext, tool_call: ToolCall) -> None:
@@ -82,7 +106,7 @@ class ToolNode(Node):
         original_name = None
         if definition is not None:
             original_name = definition.meta_data.get("original_name")
-        SkillManager.touch_skills_for_tool(context, tool_call.name, original_name)
+        SkillManager.reset_idle_rounds_for_tool(context, tool_call.name, original_name)
 
     def _build_result(self, tool_results: list[ToolResult]) -> dict:
         tool_messages = self._build_tool_messages(tool_results)

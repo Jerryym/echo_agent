@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-from ....common.network import HttpClient, HttpClientError
+from ....common.network import HttpClient, HttpClientError, HttpRequest
 from ...model.skill import SkillFrontmatter, SkillPackage, SkillType
 
 
@@ -21,12 +21,12 @@ class SkillParser:
     STANDARD_RESOURCE_DIRS = frozenset({"scripts", "references", "assets"})
 
     @staticmethod
-    def parse(skill_dir: str) -> SkillPackage:
+    def parse(skill_dir: str, http_request: HttpRequest | None = None) -> SkillPackage:
         skill_type = SkillParser._detect_type(skill_dir)
         if skill_type == SkillType.FILE:
             return SkillParser._parse_file(skill_dir)
         if skill_type == SkillType.HTTP:
-            return SkillParser._parse_http(skill_dir)
+            return SkillParser._parse_http(skill_dir, http_request)
         raise ValueError(f"Unsupported skill type: {skill_type}")
 
     @staticmethod
@@ -64,13 +64,13 @@ class SkillParser:
         )
 
     @staticmethod
-    def _parse_http(skill_url: str) -> SkillPackage:
+    def _parse_http(skill_url: str, http_request: HttpRequest | None = None) -> SkillPackage:
         """
         解析HTTP Skill
         """
         try:
             # 获取HTTP Skill的manifest
-            payload = HttpClient.get_json(skill_url)
+            payload = HttpClient.get_json(skill_url, headers=http_request.headers if http_request else None)
         except HttpClientError as exc:
             raise FileNotFoundError(
                 f"Failed to fetch HTTP skill manifest: {skill_url}"
