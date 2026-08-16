@@ -11,6 +11,7 @@ from typing import Any, TypeAlias
 
 from echo_agent import Agent, AgentConfig, UserInput
 from echo_agent.common.network import HttpRequest
+from echo_agent.core.model.agent import AgentMode
 
 from .events import iter_agent_events, to_invoke_result
 from .schema import AgentEvent, AgentInvokeResult, RuntimeOptions
@@ -152,6 +153,7 @@ class AgentRuntime:
         agent_id: str,
         session_id: str,
         input: UserInput,
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentInvokeResult:
@@ -160,7 +162,11 @@ class AgentRuntime:
 
         async def _runner() -> AgentInvokeResult:
             result = await agent.ainvoke(
-                session_id, input, http_request=http_request, metadata=metadata
+                session_id,
+                input,
+                agent_mode=agent_mode,
+                http_request=http_request,
+                metadata=metadata,
             )
             return to_invoke_result(agent, session_id, result)
 
@@ -171,6 +177,7 @@ class AgentRuntime:
         agent_id: str,
         session_id: str,
         input: UserInput,
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[AgentEvent]:
@@ -180,7 +187,11 @@ class AgentRuntime:
         async def _producer(queue: asyncio.Queue[Any]) -> None:
             try:
                 stream = await agent.astream(
-                    session_id, input, http_request=http_request, metadata=metadata
+                    session_id,
+                    input,
+                    agent_mode=agent_mode,
+                    http_request=http_request,
+                    metadata=metadata,
                 )
                 async for event in iter_agent_events(agent, session_id, stream):
                     await queue.put(event)
@@ -196,6 +207,7 @@ class AgentRuntime:
         agent_id: str,
         session_id: str,
         values: dict[str, Any],
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentInvokeResult:
@@ -204,7 +216,11 @@ class AgentRuntime:
 
         async def _runner() -> AgentInvokeResult:
             result = await agent.aresume(
-                session_id, values, http_request=http_request, metadata=metadata
+                session_id,
+                values,
+                agent_mode=agent_mode,
+                http_request=http_request,
+                metadata=metadata,
             )
             return to_invoke_result(agent, session_id, result)
 
@@ -215,6 +231,7 @@ class AgentRuntime:
         agent_id: str,
         session_id: str,
         values: dict[str, Any],
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[AgentEvent]:
@@ -226,6 +243,7 @@ class AgentRuntime:
                 stream = await agent.astream_resume(
                     session_id,
                     values,
+                    agent_mode=agent_mode,
                     http_request=http_request,
                     metadata=metadata,
                 )

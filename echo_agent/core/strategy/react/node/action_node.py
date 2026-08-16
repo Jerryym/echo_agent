@@ -5,17 +5,19 @@ from langgraph.types import Command, RunnableConfig
 
 from .....common import get_logger
 from .....prompt import PromptLoader
+from .....utils import MessageAdapter, update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
+from ....model.agent import AgentMode
 from ....model.hitl import HITLInput, HITLInteraction, HITLOutput, HITLType
-from ....model.message import Message, Role
+from ....model.message import Message
 from ....model.skill import SkillStatus
 from ....model.tool import ToolCall, ToolState
 from ....runtime.interrupt import InterruptField
-from ....tool import ToolDefinition, ToolRegistry
-from ....tool.utils import to_openai_tool_json_schema
-from .....utils import MessageAdapter, update_agent_result
 from ....runtime.runtime_config import RuntimeConfig
+from ....tool import ToolDefinition, ToolGateWay, ToolRegistry
+from ....tool.exception import ToolAuthorizationError
+from ....tool.utils import get_tool_definition, to_openai_tool_json_schema
 from ..schema import ReActContext, ReActState
 
 logger = get_logger("react.action")
@@ -37,6 +39,7 @@ class ActionNode(Node):
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
         self._tool_registry = tool_registry
+        self._tool_gateway = ToolGateWay()
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
@@ -48,6 +51,7 @@ class ActionNode(Node):
             return self._handle_hitl(state)
 
         available_tools = self._available_tools(runtime.context)
+        runnable_config = self._build_runnable_config(config)
         response = self._llm_client.invoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
@@ -55,10 +59,12 @@ class ActionNode(Node):
             tool_list=to_openai_tool_json_schema(available_tools),
             context=runtime.context,
             agent_resources=runtime.context.resources,
-            config=self._build_runnable_config(config),
+            config=runnable_config,
         )
+
         update_agent_result(runtime.context, response.text, response.token_usage)
-        return self._route_after_tool_selection(state, response.tool_calls, available_tools)
+        runtime_config = RuntimeConfig.get_runtime_config()
+        return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, available_tools)
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
@@ -70,6 +76,7 @@ class ActionNode(Node):
             return self._handle_hitl(state)
 
         available_tools = self._available_tools(runtime.context)
+        runnable_config = self._build_runnable_config(config)
         response = await self._llm_client.ainvoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
@@ -77,12 +84,14 @@ class ActionNode(Node):
             tool_list=to_openai_tool_json_schema(available_tools),
             context=runtime.context,
             agent_resources=runtime.context.resources,
-            config=self._build_runnable_config(config),
+            config=runnable_config,
         )
-        update_agent_result(runtime.context, response.text, response.token_usage)
-        return self._route_after_tool_selection(state, response.tool_calls, available_tools)
 
-    def _route_after_tool_selection(self, state: ReActState, tool_calls: list[ToolCall] | None, available_tools: list[ToolDefinition]) -> Command:
+        update_agent_result(runtime.context, response.text, response.token_usage)
+        runtime_config = RuntimeConfig.get_runtime_config()
+        return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, available_tools)
+
+    def _route_after_tool_selection(self, state: ReActState, agent_mode: AgentMode, tool_calls: list[ToolCall] | None, available_tools: list[ToolDefinition]) -> Command:
         if not tool_calls:
             return self._handle_no_tool_calls(state)
 
@@ -98,6 +107,11 @@ class ActionNode(Node):
             invalid_tools = [tc for tc in tool_calls if tc.name in invalid_names]
             return self._handle_invalid_tools(invalid_tools, state)
 
+        # 检查工具权限
+        for tool_call in tool_calls:
+            if not self._authorize_tool(available_tools, tool_call, agent_mode):
+                return self._handle_blocked(tool_calls, state)
+
         # 判断是否存在缺失参数
         missing_parameters_map = self._get_missing_parameters(tool_calls)
         if missing_parameters_map:
@@ -112,9 +126,11 @@ class ActionNode(Node):
     def _build_runnable_config(self, config: RunnableConfig | None) -> RunnableConfig:
         conf = (config or {}).get("configurable") or {}
         thread_id = str(conf.get("thread_id") or "")
+        agent_mode = conf.get("agent_mode")
         return RuntimeConfig(
             thread_id=thread_id,
             session_id=str(conf.get("session_id") or thread_id),
+            agent_mode=agent_mode,
             metadata=dict(conf.get("metadata") or {}),
         ).to_llm_runnable_config()
 
@@ -128,6 +144,19 @@ class ActionNode(Node):
             *state.conversation,
             *state.trajectory,
         ]
+
+    def _authorize_tool(self, tool_definitions: list[ToolDefinition], tool_call: ToolCall, mode: AgentMode) -> bool:
+        """
+        检查工具权限
+        """
+        definition = get_tool_definition(tool_definitions, tool_call.name)
+        if definition is None:
+            return False
+        try:
+            self._tool_gateway.authorize(definition, mode)
+            return True
+        except ToolAuthorizationError:
+            return False
 
     def _handle_hitl(self, state: ReActState) -> Command:
         """
@@ -221,6 +250,16 @@ class ActionNode(Node):
         return self._router(state, {
             "task_status": "invalid_tools", # 非法工具
             "tool_state": ToolState(tool_calls=invalid_tools), # 传入非法工具
+            "retry_count": state.retry_count + 1,
+        })
+
+    def _handle_blocked(self, tool_calls: list[ToolCall], state: ReActState) -> Command:
+        """
+        处理阻塞状态
+        """
+        return self._router(state, {
+            "task_status": "blocked", # 工具权限验证失败
+            "tool_state": ToolState(tool_calls=tool_calls), # 传入阻塞工具
             "retry_count": state.retry_count + 1,
         })
 

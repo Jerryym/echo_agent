@@ -39,7 +39,7 @@ class RuntimeOptions(_message.Message):
     def __init__(self, checkpointer_kind: _Optional[str] = ..., checkpointer_uri: _Optional[str] = ...) -> None: ...
 
 class AgentConfig(_message.Message):
-    __slots__ = ("name", "description", "llm_config", "system_prompt", "kb_list", "skill_list", "mcp_allowed_directories", "mcp_servers")
+    __slots__ = ("name", "description", "llm_config", "system_prompt", "kb_list", "skill_list", "mcp_allowed_directories", "mcp_servers", "mode")
     class SkillListEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -55,6 +55,7 @@ class AgentConfig(_message.Message):
     SKILL_LIST_FIELD_NUMBER: _ClassVar[int]
     MCP_ALLOWED_DIRECTORIES_FIELD_NUMBER: _ClassVar[int]
     MCP_SERVERS_FIELD_NUMBER: _ClassVar[int]
+    MODE_FIELD_NUMBER: _ClassVar[int]
     name: str
     description: str
     llm_config: LLMConfig
@@ -63,7 +64,8 @@ class AgentConfig(_message.Message):
     skill_list: _containers.ScalarMap[str, str]
     mcp_allowed_directories: _containers.RepeatedScalarFieldContainer[str]
     mcp_servers: _containers.RepeatedCompositeFieldContainer[MCPConnectionConfig]
-    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., llm_config: _Optional[_Union[LLMConfig, _Mapping]] = ..., system_prompt: _Optional[str] = ..., kb_list: _Optional[_Iterable[str]] = ..., skill_list: _Optional[_Mapping[str, str]] = ..., mcp_allowed_directories: _Optional[_Iterable[str]] = ..., mcp_servers: _Optional[_Iterable[_Union[MCPConnectionConfig, _Mapping]]] = ...) -> None: ...
+    mode: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., llm_config: _Optional[_Union[LLMConfig, _Mapping]] = ..., system_prompt: _Optional[str] = ..., kb_list: _Optional[_Iterable[str]] = ..., skill_list: _Optional[_Mapping[str, str]] = ..., mcp_allowed_directories: _Optional[_Iterable[str]] = ..., mcp_servers: _Optional[_Iterable[_Union[MCPConnectionConfig, _Mapping]]] = ..., mode: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class LLMConfig(_message.Message):
     __slots__ = ("base_url", "api_key", "model_name", "model_provider", "temperature", "max_tokens", "timeout", "max_retries", "use_responses_api", "output_version", "extra_json")
@@ -146,7 +148,7 @@ class HttpRequest(_message.Message):
     def __init__(self, url: _Optional[str] = ..., headers: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class InvokeRequest(_message.Message):
-    __slots__ = ("agent_id", "session_id", "input", "metadata", "http_request")
+    __slots__ = ("agent_id", "session_id", "input", "metadata", "http_request", "agent_mode")
     class MetadataEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -159,25 +161,29 @@ class InvokeRequest(_message.Message):
     INPUT_FIELD_NUMBER: _ClassVar[int]
     METADATA_FIELD_NUMBER: _ClassVar[int]
     HTTP_REQUEST_FIELD_NUMBER: _ClassVar[int]
+    AGENT_MODE_FIELD_NUMBER: _ClassVar[int]
     agent_id: str
     session_id: str
     input: UserInput
     metadata: _containers.ScalarMap[str, str]
     http_request: HttpRequest
-    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., input: _Optional[_Union[UserInput, _Mapping]] = ..., metadata: _Optional[_Mapping[str, str]] = ..., http_request: _Optional[_Union[HttpRequest, _Mapping]] = ...) -> None: ...
+    agent_mode: str
+    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., input: _Optional[_Union[UserInput, _Mapping]] = ..., metadata: _Optional[_Mapping[str, str]] = ..., http_request: _Optional[_Union[HttpRequest, _Mapping]] = ..., agent_mode: _Optional[str] = ...) -> None: ...
 
 class AgentResponse(_message.Message):
-    __slots__ = ("output", "interrupted", "interrupt_json")
+    __slots__ = ("output", "interrupted", "interrupt_json", "agent_result_json")
     OUTPUT_FIELD_NUMBER: _ClassVar[int]
     INTERRUPTED_FIELD_NUMBER: _ClassVar[int]
     INTERRUPT_JSON_FIELD_NUMBER: _ClassVar[int]
+    AGENT_RESULT_JSON_FIELD_NUMBER: _ClassVar[int]
     output: str
     interrupted: bool
     interrupt_json: str
-    def __init__(self, output: _Optional[str] = ..., interrupted: _Optional[bool] = ..., interrupt_json: _Optional[str] = ...) -> None: ...
+    agent_result_json: str
+    def __init__(self, output: _Optional[str] = ..., interrupted: _Optional[bool] = ..., interrupt_json: _Optional[str] = ..., agent_result_json: _Optional[str] = ...) -> None: ...
 
 class ResumeRequest(_message.Message):
-    __slots__ = ("agent_id", "session_id", "values_json", "metadata", "http_request")
+    __slots__ = ("agent_id", "session_id", "values_json", "metadata", "http_request", "agent_mode")
     class MetadataEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -190,12 +196,14 @@ class ResumeRequest(_message.Message):
     VALUES_JSON_FIELD_NUMBER: _ClassVar[int]
     METADATA_FIELD_NUMBER: _ClassVar[int]
     HTTP_REQUEST_FIELD_NUMBER: _ClassVar[int]
+    AGENT_MODE_FIELD_NUMBER: _ClassVar[int]
     agent_id: str
     session_id: str
     values_json: str
     metadata: _containers.ScalarMap[str, str]
     http_request: HttpRequest
-    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., values_json: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ..., http_request: _Optional[_Union[HttpRequest, _Mapping]] = ...) -> None: ...
+    agent_mode: str
+    def __init__(self, agent_id: _Optional[str] = ..., session_id: _Optional[str] = ..., values_json: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ..., http_request: _Optional[_Union[HttpRequest, _Mapping]] = ..., agent_mode: _Optional[str] = ...) -> None: ...
 
 class CancelRequest(_message.Message):
     __slots__ = ("agent_id", "session_id")

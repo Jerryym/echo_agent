@@ -5,9 +5,8 @@ from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseState, Node
 from ..model.message import Message, Role
 from ..model.tool import ToolCall, ToolResult, ToolState
-from .utils import format_tool_content
 from .tool_executor import ToolExecutor
-from .toolkit import reset_skill_runtime_context, set_skill_runtime_context
+from .utils import format_tool_content
 
 logger = get_logger("tool")
 
@@ -31,24 +30,6 @@ class ToolNode(Node):
         同步运行（适用于支持 sync invoke 的工具）
         """
         logger.info("enter | calls=%s", [tc.name for tc in state.tool_state.tool_calls])
-
-        # token = set_skill_runtime_context(runtime.context)
-        # try:
-        #     tool_results: list[ToolResult] = []
-        #     for tool_call in state.tool_state.tool_calls:
-        #         logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
-        #         result = self._tool_executor.execute(tool_call)
-        #         logger.info(
-        #             "result name=%s success=%s result=%s",
-        #             result.name,
-        #             result.success,
-        #             format_value(result.result),
-        #         )
-        #         self._touch_skills_for_tool(runtime.context, tool_call)
-        #         tool_results.append(result)
-        # finally:
-        #     reset_skill_runtime_context(token)
-
         tool_results: list[ToolResult] = []
         for tool_call in state.tool_state.tool_calls:
             logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
@@ -68,24 +49,6 @@ class ToolNode(Node):
         异步运行（适用于 MCP 等仅支持 ainvoke 的工具）
         """
         logger.info("enter | calls=%s", [tc.name for tc in state.tool_state.tool_calls])
-
-        # token = set_skill_runtime_context(runtime.context)
-        # try:
-        #     tool_results: list[ToolResult] = []
-        #     for tool_call in state.tool_state.tool_calls:
-        #         logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
-        #         result = await self._tool_executor.aexecute(tool_call)
-        #         logger.info(
-        #             "result name=%s success=%s result=%s",
-        #             result.name,
-        #             result.success,
-        #             format_value(result.result),
-        #         )
-        #         self._touch_skills_for_tool(runtime.context, tool_call)
-        #         tool_results.append(result)
-        # finally:
-        #     reset_skill_runtime_context(token)
-
         tool_results: list[ToolResult] = []
         for tool_call in state.tool_state.tool_calls:
             logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))

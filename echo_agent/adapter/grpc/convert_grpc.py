@@ -16,6 +16,7 @@ from ..convert import (
     coalesce_mcp_allowed_directories,
     encode_event_data,
     encode_interrupt_json,
+    encode_json_object,
     llm_config_from_fields,
     mcp_connection_from_fields,
     runtime_options_from_fields,
@@ -80,6 +81,7 @@ def agent_config_from_proto(msg: pb.AgentConfig) -> AgentConfig:
         description=msg.description or None,
         llm_config=llm_config_from_proto(msg.llm_config),
         system_prompt=msg.system_prompt or None,
+        mode=list(msg.mode),
         kb_list=list(msg.kb_list),
         skill_list=dict(msg.skill_list),
         mcp_allowed_directories=coalesce_mcp_allowed_directories(
@@ -105,11 +107,13 @@ def agent_response_to_proto(
     output: str,
     interrupted: bool,
     interrupt_payload: dict[str, Any] | None,
+    agent_result: dict[str, Any] | None = None,
 ) -> pb.AgentResponse:
     return pb.AgentResponse(
         output=output or "",
         interrupted=interrupted,
         interrupt_json=encode_interrupt_json(interrupted, interrupt_payload),
+        agent_result_json=encode_json_object(agent_result),
     )
 
 

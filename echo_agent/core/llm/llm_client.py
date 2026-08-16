@@ -11,11 +11,12 @@ from ...common import get_logger
 from ...prompt import PromptAssembler, PromptLoader
 from ...utils import MessageAdapter
 from ..graph.schema import BaseContext
-from ..model.agent_resources import AgentResources
+from ..model.agent import AgentResources
 from ..model.input import UserInput
 from ..model.message import Message
 from ..model.token_usage import TokenUsage
 from ..model.tool import ToolCall
+from ..runtime import RuntimeConfig
 from .exception import (
     LLMException,
     LLMInitializeError,
@@ -434,27 +435,16 @@ class LLMClient:
         """
         构建提示词
         """
-        if agent_resources is not None or context is not None:
-            return PromptAssembler.assemble(
+        runtime_config = RuntimeConfig.get_runtime_config()
+        return PromptAssembler.assemble(
                 agent_prompt=agent_resources.system_prompt if agent_resources else None,
                 system_prompt=prompt,
+                agent_mode=runtime_config.agent_mode,
+                tool_list=tool_list,
                 skill_frontmatter_list=agent_resources.skill_frontmatter_list if agent_resources else None,
                 active_skills=context.active_skills if context else None,
             )
-
-        system_prompts: list[str] = []
-
-        # tool call policy prompt: 当工具列表不为空时，才添加工具调用策略提示词
-        if tool_list:
-            tool_call_policy_prompt = PromptLoader.load("prompt/tool_call_policy.md")
-            if tool_call_policy_prompt:
-                system_prompts.append(tool_call_policy_prompt)
-
-        if prompt:
-            system_prompts.append(prompt)
-
-        return "\n\n".join(system_prompts)
-
+            
     def _configure_model(
         self,
         *,

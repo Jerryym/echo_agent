@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import BaseModel, Field   
 
 
-class ToolType(str, Enum):
+class ToolType(Enum, str):
     """
     工具类型
     """
@@ -13,22 +13,40 @@ class ToolType(str, Enum):
     MCP = "mcp"
 
 
+class ToolAnnotations(BaseModel):
+    """
+    Tool Annotations
+
+    Args:
+        read_only_hint: 只读提示(readOnlyHint)
+        destructive_hint: 破坏性提示(destructiveHint)
+        idempotent_hint: 幂等提示(idempotentHint)
+        open_world_hint: 开放世界提示(openWorldHint)
+    """
+    read_only_hint: bool | None = None
+    destructive_hint: bool | None = None
+    idempotent_hint: bool | None = None
+    open_world_hint: bool | None = None
+
+
 class ToolDefinition(BaseModel):
     """
     工具定义
 
     Args:
+        type: 工具类型
         name: 工具名称
         description: 工具描述
         parameters: 参数
-        type: 工具类型
+        annotations: 工具注解
         meta_data: 元数据
             required_approval: 是否需要审批
     """
+    type: ToolType = ToolType.FUNCTION
     name: str
     description: str
     parameters: dict[str, Any] = Field(default_factory=dict)
-    type: ToolType = ToolType.FUNCTION
+    annotations: ToolAnnotations | None = None
     meta_data: dict[str, Any] = Field(default_factory=dict)
 
     @property

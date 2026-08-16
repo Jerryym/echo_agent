@@ -8,8 +8,8 @@ from .....common import get_logger, log_messages
 from .....prompt import PromptLoader
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model.message import Message, Role
-from ....model.tool import ToolResult, ToolState
+from ....model.message import Message
+from ....model.tool import ToolState
 from ....runtime.runtime_config import RuntimeConfig
 from .....utils import update_agent_result
 from ..observation import Observation, ObservationBuilder
@@ -92,8 +92,8 @@ class ReasonNode(Node):
         history = self._build_history(state, runtime.context)
         log_messages(logger, "reason", history)
 
-        # 如果任务状态为取消或失败，则直接返回
-        if state.task_status in ("cancelled", "failed"):
+        # 如果任务状态为取消、失败或阻塞，则直接返回
+        if state.task_status in ("cancelled", "failed", "blocked"):
             return self._router(state, runtime.context, {
                 "task_status": state.task_status,
                 "observations": observation_list,
@@ -198,6 +198,9 @@ class ReasonNode(Node):
         elif state.task_status == "cancelled": # 取消
             observation = ObservationBuilder.build_from_task_status(state.task_status)
             observations.append(observation)
+        elif state.task_status == "blocked": # 阻塞
+            observation = ObservationBuilder.build_from_task_status(state.task_status)
+            observations.append(observation)
 
         return observations
 
@@ -273,7 +276,7 @@ class ReasonNode(Node):
         max_steps = getattr(context, "max_steps", 10)
         retry_max = getattr(context, "retry_max_count", 3)
 
-        if task_status in ("completed", "cancelled", "failed"):
+        if task_status in ("completed", "cancelled", "failed", "blocked"):
             return "final"
         if step_count >= max_steps:
             return "final"

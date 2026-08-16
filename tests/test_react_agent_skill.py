@@ -28,8 +28,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
 from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
-from echo_agent.core.model.agent_resources import AgentResources
-from echo_agent.core.model.agent_state import AgentState
+from echo_agent.core.model.agent import AgentResources, AgentState
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.strategy.react.node import ActionNode
 from echo_agent.core.strategy.react.schema import ReActContext

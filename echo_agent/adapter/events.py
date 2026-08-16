@@ -6,7 +6,7 @@ import json
 from typing import Any, AsyncIterator, Iterator
 
 from echo_agent import Agent
-from echo_agent.core.model.agent_result import AgentResult
+from echo_agent.core.model.agent import AgentResult
 
 from .schema import AgentEvent, AgentInvokeResult
 
@@ -53,13 +53,19 @@ def get_pending_interrupt(agent: Agent, session_id: str) -> dict[str, Any] | Non
 
 def to_invoke_result(agent: Agent, session_id: str, result: Any) -> AgentInvokeResult:
     pending = get_pending_interrupt(agent, session_id)
+    snapshot = agent_result_event_data(result) if isinstance(result, AgentResult) else None
     if pending is not None:
         return AgentInvokeResult(
             output=extract_output(result),
             interrupted=True,
             interrupt_payload=pending,
+            agent_result=snapshot,
         )
-    return AgentInvokeResult(output=extract_output(result), interrupted=False)
+    return AgentInvokeResult(
+        output=extract_output(result),
+        interrupted=False,
+        agent_result=snapshot,
+    )
 
 
 def agent_result_event_data(result: AgentResult) -> dict[str, Any]:

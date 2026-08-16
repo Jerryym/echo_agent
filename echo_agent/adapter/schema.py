@@ -19,6 +19,7 @@ class AgentInvokeResult:
     output: str = ""
     interrupted: bool = False
     interrupt_payload: dict[str, Any] | None = None
+    agent_result: dict[str, Any] | None = None
 
 
 @dataclass

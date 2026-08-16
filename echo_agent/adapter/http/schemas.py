@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from echo_agent.common.network import HttpRequest
 from echo_agent.core.agent.agent_config import AgentConfig
+from echo_agent.core.model.agent import AgentMode
 from echo_agent.core.model.input import UserInput
 
 from ..convert import runtime_options_from_fields
@@ -36,6 +37,7 @@ class AgentHandleBody(BaseModel):
 
 class InvokeBody(BaseModel):
     input: UserInput
+    agent_mode: AgentMode = AgentMode.AGENT
     http_request: HttpRequest | None = None
     metadata: dict[str, str] | None = None
 
@@ -43,6 +45,7 @@ class InvokeBody(BaseModel):
 class ResumeBody(BaseModel):
     # 必填（可为空对象）；对齐 gRPC values_json 须为 JSON object
     values: dict[str, Any]
+    agent_mode: AgentMode = AgentMode.AGENT
     http_request: HttpRequest | None = None
     metadata: dict[str, str] | None = None
 
@@ -51,6 +54,7 @@ class AgentResponseBody(BaseModel):
     output: str = ""
     interrupted: bool = False
     interrupt: dict[str, Any] | None = None
+    agent_result: dict[str, Any] | None = None
 
 
 class CancelResponseBody(BaseModel):

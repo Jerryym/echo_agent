@@ -20,7 +20,7 @@ from unittest.mock import patch
 from echo_agent.common.network import HttpResponseError
 from echo_agent.core.capability.skill import SkillLoader, SkillManager, SkillParser
 from echo_agent.core.graph.schema import BaseContext
-from echo_agent.core.model.agent_state import AgentState
+from echo_agent.core.model.agent import AgentState
 from echo_agent.core.model.skill import SkillFrontmatter, SkillPackage, SkillStatus, SkillType
 from echo_agent.core.tool.toolkit.skill import _aread_package_resource
 from echo_agent.utils.url_utils import join_url

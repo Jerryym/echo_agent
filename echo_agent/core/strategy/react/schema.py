@@ -33,6 +33,7 @@ class ReActState(BaseState):
             human_in_the_loop: 需要人类干预
             no_tool_calls: 没有工具调用
             invalid_tools: 无效的工具
+            blocked: 阻塞-用于权限验证失败等场景
             completed: 完成
             cancelled: 取消
             failed: 失败
@@ -44,7 +45,16 @@ class ReActState(BaseState):
     task: StrategyTask = Field(default_factory=StrategyTask)
     conversation: list[Message] = Field(default_factory=list)
     reasoning: str = ""
-    task_status: Literal["in_progress", "human_in_the_loop", "no_tool_calls", "invalid_tools", "completed", "cancelled", "failed"] = "in_progress"
+    task_status: Literal[
+        "in_progress", 
+        "human_in_the_loop", 
+        "no_tool_calls", 
+        "invalid_tools", 
+        "blocked", 
+        "completed", 
+        "cancelled", 
+        "failed",
+    ] = "in_progress"
     observations: Annotated[list[Observation], append_observations] = Field(default_factory=list)
     trajectory: Annotated[list[Message], append_messages] = Field(default_factory=list)
     step_count: int = Field(default=0)

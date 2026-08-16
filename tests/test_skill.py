@@ -19,7 +19,7 @@ from pathlib import Path
 from echo_agent.core.capability.skill import SkillLoader, SkillManager, SkillParser
 from echo_agent.core.graph.schema import BaseContext
 from echo_agent.core.llm.llm_client import LLMClient
-from echo_agent.core.model.agent_state import AgentState
+from echo_agent.core.model.agent import AgentState
 from echo_agent.core.model.skill import SkillFrontmatter, SkillStatus, SkillType
 from echo_agent.core.tool.toolkit import (
     create_load_skill_tool,

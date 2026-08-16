@@ -11,6 +11,7 @@ from typing import Any
 from echo_agent.core.agent.agent_config import AgentConfig
 from echo_agent.core.llm.llm_config import LLMConfig
 from echo_agent.core.mcp.schema import MCPConnectionConfig
+from echo_agent.core.model.agent import AgentMode
 from echo_agent.core.model.input import Attachment, UserInput
 
 from .schema import RuntimeOptions
@@ -133,12 +134,35 @@ def coalesce_mcp_allowed_directories(
     return directories
 
 
+def parse_agent_mode(value: str | AgentMode | None = None) -> AgentMode:
+    """解析 ask/agent；空值回退 AGENT。"""
+    if value is None:
+        return AgentMode.AGENT
+    if isinstance(value, AgentMode):
+        return value
+    raw = str(value).strip().lower()
+    if not raw:
+        return AgentMode.AGENT
+    try:
+        return AgentMode(raw)
+    except ValueError as exc:
+        raise ValueError(f"unsupported agent_mode: {value!r}") from exc
+
+
+def parse_agent_modes(values: list[str] | list[AgentMode] | None) -> list[AgentMode] | None:
+    """解析 AgentConfig.mode；空列表表示使用 Python 默认。"""
+    if not values:
+        return None
+    return [parse_agent_mode(item) for item in values]
+
+
 def agent_config_from_fields(
     *,
     name: str,
     llm_config: LLMConfig,
     description: str | None = None,
     system_prompt: str | None = None,
+    mode: list[str] | list[AgentMode] | None = None,
     kb_list: list[str] | None = None,
     skill_list: dict[str, str] | None = None,
     mcp_allowed_directories: str | list[str] | None = None,
@@ -146,17 +170,21 @@ def agent_config_from_fields(
 ) -> AgentConfig:
     if not name:
         raise ValueError("agent config name is required")
-    return AgentConfig(
-        name=name,
-        description=description or None,
-        llm_config=llm_config,
-        system_prompt=system_prompt or None,
-        kb_list=list(kb_list or []),
-        skill_list=dict(skill_list or {}),
-        mcp_allowed_directories=mcp_allowed_directories,
-        mcp_servers=list(mcp_servers or []),
+    kwargs: dict[str, Any] = {
+        "name": name,
+        "description": description or None,
+        "llm_config": llm_config,
+        "system_prompt": system_prompt or None,
+        "kb_list": list(kb_list or []),
+        "skill_list": dict(skill_list or {}),
+        "mcp_allowed_directories": mcp_allowed_directories,
+        "mcp_servers": list(mcp_servers or []),
         # 内置 Fetch / Filesystem 默认关闭；需启用时在 Python AgentConfig 显式打开
-    )
+    }
+    parsed_mode = parse_agent_modes(mode)
+    if parsed_mode is not None:
+        kwargs["mode"] = parsed_mode
+    return AgentConfig(**kwargs)
 
 
 def attachment_from_fields(*, type: str, data: str) -> Attachment:
@@ -184,6 +212,12 @@ def encode_interrupt_json(
     if interrupted and interrupt_payload is not None:
         return json.dumps(interrupt_payload, ensure_ascii=False, default=str)
     return ""
+
+
+def encode_json_object(payload: dict[str, Any] | None) -> str:
+    if not payload:
+        return ""
+    return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 def encode_event_data(data: dict[str, Any] | Any) -> bytes:

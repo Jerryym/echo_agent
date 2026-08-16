@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from ...model.agent_state import AgentState
+from ...model.agent import AgentState
 from ...model.message import Message, Role
 from .conversation_compressor import ConversationCompressor
 

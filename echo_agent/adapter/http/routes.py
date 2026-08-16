@@ -49,6 +49,7 @@ def _agent_response(result) -> AgentResponseBody:
         output=result.output or "",
         interrupted=bool(result.interrupted),
         interrupt=result.interrupt_payload if result.interrupted else None,
+        agent_result=result.agent_result,
     )
 
 
@@ -115,6 +116,7 @@ async def invoke(
             agent_id,
             session_id,
             body.input,
+            agent_mode=body.agent_mode,
             http_request=body.http_request,
             metadata=body.metadata,
         )
@@ -144,6 +146,7 @@ async def resume(
             agent_id,
             session_id,
             body.values,
+            agent_mode=body.agent_mode,
             http_request=body.http_request,
             metadata=body.metadata,
         )
@@ -192,6 +195,7 @@ async def stream(
         agent_id,
         session_id,
         body.input,
+        agent_mode=body.agent_mode,
         http_request=body.http_request,
         metadata=body.metadata,
     )
@@ -222,6 +226,7 @@ async def stream_resume(
         agent_id,
         session_id,
         body.values,
+        agent_mode=body.agent_mode,
         http_request=body.http_request,
         metadata=body.metadata,
     )

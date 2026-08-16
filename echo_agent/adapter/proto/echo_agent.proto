@@ -79,6 +79,8 @@ message AgentConfig {
   // 对应 Python str | list[str]；单元素即等价单个 str
   repeated string mcp_allowed_directories = 7;
   repeated MCPConnectionConfig mcp_servers = 8;
+  // "ask" | "agent"；空则使用服务端默认 [agent]
+  repeated string mode = 9;
 }
 
 message LLMConfig {
@@ -143,6 +145,8 @@ message InvokeRequest {
   map<string, string> metadata = 4;
   // 本次出站 HTTP（可空）
   HttpRequest http_request = 5;
+  // 当轮模式："ask" | "agent"；空则 agent
+  string agent_mode = 6;
 }
 
 message AgentResponse {
@@ -152,6 +156,8 @@ message AgentResponse {
   bool interrupted = 2;
   // interrupted=true 时的 interrupt payload（JSON）
   string interrupt_json = 3;
+  // AgentResult 快照（JSON：text / reasoning / token_usage）
+  string agent_result_json = 4;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +173,8 @@ message ResumeRequest {
   map<string, string> metadata = 4;
   // 本次出站 HTTP（可空）
   HttpRequest http_request = 5;
+  // 当轮模式："ask" | "agent"；空则 agent
+  string agent_mode = 6;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,8 +197,7 @@ message CancelResponse {
 // ---------------------------------------------------------------------------
 
 message AgentEvent {
-  // message | interrupt | error | done | cancelled
-  // 可选扩展：tool_call | tool_result（v0.1 最小集合不含强制要求）
+  // agent_result | interrupt | done | error | cancelled
   string type = 1;
   // UTF-8 JSON payload
   bytes data = 2;

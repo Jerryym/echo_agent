@@ -18,6 +18,7 @@ from .convert_grpc import (
     runtime_options_from_proto,
     user_input_from_proto,
 )
+from ..convert import parse_agent_mode
 from .pb import echo_agent_pb2 as pb
 from .pb import echo_agent_pb2_grpc as pb_grpc
 
@@ -70,13 +71,14 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
 
     async def Invoke(self, request: pb.InvokeRequest, context: grpc.aio.ServicerContext):
         try:
-            agent_id, session_id, user_input, http_request, metadata = self._parse_invoke(
+            agent_id, session_id, user_input, http_request, metadata, agent_mode = self._parse_invoke(
                 request
             )
             result = await self._runtime.invoke(
                 agent_id,
                 session_id,
                 user_input,
+                agent_mode=agent_mode,
                 http_request=http_request,
                 metadata=metadata,
             )
@@ -84,6 +86,7 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
                 output=result.output,
                 interrupted=result.interrupted,
                 interrupt_payload=result.interrupt_payload,
+                agent_result=result.agent_result,
             )
         except grpc.aio.AbortError:
             raise
@@ -104,13 +107,14 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
         agent_id = ""
         session_id = ""
         try:
-            agent_id, session_id, user_input, http_request, metadata = self._parse_invoke(
+            agent_id, session_id, user_input, http_request, metadata, agent_mode = self._parse_invoke(
                 request
             )
             async for event in self._runtime.stream(
                 agent_id,
                 session_id,
                 user_input,
+                agent_mode=agent_mode,
                 http_request=http_request,
                 metadata=metadata,
             ):
@@ -148,13 +152,14 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
 
     async def Resume(self, request: pb.ResumeRequest, context: grpc.aio.ServicerContext):
         try:
-            agent_id, session_id, values, http_request, metadata = self._parse_resume(
+            agent_id, session_id, values, http_request, metadata, agent_mode = self._parse_resume(
                 request
             )
             result = await self._runtime.resume(
                 agent_id,
                 session_id,
                 values,
+                agent_mode=agent_mode,
                 http_request=http_request,
                 metadata=metadata,
             )
@@ -162,6 +167,7 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
                 output=result.output,
                 interrupted=result.interrupted,
                 interrupt_payload=result.interrupt_payload,
+                agent_result=result.agent_result,
             )
         except grpc.aio.AbortError:
             raise
@@ -182,13 +188,14 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
         agent_id = ""
         session_id = ""
         try:
-            agent_id, session_id, values, http_request, metadata = self._parse_resume(
+            agent_id, session_id, values, http_request, metadata, agent_mode = self._parse_resume(
                 request
             )
             async for event in self._runtime.stream_resume(
                 agent_id,
                 session_id,
                 values,
+                agent_mode=agent_mode,
                 http_request=http_request,
                 metadata=metadata,
             ):
@@ -281,7 +288,15 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
             else None
         )
         metadata = dict(request.metadata) if request.metadata else None
-        return agent_id, session_id, user_input_from_proto(request.input), http_request, metadata
+        agent_mode = parse_agent_mode(request.agent_mode)
+        return (
+            agent_id,
+            session_id,
+            user_input_from_proto(request.input),
+            http_request,
+            metadata,
+            agent_mode,
+        )
 
     @staticmethod
     def _parse_resume(
@@ -308,4 +323,5 @@ class EchoAgentServicer(pb_grpc.EchoAgentServiceServicer):
             else None
         )
         metadata = dict(request.metadata) if request.metadata else None
-        return agent_id, session_id, values, http_request, metadata
+        agent_mode = parse_agent_mode(request.agent_mode)
+        return agent_id, session_id, values, http_request, metadata, agent_mode

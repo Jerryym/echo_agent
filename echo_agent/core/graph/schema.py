@@ -2,9 +2,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, PlainValidator
 
-from ..model.agent_resources import AgentResources
-from ..model.agent_result import AgentResult
-from ..model.agent_state import AgentState
+from ..model.agent import AgentResources, AgentResult, AgentState
 from ..model.hitl import HITLInteraction
 from ..model.input import UserInput
 from ..model.skill import SkillRuntimeContext

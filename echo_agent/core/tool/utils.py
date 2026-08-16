@@ -4,7 +4,7 @@ from typing import Any
 from langchain.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
-from .schema import ToolDefinition, ToolType
+from .schema import ToolAnnotations, ToolDefinition, ToolType
 
 
 def to_tool_list(tool_json_schema: list[dict[str, Any]]) -> list[ToolDefinition]:
@@ -14,7 +14,20 @@ def to_tool_list(tool_json_schema: list[dict[str, Any]]) -> list[ToolDefinition]
     tool_list = []
     for tool in tool_json_schema:
         fn = tool["function"]
-        tool_list.append(ToolDefinition(name=fn["name"], description=fn["description"], parameters=fn["parameters"]))
+        tool_definition = ToolDefinition(
+            name=fn["name"], 
+            description=fn["description"], 
+            parameters=fn["parameters"],
+        )
+
+        if tool.get("annotations"):
+            tool_definition.annotations = ToolAnnotations(
+                read_only_hint=tool.get("readOnlyHint"), # 工具是否只读、不修改数据
+                destructive_hint=tool.get("destructiveHint"), # 是否可能造成删除或不可逆修改
+                idempotent_hint=tool.get("idempotentHint"), # 重复调用是否具有相同效果
+                open_world_hint=tool.get("openWorldHint"), # 是否访问或影响外部开放系统
+            )
+        tool_list.append(tool_definition)
     return tool_list
 
 
@@ -22,8 +35,9 @@ def to_openai_tool_json_schema(tool_list: list[ToolDefinition]) -> list[dict[str
     """
     将工具列表转换为 OpenAI Tool JSON Schema
     """
-    return [
-        {
+    results = []
+    for tool in tool_list:
+        tool_schema = {
             "type": "function",
             "function": {
                 "name": tool.name,
@@ -31,8 +45,16 @@ def to_openai_tool_json_schema(tool_list: list[ToolDefinition]) -> list[dict[str
                 "parameters": tool.parameters,
             },
         }
-        for tool in tool_list
-    ]
+
+        if tool.annotations is not None:
+            tool_schema["annotations"] = {
+                "readOnlyHint": tool.annotations.read_only_hint,
+                "destructiveHint": tool.annotations.destructive_hint,
+                "idempotentHint": tool.annotations.idempotent_hint,
+                "openWorldHint": tool.annotations.open_world_hint,
+            }
+        results.append(tool_schema)
+    return results
 
 
 def to_tool_definition(tool: BaseTool, tool_type: ToolType = ToolType.FUNCTION) -> ToolDefinition:
@@ -41,12 +63,21 @@ def to_tool_definition(tool: BaseTool, tool_type: ToolType = ToolType.FUNCTION) 
     """
     openai_tool = convert_to_openai_tool(tool)
     fn = openai_tool["function"]
-    return ToolDefinition(
+    tool_definition = ToolDefinition(
         name=fn["name"],
         description=fn.get("description") or "",
         parameters=fn.get("parameters") or {},
         type=tool_type,
     )
+
+    if openai_tool.get("annotations"):
+        tool_definition.annotations = ToolAnnotations(
+            read_only_hint=openai_tool.get("readOnlyHint"),
+            destructive_hint=openai_tool.get("destructiveHint"),
+            idempotent_hint=openai_tool.get("idempotentHint"),
+            open_world_hint=openai_tool.get("openWorldHint"),
+        )
+    return tool_definition
 
 
 def get_tool_definition(tool_list: list[ToolDefinition], tool_name: str) -> ToolDefinition | None:
@@ -57,6 +88,7 @@ def get_tool_definition(tool_list: list[ToolDefinition], tool_name: str) -> Tool
         if tool.name == tool_name:
             return tool
     return None
+
 
 def format_tool_content(value: Any) -> str:
     if isinstance(value, str):

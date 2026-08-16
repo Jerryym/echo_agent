@@ -1,5 +1,5 @@
-import json
 from collections.abc import AsyncIterator, Iterator
+import json
 from typing import Any, Mapping
 
 from langchain_core.runnables.config import RunnableConfig
@@ -11,9 +11,7 @@ from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseInput, GraphCompileOptions, RootGraph
 from ..llm import LLMClient
 from ..mcp import MCPClient
-from ..model.agent_resources import AgentResources
-from ..model.agent_result import AgentResult
-from ..model.agent_state import AgentState
+from ..model.agent import AgentMode, AgentResources, AgentResult, AgentState
 from ..model.input import UserInput
 from ..model.message import Message, Role, append_messages
 from ..model.skill import SkillRuntimeContext
@@ -101,6 +99,7 @@ class Agent:
         self,
         session_id: str,
         input: UserInput | type[BaseInput],
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentResult:
@@ -110,11 +109,12 @@ class Agent:
         Args:
             session_id: 会话 ID
             input: UserInput 用户输入 或 BaseInput 输入类型
+            agent_mode: 智能体模式
             http_request: 本次出站 HTTP 配置（可空；鉴权头等，不经 metadata）
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         graph_input = self._build_input(input)
-        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
+        runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -125,6 +125,7 @@ class Agent:
         self,
         session_id: str,
         input: UserInput | type[BaseInput],
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentResult:
@@ -132,7 +133,7 @@ class Agent:
         调用 Agent 执行（异步）
         """
         graph_input = self._build_input(input)
-        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
+        runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -143,6 +144,7 @@ class Agent:
         self,
         session_id: str,
         input: UserInput | type[BaseInput],
+        agent_mode: AgentMode = AgentMode.AGENT,
         version: str = "v2",
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
@@ -158,7 +160,7 @@ class Agent:
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         graph_input = self._build_input(input)
-        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
+        runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -168,6 +170,7 @@ class Agent:
         self,
         session_id: str,
         input: UserInput | type[BaseInput],
+        agent_mode: AgentMode = AgentMode.AGENT,
         version: str = "v2",
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
@@ -176,7 +179,7 @@ class Agent:
         流式调用 Agent 执行（异步）
         """
         graph_input = self._build_input(input)
-        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
+        runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=False)
         self._expire_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
@@ -186,6 +189,7 @@ class Agent:
         self,
         session_id: str,
         values: dict,
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentResult:
@@ -198,7 +202,7 @@ class Agent:
             http_request: HTTP请求配置
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
-        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
+        runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=True)
         result = self._compiled_graph.invoke(Command(resume=values), runnable_config, context=context)
         return self._generate_result(session_id, context, result)
@@ -207,13 +211,14 @@ class Agent:
         self,
         session_id: str,
         values: dict,
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> AgentResult:
         """
         恢复 Agent 执行（异步）
         """
-        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
+        runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=True)
         result = await self._compiled_graph.ainvoke(Command(resume=values), runnable_config, context=context)
         return await self._agenerate_result(session_id, context, result)
@@ -223,6 +228,7 @@ class Agent:
         session_id: str,
         values: dict,
         version: str = "v2",
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> Iterator[AgentResult]:
@@ -244,6 +250,7 @@ class Agent:
         self,
         session_id: str,
         values: dict,
+        agent_mode: AgentMode = AgentMode.AGENT,
         version: str = "v2",
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
@@ -251,7 +258,7 @@ class Agent:
         """
         流式恢复 Agent 执行（异步）
         """
-        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
+        runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=True)
         return self._astream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
@@ -425,6 +432,7 @@ class Agent:
     def _build_runnable_config(
         self,
         session_id: str,
+        agent_mode: AgentMode = AgentMode.AGENT,
         http_request: HttpRequest | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> RunnableConfig:
@@ -434,6 +442,7 @@ class Agent:
         runtime = RuntimeConfig(
             thread_id=session_id,
             session_id=session_id,
+            agent_mode=agent_mode,
             http_request=http_request,
             metadata=dict(metadata) if metadata else {},
         )

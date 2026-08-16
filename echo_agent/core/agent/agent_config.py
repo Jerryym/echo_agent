@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from ..llm.llm_config import LLMConfig
 from ..mcp import MCPConnectionConfig, builtin_mcp_servers
+from ..model.agent import AgentMode
 
 
 class AgentConfig(BaseModel):
@@ -15,6 +16,7 @@ class AgentConfig(BaseModel):
         description: 描述
         llm_config: LLM 配置
         system_prompt: 系统提示词
+        mode: Agent 运行模式
         kb_list: 知识库列表
         skill_list: 技能列表
         mcp_allowed_directories: 内置 Filesystem 允许访问的目录；
@@ -29,6 +31,7 @@ class AgentConfig(BaseModel):
 
     llm_config: LLMConfig
     system_prompt: str | None = None
+    mode: list[AgentMode] = Field(default_factory=lambda: [AgentMode.AGENT])
 
     kb_list: list[str] = Field(default_factory=list)
     skill_list: dict[str, Any] = Field(default_factory=dict)
@@ -39,7 +42,7 @@ class AgentConfig(BaseModel):
     enable_builtin_fetch: bool = False
     enable_builtin_filesystem: bool = False
 
-    conversation_max_tokens: int = 16384
+    conversation_max_tokens: int = 128000
 
     @model_validator(mode="after")
     def _merge_builtin_mcp(self) -> Self:

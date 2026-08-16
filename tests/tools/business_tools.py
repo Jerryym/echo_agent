@@ -3,6 +3,24 @@ from typing import Any
 from langchain_core.tools import tool
 
 
+def _tool_extras(
+    *,
+    read_only_hint: bool,
+    destructive_hint: bool = False,
+    idempotent_hint: bool = True,
+    open_world_hint: bool = False,
+) -> dict[str, Any]:
+    """MCP ToolAnnotations，挂在 LangChain tool.extras 上供测试脚本读取。"""
+    return {
+        "annotations": {
+            "readOnlyHint": read_only_hint,
+            "destructiveHint": destructive_hint,
+            "idempotentHint": idempotent_hint,
+            "openWorldHint": open_world_hint,
+        }
+    }
+
+
 # =========================
 # Mock Data
 # =========================
@@ -73,7 +91,7 @@ _PURCHASE_REQUESTS: list[dict[str, Any]] = []
 # =========================
 # User
 # =========================
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def get_user_profile(
     user_id: str,
 ) -> dict[str, Any]:
@@ -94,7 +112,7 @@ def get_user_profile(
     )
 
 
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def query_user_by_name(
     name: str,
 ) -> dict[str, Any]:
@@ -121,7 +139,7 @@ def query_user_by_name(
     }
 
 
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def query_salary(
     user_id: str,
 ) -> dict[str, Any]:
@@ -149,7 +167,7 @@ def query_salary(
 # =========================
 # Order
 # =========================
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def get_order_detail(
     order_id: str,
 ) -> dict[str, Any]:
@@ -169,7 +187,7 @@ def get_order_detail(
     )
 
 
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def query_user_orders(
     user_id: str,
 ) -> list[dict[str, Any]]:
@@ -195,7 +213,11 @@ def query_user_orders(
     ]
 
 
-@tool
+@tool(extras=_tool_extras(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=False,
+))
 def create_refund(
     order_id: str,
     reason: str,
@@ -223,7 +245,7 @@ def create_refund(
     return refund
 
 
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def get_refund_status(
     refund_id: str,
 ) -> dict[str, Any]:
@@ -247,7 +269,7 @@ def get_refund_status(
 # =========================
 # Product
 # =========================
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def query_inventory(
     product_name: str,
 ) -> dict[str, Any]:
@@ -265,7 +287,7 @@ def query_inventory(
     }
 
 
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def query_product_price(
     product_name: str,
 ) -> dict[str, Any]:
@@ -293,7 +315,7 @@ def query_product_price(
 # =========================
 # Finance
 # =========================
-@tool
+@tool(extras=_tool_extras(read_only_hint=True))
 def currency_exchange(
     amount: float,
     from_currency: str,
@@ -339,7 +361,7 @@ def currency_exchange(
 # =========================
 # Weather
 # =========================
-@tool
+@tool(extras=_tool_extras(read_only_hint=True, open_world_hint=True))
 def query_weather(
     city: str,
 ) -> str:
@@ -360,7 +382,11 @@ def query_weather(
 # =========================
 # Report
 # =========================
-@tool
+@tool(extras=_tool_extras(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=False,
+))
 def generate_business_report(
     title: str,
     metrics: dict[str, Any],
@@ -393,7 +419,11 @@ def generate_business_report(
 # =========================
 # Approval Test
 # =========================
-@tool
+@tool(extras=_tool_extras(
+    read_only_hint=False,
+    destructive_hint=True,
+    idempotent_hint=True,
+))
 def delete_user_account(
     user_id: str,
 ) -> dict[str, Any]:
@@ -417,7 +447,11 @@ def delete_user_account(
 # =========================
 # Information Collection Test
 # =========================
-@tool
+@tool(extras=_tool_extras(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=False,
+))
 def submit_purchase_request(
     product_name: str,
     quantity: int,

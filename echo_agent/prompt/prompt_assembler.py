@@ -1,5 +1,6 @@
 from typing import Any
 
+from ..core.model.agent import AgentMode
 from ..core.model.skill import SkillFrontmatter, SkillRuntimeContext, SkillStatus
 from .loader import PromptLoader
 
@@ -12,6 +13,8 @@ class PromptAssembler:
     def assemble(
         agent_prompt: str | None = None,
         system_prompt: str | None = None,
+        agent_mode: AgentMode = AgentMode.AGENT,
+        tool_list: list[dict[str, Any]] | None = None,
         skill_frontmatter_list: dict[str, SkillFrontmatter] | None = None,
         active_skills: dict[str, SkillRuntimeContext] | None = None,
     ) -> str:
@@ -22,16 +25,24 @@ class PromptAssembler:
             prompts.append(agent_prompt.strip())
 
         # Tool Policy
-        tool_policy = PromptLoader.load("prompt/tool_call_policy.md")
-        if tool_policy:
-            prompts.append(tool_policy)
+        if tool_list:
+            tool_policy = PromptLoader.load("prompt/tool_call_policy.md")
+            if tool_policy:
+                prompts.append(tool_policy)
+
+        # Agent Mode Policy
+        agent_mode_policy = PromptLoader.load("prompt/agent_mode_policy.md")
+        if agent_mode_policy:
+            agent_mode_policy = agent_mode_policy.replace("{{MODE}}", agent_mode.value) # 添加当前模式
+            prompts.append(agent_mode_policy)
 
         # Skill Usage Policy + Available Skills
-        skill_policy = PromptLoader.load("prompt/skill_usage_policy.md")
-        available_skills = PromptAssembler._build_available_skills(skill_frontmatter_list)
-        if skill_policy:
-            skill_policy = skill_policy.replace("{{AVAILABLE_SKILLS}}", available_skills)
-            prompts.append(skill_policy)
+        if skill_frontmatter_list is not None:
+            skill_policy = PromptLoader.load("prompt/skill_usage_policy.md")
+            available_skills = PromptAssembler._build_available_skills(skill_frontmatter_list)
+            if skill_policy:
+                skill_policy = skill_policy.replace("{{AVAILABLE_SKILLS}}", available_skills)
+                prompts.append(skill_policy)
 
         # System Prompt（节点 / 策略提示词）
         if system_prompt:
