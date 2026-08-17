@@ -1,7 +1,10 @@
+from ...common import get_logger
 from ..model.agent import AgentMode
 from ..runtime.gateway import BaseGateWay
 from .exception import ToolAuthorizationError
 from .schema import ToolDefinition
+
+logger = get_logger("tool")
 
 
 class ToolGateWay(BaseGateWay):
@@ -36,23 +39,29 @@ class ToolGateWay(BaseGateWay):
                 - None：未提供开放世界行为提示，由相关策略决定。
         """
         if mode == AgentMode.AGENT:
-            return True
+            return
 
         if mode == AgentMode.ASK:
             self._authorize_ask_mode(tool)
             return
 
-        # 后改为自定义异常
         raise ToolAuthorizationError(
             f"unsupported agent mode: {mode}"
         )
 
+    def filter(self, tools: list[ToolDefinition], mode: AgentMode) -> list[ToolDefinition]:
+        """
+        过滤工具
+        """
+        return [tool for tool in tools if self.authorize(tool, mode)]
+
     
     def _authorize_ask_mode(self, tool: ToolDefinition) -> None:
         """
-        检查 Ask 模式下的工具权限。
+        检查 Ask 模式下的工具权限
         """
         annotations = tool.annotations
+        logger.debug("authorize_ask_mode | tool=%s annotations=%s", tool.name, annotations)
 
         if annotations is None:
             raise ToolAuthorizationError(

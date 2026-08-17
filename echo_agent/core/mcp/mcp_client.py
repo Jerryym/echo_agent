@@ -1,8 +1,11 @@
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from ...common import get_logger
 from ..tool import ToolDefinition, ToolRegistry, ToolType
 from ..tool.utils import to_tool_definition
 from .schema import MCPConnectionConfig
+
+logger = get_logger("mcp")
 
 
 class MCPClient:
@@ -43,6 +46,7 @@ class MCPClient:
             server_tools = await self._client.get_tools(server_name=config.name)
             tools.extend(server_tools)
             for tool in server_tools:
+                logger.debug("register_tools | tool=%s", tool)
                 original_name = tool.name.removeprefix(f"{config.name}_")
                 definition = to_tool_definition(tool, ToolType.MCP)
                 definition = definition.model_copy(

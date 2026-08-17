@@ -6,6 +6,10 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from .schema import ToolAnnotations, ToolDefinition, ToolType
 
+from ...common import get_logger
+
+
+logger = get_logger("tool")
 
 def to_tool_list(tool_json_schema: list[dict[str, Any]]) -> list[ToolDefinition]:
     """
@@ -61,23 +65,18 @@ def to_tool_definition(tool: BaseTool, tool_type: ToolType = ToolType.FUNCTION) 
     """
     将 LangChain Tool 转换为工具定义
     """
+    logger.debug("to_tool_definition | tool=%s", tool)
+    
     openai_tool = convert_to_openai_tool(tool)
     fn = openai_tool["function"]
-    tool_definition = ToolDefinition(
+    
+    return ToolDefinition(
+        type=tool_type,
         name=fn["name"],
         description=fn.get("description") or "",
         parameters=fn.get("parameters") or {},
-        type=tool_type,
+        annotations=get_tool_annotations(tool),
     )
-
-    if openai_tool.get("annotations"):
-        tool_definition.annotations = ToolAnnotations(
-            read_only_hint=openai_tool.get("readOnlyHint"),
-            destructive_hint=openai_tool.get("destructiveHint"),
-            idempotent_hint=openai_tool.get("idempotentHint"),
-            open_world_hint=openai_tool.get("openWorldHint"),
-        )
-    return tool_definition
 
 
 def get_tool_definition(tool_list: list[ToolDefinition], tool_name: str) -> ToolDefinition | None:
@@ -94,3 +93,28 @@ def format_tool_content(value: Any) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def get_tool_annotations(tool: BaseTool) -> ToolAnnotations:
+    """
+    获取 Tool annotations
+    """
+    metadata = tool.metadata or {}
+
+    # BaseTool
+    annotations = metadata.get("annotations")
+    if isinstance(annotations, dict):
+        return ToolAnnotations(
+            read_only_hint=annotations.get("readOnlyHint"),
+            destructive_hint=annotations.get("destructiveHint"),
+            idempotent_hint=annotations.get("idempotentHint"),
+            open_world_hint=annotations.get("openWorldHint"),
+        )
+
+    # MCP Tool
+    return ToolAnnotations(
+        read_only_hint=metadata.get("readOnlyHint"),
+        destructive_hint=metadata.get("destructiveHint"),
+        idempotent_hint=metadata.get("idempotentHint"),
+        open_world_hint=metadata.get("openWorldHint"),
+    )

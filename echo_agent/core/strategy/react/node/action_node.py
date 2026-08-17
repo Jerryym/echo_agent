@@ -50,8 +50,8 @@ class ActionNode(Node):
         if state.hitl_state.request or state.hitl_state.response:
             return self._handle_hitl(state)
 
-        available_tools = self._available_tools(runtime.context)
-        runnable_config = self._build_runnable_config(config)
+        runtime_config = RuntimeConfig.get_runtime_config()
+        available_tools = self._available_tools(runtime.context, runtime_config.agent_mode)
         response = self._llm_client.invoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
@@ -59,11 +59,9 @@ class ActionNode(Node):
             tool_list=to_openai_tool_json_schema(available_tools),
             context=runtime.context,
             agent_resources=runtime.context.resources,
-            config=runnable_config,
+            config=runtime_config.to_llm_runnable_config(),
         )
-
         update_agent_result(runtime.context, response.text, response.token_usage)
-        runtime_config = RuntimeConfig.get_runtime_config()
         return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, available_tools)
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
@@ -75,8 +73,8 @@ class ActionNode(Node):
         if state.hitl_state.request or state.hitl_state.response:
             return self._handle_hitl(state)
 
-        available_tools = self._available_tools(runtime.context)
-        runnable_config = self._build_runnable_config(config)
+        runtime_config = RuntimeConfig.get_runtime_config()
+        available_tools = self._available_tools(runtime.context, runtime_config.agent_mode)
         response = await self._llm_client.ainvoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
@@ -84,11 +82,9 @@ class ActionNode(Node):
             tool_list=to_openai_tool_json_schema(available_tools),
             context=runtime.context,
             agent_resources=runtime.context.resources,
-            config=runnable_config,
+            config=runtime_config.to_llm_runnable_config(),
         )
-
         update_agent_result(runtime.context, response.text, response.token_usage)
-        runtime_config = RuntimeConfig.get_runtime_config()
         return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, available_tools)
 
     def _route_after_tool_selection(self, state: ReActState, agent_mode: AgentMode, tool_calls: list[ToolCall] | None, available_tools: list[ToolDefinition]) -> Command:
@@ -109,7 +105,12 @@ class ActionNode(Node):
 
         # 检查工具权限
         for tool_call in tool_calls:
-            if not self._authorize_tool(available_tools, tool_call, agent_mode):
+            if self._authorize_tool(available_tools, tool_call, agent_mode) is False:
+                logger.warning(
+                    "tool_call blocked=%s tool=%s",
+                    tool_call.name,
+                    tool_call.args,
+                )
                 return self._handle_blocked(tool_calls, state)
 
         # 判断是否存在缺失参数
@@ -355,7 +356,7 @@ class ActionNode(Node):
         return "reason"
 # endregion
 
-    def _available_tools(self, context: ReActContext) -> list[ToolDefinition]:
+    def _available_tools(self, context: ReActContext, agent_mode: AgentMode) -> list[ToolDefinition]:
         """Return tools visible to the model for the current skill state."""
         tool_list = self._tool_registry.list_definitions()
         default_tools = self._tool_registry.default_tools()
@@ -386,7 +387,7 @@ class ActionNode(Node):
             return tool_list
 
         default_names = {tool.name for tool in default_tools}
-        business_tools = [
+        available_tools = [
             tool
             for tool in tool_list
             if tool.name not in default_names
@@ -395,7 +396,8 @@ class ActionNode(Node):
                 or tool.meta_data.get("original_name") in allowed_names
             )
         ]
-        return [*default_tools, *business_tools]
+        # 根据 AgentMode 过滤工具
+        return self._tool_gateway.filter([*default_tools, *available_tools], agent_mode)
 
     def _get_invalid_tools(self, tool_calls: list[ToolCall], available_tools: list[ToolDefinition] | None = None) -> list[str]:
         """

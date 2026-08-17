@@ -129,6 +129,16 @@ def create_load_skill_tool(skill_manager: SkillManager):
             return f"Skill {name} loaded. Available resources: {listed}"
         return f"Skill {name} loaded."
 
+    # 设置annotations
+    load_skill.metadata = {
+        "annotations": {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        }
+    }
+    
     return load_skill
 
 
@@ -164,5 +174,15 @@ def create_read_skill_resource_tool(skill_manager: SkillManager):
         content = await _aread_package_resource(skill_package, relative, http_request=runtime_config.http_request)
         skill_manager.reset_idle_rounds(context, name)
         return content
+
+    # 设置annotations
+    read_skill_resource.metadata = {
+        "annotations": {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        }
+    }
 
     return read_skill_resource
