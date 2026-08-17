@@ -18,13 +18,13 @@ class HttpRequest(BaseModel):
 
 class HttpResponse(BaseModel, Generic[T]):
     """
-    Standard API response.
+    通用HTTP响应
 
-    Args:
-        code: Business status code.
-        msg: Response message.
-        data: Response payload.
+    Attributes:
+        code: 业务状态码（200-成功）
+        msg: 响应消息
+        data: 响应数据
     """
     code: int
-    msg: str = ""
+    msg: str = Field(default="")
     data: T | None = None
