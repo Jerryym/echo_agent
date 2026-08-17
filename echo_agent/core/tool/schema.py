@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import BaseModel, Field   
 
 
-class ToolType(Enum, str):
+class ToolType(str, Enum):
     """
     工具类型
     """
