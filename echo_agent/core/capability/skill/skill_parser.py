@@ -1,10 +1,14 @@
 from pathlib import Path
 from urllib.parse import urlparse
 
+from pydantic import ValidationError
 import yaml
 
+from ....common import get_logger
 from ....common.network import HttpClient, HttpClientError, HttpRequest
 from ...model.skill import SkillFrontmatter, SkillPackage, SkillType
+
+logger = get_logger("skillparser")
 
 
 class SkillParser:
@@ -69,21 +73,28 @@ class SkillParser:
         解析HTTP Skill
         """
         try:
-            # 获取HTTP Skill的manifest
-            payload = HttpClient.get_json(skill_url, headers=http_request.headers if http_request else None)
+            envelope = HttpClient.get_response(
+                skill_url,
+                dict,
+                headers=http_request.headers if http_request else None,
+            )
+            logger.info(f"HTTP skill manifest: {envelope}")
         except HttpClientError as exc:
             raise FileNotFoundError(
                 f"Failed to fetch HTTP skill manifest: {skill_url}"
             ) from exc
-        except ValueError as exc:
+        except (ValueError, ValidationError) as exc:
             raise ValueError(
                 f"Invalid HTTP skill manifest JSON: {skill_url}"
             ) from exc
 
-        if not isinstance(payload, dict):
+        if envelope.code != 200 or not isinstance(envelope.data, dict):
             raise ValueError(
-                f"HTTP skill manifest must be a JSON object: {skill_url}"
+                f"HTTP skill manifest business error: "
+                f"code={envelope.code}, msg={envelope.msg}, url={skill_url}"
             )
+
+        payload = envelope.data
 
         # 获取Skill文件名
         skill_file = SkillParser._normalize_relative_path(payload.get("skill_file"))

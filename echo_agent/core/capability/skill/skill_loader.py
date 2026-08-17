@@ -1,9 +1,11 @@
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from ....common.network import HttpClient, HttpClientError
 from ....common.network import HttpRequest
 from ....utils import join_url
-from ...model.skill import SkillPackage, SkillRuntimeContext, SkillStatus, SkillType
+from ...model.skill import SkillPackage, SkillResourcePayload, SkillRuntimeContext, SkillStatus, SkillType
 
 
 class SkillLoader:
@@ -50,10 +52,23 @@ class SkillLoader:
 
         url = join_url(skill_package.url, skill_package.skill_file)
         try:
-            content = HttpClient.get(url, headers=http_request.headers if http_request else None)
+            envelope = HttpClient.get_response(
+                url,
+                SkillResourcePayload,
+                headers=http_request.headers if http_request else None,
+            )
         except HttpClientError as exc:
             raise ValueError(f"Failed to load HTTP skill: {url}") from exc
-        return SkillLoader._extract_instruction(content)
+        except (ValueError, ValidationError) as exc:
+            raise ValueError(f"Invalid HTTP skill resource JSON: {url}") from exc
+
+        if envelope.code != 200 or envelope.data is None:
+            raise ValueError(
+                f"Failed to load HTTP skill: code={envelope.code}, msg={envelope.msg}, url={url}"
+            )
+        if envelope.data.binary:
+            raise ValueError(f"HTTP skill file is binary, expected text: {url}")
+        return SkillLoader._extract_instruction(envelope.data.content)
 
     @staticmethod
     def _extract_instruction(content: str) -> str:

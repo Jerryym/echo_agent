@@ -13,7 +13,7 @@ from ....common.network import HttpClient, HttpClientError, HttpRequest
 from ....utils import join_url
 from ...capability.skill import SkillManager
 from ...graph.schema import BaseContext
-from ...model.skill import SkillPackage, SkillType
+from ...model.skill import SkillPackage, SkillResourcePayload, SkillType
 from ...runtime.runtime_config import RuntimeConfig
 
 _skill_runtime_context: ContextVar[BaseContext | None] = ContextVar(
@@ -91,10 +91,24 @@ async def _aread_http_resource(package: SkillPackage, relative: str, http_reques
         raise ValueError(f"Resource path is not declared in skill package: {relative}")
 
     url = join_url(package.url, relative)
+    headers = http_request.headers if http_request else None
+
+    def _get() -> SkillResourcePayload:
+        envelope = HttpClient.get_response(url, SkillResourcePayload, headers=headers)
+        if envelope.code != 200 or envelope.data is None:
+            raise FileNotFoundError(
+                f"Skill resource not found: {relative} "
+                f"(code={envelope.code}, msg={envelope.msg})"
+            )
+        if envelope.data.binary:
+            raise ValueError(f"Binary skill resource is not supported: {relative}")
+        return envelope.data
+
     try:
-        return await asyncio.to_thread(HttpClient.get, url, headers=http_request.headers if http_request else None)
+        payload = await asyncio.to_thread(_get)
     except HttpClientError as exc:
         raise FileNotFoundError(f"Skill resource not found: {relative}") from exc
+    return payload.content
 
 
 def create_load_skill_tool(skill_manager: SkillManager):

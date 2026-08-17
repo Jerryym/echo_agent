@@ -4,7 +4,7 @@ from .exception import (
     HttpResponseError,
 )
 from .http_client import HttpClient
-from .http_request import HttpRequest
+from .schema import HttpRequest, HttpResponse
 
 
 __all__ = [
@@ -13,4 +13,5 @@ __all__ = [
     "HttpResponseError",
     "HttpClient",
     "HttpRequest",
+    "HttpResponse",
 ]

@@ -17,7 +17,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import patch
 
-from echo_agent.common.network import HttpResponseError
+from echo_agent.common.network import HttpResponse, HttpResponseError
 from echo_agent.core.capability.skill import SkillLoader, SkillManager, SkillParser
 from echo_agent.core.graph.schema import BaseContext
 from echo_agent.core.model.agent import AgentState
@@ -29,7 +29,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "skills"
 
 REMOTE_SKILL_NAMES = ("pdf", "docx", "pptx", "xlsx", "skill-creator")
 
-PARSER_GET_JSON = "echo_agent.core.capability.skill.skill_parser.HttpClient.get_json"
+PARSER_GET_RESPONSE = "echo_agent.core.capability.skill.skill_parser.HttpClient.get_response"
 LOADER_GET = "echo_agent.core.capability.skill.skill_loader.HttpClient.get"
 TOOLKIT_GET = "echo_agent.core.tool.toolkit.skill.HttpClient.get"
 
@@ -58,6 +58,10 @@ def _posix_additional(resources: dict[str, list[str]]) -> dict[str, list[str]]:
 
 def _local_package(name: str) -> SkillPackage:
     return SkillParser.parse(str(FIXTURES / name))
+
+
+def _envelope(data: dict) -> HttpResponse[dict]:
+    return HttpResponse(code=200, msg="操作成功", data=data)
 
 
 def _manifest_from_fixture(
@@ -96,10 +100,10 @@ def test_parse_remote_skills_from_fixtures() -> None:
         local = _local_package(name)
         manifest = _manifest_from_fixture(name)
 
-        with patch(PARSER_GET_JSON, return_value=manifest) as mock_get:
+        with patch(PARSER_GET_RESPONSE, return_value=_envelope(manifest)) as mock_get:
             package = SkillParser.parse(base)
 
-        mock_get.assert_called_once_with(base)
+        mock_get.assert_called_once_with(base, dict, headers=None)
         assert package.type == SkillType.HTTP
         assert package.url == base
         assert package.skill_file == local.skill_file
@@ -127,7 +131,7 @@ def test_parse_http_ignores_remote_type_and_url() -> None:
         remote_type="file",
         remote_url="https://evil.example/skills/pdf",
     )
-    with patch(PARSER_GET_JSON, return_value=manifest):
+    with patch(PARSER_GET_RESPONSE, return_value=_envelope(manifest)):
         package = SkillParser.parse(base)
 
     assert package.type == SkillType.HTTP
@@ -139,7 +143,7 @@ def test_parse_http_manifest_fetch_fail() -> None:
     _print("SkillParser._parse_http manifest fetch fail")
     base = _base_url("pdf")
     with patch(
-        PARSER_GET_JSON,
+        PARSER_GET_RESPONSE,
         side_effect=HttpResponseError("HTTP response error: 404"),
     ):
         try:
@@ -160,8 +164,8 @@ def test_parse_http_missing_frontmatter() -> None:
     _print("SkillParser._parse_http missing frontmatter")
     base = _base_url("pdf")
     with patch(
-        PARSER_GET_JSON,
-        return_value={"skill_file": "SKILL.md"},
+        PARSER_GET_RESPONSE,
+        return_value=_envelope({"skill_file": "SKILL.md"}),
     ):
         try:
             SkillParser.parse(base)
@@ -180,7 +184,7 @@ def test_parse_http_invalid_resource_path() -> None:
         "frontmatter": local.frontmatter.model_dump(),
         "scripts": ["../escape.py"],
     }
-    with patch(PARSER_GET_JSON, return_value=manifest):
+    with patch(PARSER_GET_RESPONSE, return_value=_envelope(manifest)):
         try:
             SkillParser.parse(base)
             raise AssertionError("expected ValueError for invalid path")
@@ -196,7 +200,7 @@ def test_parse_http_empty_lists() -> None:
         "skill_file": "SKILL.md",
         "frontmatter": {"name": "pdf", "description": "pdf skill"},
     }
-    with patch(PARSER_GET_JSON, return_value=manifest):
+    with patch(PARSER_GET_RESPONSE, return_value=_envelope(manifest)):
         package = SkillParser.parse(base)
     assert package.scripts == []
     assert package.references == []
@@ -310,13 +314,13 @@ def test_manager_remote_skills() -> None:
     _print("SkillManager with remote skills")
     skill_list = {name: _base_url(name) for name in REMOTE_SKILL_NAMES}
 
-    def fake_get_json(url: str, **_kwargs: object) -> dict:
+    def fake_get_response(url: str, _response_type: object, **_kwargs: object) -> HttpResponse[dict]:
         for name in REMOTE_SKILL_NAMES:
             if url == _base_url(name):
-                return _manifest_from_fixture(name)
+                return _envelope(_manifest_from_fixture(name))
         raise HttpResponseError(f"HTTP response error: 404, url={url}")
 
-    with patch(PARSER_GET_JSON, side_effect=fake_get_json):
+    with patch(PARSER_GET_RESPONSE, side_effect=fake_get_response):
         manager = SkillManager(skill_list)
         for name in REMOTE_SKILL_NAMES:
             assert name in manager.skill_frontmatter_list

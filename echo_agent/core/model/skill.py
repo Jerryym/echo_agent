@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SkillType(Enum):
@@ -117,3 +117,23 @@ class SkillRuntimeContext(BaseModel):
     package: SkillPackage
     instruction: str | None = None
     idle_rounds: int = 0
+
+
+class SkillResourcePayload(BaseModel):
+    """
+    Skill Resource Payload 模型: 用于描述Skill资源
+
+    Args:
+        path: 资源路径
+        content: 资源内容
+        binary: 是否为二进制文件
+        content_type: 资源类型
+        size: 资源大小
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+    path: str
+    content: str
+    binary: bool = False
+    content_type: str | None = Field(default=None, alias="contentType")
+    size: int | None = None
