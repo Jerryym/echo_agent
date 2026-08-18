@@ -113,7 +113,7 @@ class SkillRuntimeContext(BaseModel):
         instruction: 已加载的指令正文（DISCARDED 后清空）
         idle_rounds: 连续未触达的用户交互次数；达阈值后自动 discard
     """
-    status: SkillStatus
+    status: SkillStatus = Field(default=SkillStatus.UNLOADED)
     package: SkillPackage
     instruction: str | None = None
     idle_rounds: int = 0
