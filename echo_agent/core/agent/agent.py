@@ -22,7 +22,7 @@ from ..runtime.algorithm import (
     maybe_compress_conversation,
 )
 from ..tool import ToolDefinition, ToolRegistry
-from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_tool
+from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_tool, create_knowledge_base_query_tool
 from ..tool.utils import to_tool_definition
 from .agent_config import AgentConfig
 
@@ -242,7 +242,7 @@ class Agent:
             http_request: HTTP请求配置
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
-        runnable_config = self._build_runnable_config(session_id, http_request, metadata)
+        runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=True)
         return self._stream_iterator(Command(resume=values), runnable_config, context, session_id, version)
 
@@ -407,12 +407,14 @@ class Agent:
         self._register_builtin_toolkit()
 
     def _register_builtin_toolkit(self) -> None:
-        """注册内置 skill 工具到 self._tool_registry。"""
+        """注册内部工具"""
         load_skill = create_load_skill_tool(self._skill_manager)
         read_skill = create_read_skill_resource_tool(self._skill_manager)
+        # knowledge_base_query = create_knowledge_base_query_tool()
 
         self._tool_registry.register(to_tool_definition(load_skill), load_skill)
         self._tool_registry.register(to_tool_definition(read_skill), read_skill)
+        #self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)
 
     async def register_mcp_tools(self) -> list[ToolDefinition]:
         """组装期异步注册 MCP 工具（写入 Agent 持有的同一 registry）。"""
@@ -472,6 +474,7 @@ class Agent:
                 system_prompt=self._agent_config.system_prompt,
                 skill_list=self._agent_config.skill_list,
                 skill_frontmatter_list=self._skill_manager.build_skill_frontmatter_list(http_request),
+                kb_list=self._agent_config.kb_list,
             ),
             active_skills=active_skills,
             agent_result=agent_result,

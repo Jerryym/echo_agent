@@ -21,7 +21,7 @@ class AgentResources(BaseModel):
     system_prompt: str | None = None
     skill_list: dict[str, Any] | None = Field(default_factory=dict)
     skill_frontmatter_list: dict[str, SkillFrontmatter] | None = Field(default_factory=dict)
-    kb_list: dict[str, Any] | None = Field(default_factory=dict)
+    kb_list: list[str] = Field(default_factory=list)
 
 
 class AgentMode(Enum):
