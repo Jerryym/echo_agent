@@ -13,7 +13,6 @@ from ....model.hitl import HITLInput, HITLInteraction, HITLOutput, HITLType
 from ....model.message import Message
 from ....model.skill import SkillStatus
 from ....model.tool import ToolCall, ToolState
-from ....runtime.interrupt import InterruptField
 from ....runtime.runtime_config import RuntimeConfig
 from ....tool import ToolDefinition, ToolGateWay, ToolRegistry
 from ....tool.exception import ToolAuthorizationError
@@ -289,7 +288,7 @@ class ActionNode(Node):
             description="Please provide the missing parameters. ",
             payload={
                 "fields": {
-                    tool_call_id: [field.model_dump() for field in fields]
+                    tool_call_id: fields
                     for tool_call_id, fields in fields_by_call.items()
                 },
                 "tool_calls": [
@@ -421,25 +420,25 @@ class ActionNode(Node):
         )
         return {tool.name for tool in tools}
 
-    def _build_fields(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> dict[str, list[InterruptField]]:
+    def _build_fields(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> dict[str, list[dict[str, str]]]:
         """
         按 tool_call_id 构建信息补全字段，避免多工具同名缺参互相覆盖。
         """
-        fields_by_call: dict[str, list[InterruptField]] = {}
+        fields_by_call: dict[str, list[dict[str, str]]] = {}
         for tool_call in tool_calls:
             missing_parameters = missing_parameters_map.get(tool_call.tool_call_id, [])
             if not missing_parameters:
                 continue
             tool_definition = self._tool_registry.get(tool_call.name)
             fields_by_call[tool_call.tool_call_id] = [
-                InterruptField(
-                    name=param,
-                    description=(
+                {   
+                    "name": param,
+                    "description": (
                         tool_definition.get_parameter_description(param)
                         if tool_definition
                         else param
                     ),
-                )
+                }
                 for param in missing_parameters
             ]
         return fields_by_call

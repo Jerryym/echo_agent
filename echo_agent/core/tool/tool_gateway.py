@@ -53,7 +53,15 @@ class ToolGateWay(BaseGateWay):
         """
         过滤工具
         """
-        return [tool for tool in tools if self.authorize(tool, mode)]
+        available_tools: list[ToolDefinition] = []
+        for tool in tools:
+            try:
+                self.authorize(tool, mode)
+            except ToolAuthorizationError:
+                logger.debug("filter tool | blocked=%s mode=%s", tool.name, mode)
+                continue
+            available_tools.append(tool)
+        return available_tools
 
     
     def _authorize_ask_mode(self, tool: ToolDefinition) -> None:
