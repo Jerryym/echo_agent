@@ -1,7 +1,8 @@
 from typing import Any, Literal
 
+from langchain_core.runnables.config import RunnableConfig
 from langgraph.runtime import Runtime
-from langgraph.types import Command, RunnableConfig
+from langgraph.types import Command
 
 from .....common import get_logger
 from .....prompt import PromptLoader

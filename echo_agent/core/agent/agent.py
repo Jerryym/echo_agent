@@ -116,7 +116,7 @@ class Agent:
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, resume=False)
-        self._expire_idle_skills_for_user_turn(context)
+        self._unload_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         result = self._compiled_graph.invoke(graph_input, runnable_config, context=context)
         return self._generate_result(session_id, context, result)
@@ -135,7 +135,7 @@ class Agent:
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, resume=False)
-        self._expire_idle_skills_for_user_turn(context)
+        self._unload_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         result = await self._compiled_graph.ainvoke(graph_input, runnable_config, context=context)
         return await self._agenerate_result(session_id, context, result)
@@ -162,7 +162,7 @@ class Agent:
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=False)
-        self._expire_idle_skills_for_user_turn(context)
+        self._unload_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         return self._stream_iterator(graph_input, runnable_config, context, session_id, version)
 
@@ -181,7 +181,7 @@ class Agent:
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=False)
-        self._expire_idle_skills_for_user_turn(context)
+        self._unload_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         return self._astream_iterator(graph_input, runnable_config, context, session_id, version)
 
@@ -485,11 +485,11 @@ class Agent:
             object.__setattr__(context, "agent_result", agent_result)
         return context
 
-    def _expire_idle_skills_for_user_turn(self, context: BaseContext) -> None:
-        """按用户交互推进 skill idle；HITL resume 不调用。"""
-        discarded = SkillManager.expire_idle(context)
-        if discarded:
-            logger.info("expired idle skills (user turn): %s", discarded)
+    def _unload_idle_skills_for_user_turn(self, context: BaseContext) -> None:
+        """按用户交互推进 skill idle；HITL resume 不调用"""
+        unloaded_skills = self._skill_manager.unload_idle_skills(context)
+        if unloaded_skills:
+            logger.info("unloaded idle skills (user turn): %s", unloaded_skills)
 
     def _get_agent_state(self, session_id: str) -> AgentState:
         """

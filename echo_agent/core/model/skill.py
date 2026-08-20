@@ -108,14 +108,14 @@ class SkillRuntimeContext(BaseModel):
     Skill Runtime Context 模型: 用于描述Skill的运行时上下文
 
     参数:
-        status: 生命周期状态（UNLOADED → LOADED → DISCARDED）
-        package: Skill 包元数据
-        instruction: 已加载的指令正文（DISCARDED 后清空）
-        idle_rounds: 连续未触达的用户交互次数；达阈值后自动 discard
+        status: 生命周期状态
+        package: Skill包
+        instruction: 已加载的Skill正文（UNLOADED 后清空）
+        idle_rounds: 连续未触达的用户交互次数；达阈值后自动 UNLOADED
     """
     status: SkillStatus = Field(default=SkillStatus.UNLOADED)
-    package: SkillPackage
-    instruction: str | None = None
+    package: SkillPackage | None = None
+    instruction: str = Field(default="")
     idle_rounds: int = 0
 
 

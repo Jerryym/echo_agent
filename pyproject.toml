@@ -24,6 +24,7 @@ dev = [
     "fastmcp>=3.4.4",
     "grpcio-tools>=1.83.0",
     "microsandbox>=0.6.8",
+    "pyright>=1.1.411",
     "pyside6>=6.11.1",
 ]
 

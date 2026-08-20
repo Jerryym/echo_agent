@@ -1,10 +1,9 @@
 from langgraph.runtime import Runtime
 
 from ...common import format_value, get_logger
-from ..capability.skill import SkillManager
 from ..graph import BaseContext, BaseState, Node
 from ..model.message import Message, Role
-from ..model.tool import ToolCall, ToolResult, ToolState
+from ..model.tool import ToolResult, ToolState
 from .tool_executor import ToolExecutor
 from .utils import format_tool_content
 
@@ -40,7 +39,7 @@ class ToolNode(Node):
                 result.success,
                 format_value(result.result),
             )
-            self._touch_skills_for_tool(runtime.context, tool_call)
+            # self._touch_skills_for_tool(runtime.context, tool_call)
             tool_results.append(result)
         return self._build_result(tool_results)
 
@@ -59,17 +58,17 @@ class ToolNode(Node):
                 result.success,
                 format_value(result.result),
             )
-            self._touch_skills_for_tool(runtime.context, tool_call)
+            # self._touch_skills_for_tool(runtime.context, tool_call)
             tool_results.append(result)
         return self._build_result(tool_results)
 
-    def _touch_skills_for_tool(self, context: BaseContext, tool_call: ToolCall) -> None:
-        """执行 allowed_tools 内工具时重置对应 skill 的 idle。"""
-        definition = self._tool_executor.get_definition(tool_call.name)
-        original_name = None
-        if definition is not None:
-            original_name = definition.meta_data.get("original_name")
-        SkillManager.reset_idle_rounds_for_tool(context, tool_call.name, original_name)
+    # def _touch_skills_for_tool(self, context: BaseContext, tool_call: ToolCall) -> None:
+    #     """执行 allowed_tools 内工具时重置对应 skill 的 idle。"""
+    #     definition = self._tool_executor.get_definition(tool_call.name)
+    #     original_name = None
+    #     if definition is not None:
+    #         original_name = definition.meta_data.get("original_name")
+    #     SkillManager.reset_idle_rounds_for_tool(context, tool_call.name, original_name)
 
     def _build_result(self, tool_results: list[ToolResult]) -> dict:
         tool_messages = self._build_tool_messages(tool_results)

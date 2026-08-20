@@ -13,9 +13,9 @@ class SkillLoader:
     Skill Loader：Skill加载器, 负责将 SkillPackage 加载为 Runtime Skill
     """
     @staticmethod
-    def load(skill_package: SkillPackage, http_request: HttpRequest | None = None) -> SkillRuntimeContext:
+    def load(skill_package: SkillPackage, http_request: HttpRequest | None = None) -> str:
         """
-        将 SkillPackage 加载为 Runtime Skill
+        加载 Skill 内容
         """
         match skill_package.type:
             case SkillType.FILE:
@@ -24,12 +24,7 @@ class SkillLoader:
                 content = SkillLoader._load_http(skill_package, http_request)
             case _:
                 raise ValueError(f"Unsupported skill type: {skill_package.type}")
-
-        return SkillRuntimeContext(
-            status=SkillStatus.LOADED,
-            package=skill_package,
-            instruction=content,
-        )
+        return content
 
     @staticmethod
     def _load_file(skill_package: SkillPackage) -> str:

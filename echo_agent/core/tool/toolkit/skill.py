@@ -131,12 +131,11 @@ def create_load_skill_tool(skill_manager: SkillManager):
         if context is None:
             raise RuntimeError("Skill runtime context is not available")
 
-        skill_package = skill_manager.build_skill_package(name)
-        skill_manager.load_skill(context=context, skill_package=skill_package, http_request=runtime_config.http_request)
+        skill_context = skill_manager.load_skill(skill_name=name, context=context, http_request=runtime_config.http_request)
         resources = [
-            *skill_package.scripts,
-            *skill_package.references,
-            *skill_package.assets,
+            *skill_context.package.scripts,
+            *skill_context.package.references,
+            *skill_context.package.assets,
         ]
         if resources:
             listed = ", ".join(resources)
@@ -184,9 +183,9 @@ def create_read_skill_resource_tool(skill_manager: SkillManager):
         if context is None:
             raise RuntimeError("Skill runtime context is not available")
 
-        skill_package = skill_manager.build_skill_package(name)
+        skill_package = skill_manager.load_skill_package(name, http_request=runtime_config.http_request)
         content = await _aread_package_resource(skill_package, relative, http_request=runtime_config.http_request)
-        skill_manager.reset_idle_rounds(context, name)
+        skill_manager.reset_idle_rounds(skill_name=name, context=context)
         return content
 
     # 设置annotations
