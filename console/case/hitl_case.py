@@ -67,7 +67,7 @@ def build_hitl_agent() -> Agent:
         name="console_hitl_only",
         description="HITLSubgraph harness (no LLM)",
         llm_config=placeholder_config(),
-        mcp_allowed_directories=str(Path(__file__).resolve().parents[2]),
+        allowed_directories=str(Path(__file__).resolve().parents[2]),
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
     return Agent(agent_config, compile_options, graph)

@@ -56,7 +56,7 @@ async def _abuild_react_agent(
         name=name,
         description=name,
         llm_config=config,
-        mcp_allowed_directories=REPO_ROOT,
+        allowed_directories=REPO_ROOT,
         skill_list=skill_list or {},
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())

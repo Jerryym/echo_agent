@@ -62,7 +62,7 @@ async def build_react_skill_agent(
         name=name,
         description=name,
         llm_config=config,
-        mcp_allowed_directories=str(REPO_ROOT),
+        allowed_directories=str(REPO_ROOT),
         skill_list=skill_list if skill_list is not None else dict(DEFAULT_SKILL_LIST),
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())

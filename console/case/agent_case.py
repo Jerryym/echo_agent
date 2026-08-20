@@ -68,7 +68,7 @@ def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
         description=name,
         llm_config=config,
         system_prompt=system_prompt,
-        mcp_allowed_directories=REPO_ROOT,
+        allowed_directories=REPO_ROOT,
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
     return Agent(agent_config, compile_options, graph)
