@@ -11,21 +11,23 @@ Skill 能力单元测试（无需 LLM / 网络）
 """
 
 from __future__ import annotations
-
 import asyncio
-import warnings
 from pathlib import Path
+import warnings
 
 from echo_agent.core.capability.skill import SkillLoader, SkillManager, SkillParser
 from echo_agent.core.graph.schema import BaseContext
 from echo_agent.core.llm.llm_client import LLMClient
 from echo_agent.core.model.agent import AgentState
-from echo_agent.core.model.skill import SkillFrontmatter, SkillStatus, SkillType
+from echo_agent.core.model.skill import (
+    SkillFrontmatter,
+    SkillSource,
+    SkillStatus,
+    SkillType,
+)
 from echo_agent.core.tool.toolkit import (
     create_load_skill_tool,
     create_read_skill_resource_tool,
-    reset_skill_runtime_context,
-    set_skill_runtime_context,
 )
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "skills"
@@ -92,15 +94,15 @@ def test_allowed_tools_semantics() -> None:
 
 def test_skill_loader_and_manager() -> None:
     _print("SkillLoader / SkillManager")
-    manager = SkillManager({"pdf": str(PDF_SKILL_DIR)})
-    package = manager.build_skill_package("pdf")
+    manager = SkillManager([SkillSource(name="pdf", url=str(PDF_SKILL_DIR))])
+    package = manager.load_skill_package("pdf")
     runtime = SkillLoader.load(package)
     assert runtime.status == SkillStatus.LOADED
     assert runtime.instruction is not None
     assert "PDF" in runtime.instruction or len(runtime.instruction) > 0
 
     context = BaseContext(agent_state=AgentState(session_id="test"))
-    loaded = manager.load_skill(context, package)
+    loaded = manager.load_skill(package.name, context)
     assert "pdf" in context.active_skills
     assert manager.has_skill(context, "pdf")
     assert manager.get_skill(context, "pdf") is loaded
@@ -109,7 +111,7 @@ def test_skill_loader_and_manager() -> None:
     assert "pdf" not in context.active_skills
 
     try:
-        manager.build_skill_package("missing")
+        manager.load_skill_package("missing")
         raise AssertionError("expected missing skill to fail")
     except ValueError as exc:
         assert "Skill not found" in str(exc)
@@ -123,8 +125,8 @@ def test_active_skills_dict_identity_survives_context_rebuild() -> None:
     from echo_agent.core.strategy.react.schema import ReActContext
 
     session_skills: dict = {}
-    manager = SkillManager({"pdf": str(PDF_SKILL_DIR)})
-    package = manager.build_skill_package("pdf")
+    manager = SkillManager([SkillSource(name="pdf", url=str(PDF_SKILL_DIR))])
+    package = manager.load_skill_package("pdf")
 
     context = BaseContext(
         agent_state=AgentState(session_id="hitl-session"),
@@ -132,7 +134,7 @@ def test_active_skills_dict_identity_survives_context_rebuild() -> None:
     )
     assert context.active_skills is session_skills
 
-    manager.load_skill(context, package)
+    manager.load_skill(package.name, context)
     assert "pdf" in session_skills
     assert "pdf" in context.active_skills
 
@@ -161,7 +163,7 @@ def test_active_skills_dict_identity_survives_context_rebuild() -> None:
 async def test_load_and_read_tools() -> None:
     _print("load_skill / read_skill_resource")
 
-    manager = SkillManager({"pdf": str(PDF_SKILL_DIR)})
+    manager = SkillManager([SkillSource(name="pdf", url=str(PDF_SKILL_DIR))])
     load_skill = create_load_skill_tool(manager)
     read_skill_resource = create_read_skill_resource_tool(manager)
 

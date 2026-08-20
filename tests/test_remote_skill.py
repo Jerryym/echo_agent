@@ -312,7 +312,7 @@ def test_aread_http_undeclared_path() -> None:
 
 def test_manager_remote_skills() -> None:
     _print("SkillManager with remote skills")
-    skill_list = {name: _base_url(name) for name in REMOTE_SKILL_NAMES}
+    skill_list = [SkillSource(name=name, url=_base_url(name)) for name in REMOTE_SKILL_NAMES]
 
     def fake_get_response(url: str, _response_type: object, **_kwargs: object) -> HttpResponse[dict]:
         for name in REMOTE_SKILL_NAMES:

@@ -29,6 +29,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
 from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.model.agent import AgentResources, AgentState
+from echo_agent.core.model.skill import SkillSource
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.strategy.react.node import ActionNode
 from echo_agent.core.strategy.react.schema import ReActContext
@@ -43,7 +44,7 @@ warnings.filterwarnings(
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "skills"
 PDF_SKILL_DIR = FIXTURES / "pdf"
-DEFAULT_SKILL_LIST = {"pdf": str(PDF_SKILL_DIR)}
+DEFAULT_SKILL_LIST = [SkillSource(name="pdf", url=str(PDF_SKILL_DIR))]
 
 
 class State(BaseState):
@@ -121,7 +122,7 @@ async def test_react_skill_empty_list() -> None:
     agent, registry = await build_react_skill_agent(
         "react_skill_empty",
         _dummy_llm_config(),
-        skill_list={},
+        skill_list=[],
     )
     assert agent._agent_config.skill_list == {}
     # 内置工具仍必有

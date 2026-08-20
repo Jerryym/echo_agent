@@ -59,7 +59,7 @@ def test_agent_config_from_proto_basic():
     assert config.llm_config.max_tokens == 256
     assert config.llm_config.extra_body == {"enable_thinking": True}
     assert config.llm_config.builtin_tools == [{"type": "web_search"}]
-    assert config.skill_list == {"pdf": "/tmp/pdf"}
+    assert config.skill_list == [SkillSource(name="pdf", url="/tmp/pdf")]
     assert config.mcp_allowed_directories == "/tmp"
     remote = next(s for s in config.mcp_servers if s.name == "remote")
     assert remote.type == "http"

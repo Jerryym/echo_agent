@@ -1,10 +1,11 @@
-from typing import Any, Self
+from typing import Mapping, Self, Sequence
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..llm.llm_config import LLMConfig
 from ..mcp import MCPConnectionConfig, builtin_mcp_servers
 from ..model.agent import AgentMode
+from ..model.skill import SkillSource
 
 
 class AgentConfig(BaseModel):
@@ -34,7 +35,7 @@ class AgentConfig(BaseModel):
     mode: list[AgentMode] = Field(default_factory=lambda: [AgentMode.AGENT])
 
     kb_list: list[str] = Field(default_factory=list)
-    skill_list: dict[str, Any] = Field(default_factory=dict)
+    skill_list: list[SkillSource] = Field(default_factory=list)
 
     mcp_allowed_directories: str | list[str] | None = None
     mcp_servers: list[MCPConnectionConfig] = Field(default_factory=list)
@@ -43,6 +44,18 @@ class AgentConfig(BaseModel):
     enable_builtin_filesystem: bool = False
 
     conversation_max_tokens: int = 128000
+
+    @field_validator("skill_list", mode="before")
+    @classmethod
+    def _coerce_skill_list(cls, value: Mapping[str, str] | Sequence[SkillSource] | Sequence[Mapping[str, str]] | None) -> list[SkillSource]:
+        if value is None:
+            return []
+        if isinstance(value, Mapping):
+            return [SkillSource(name=name, url=url) for name, url in value.items()]
+        return [
+            item if isinstance(item, SkillSource) else SkillSource.model_validate(item)
+            for item in value
+        ]
 
     @model_validator(mode="after")
     def _merge_builtin_mcp(self) -> Self:
