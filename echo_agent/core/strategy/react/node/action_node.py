@@ -51,6 +51,10 @@ class ActionNode(Node):
 
         runtime_config = RuntimeConfig.get_runtime_config()
         bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode)
+        # 若available_tools为空，返回blocked
+        if not available_tools:
+            return self._handle_blocked([], state)
+
         response = self._llm_client.invoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
@@ -74,6 +78,10 @@ class ActionNode(Node):
 
         runtime_config = RuntimeConfig.get_runtime_config()
         bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode)
+        # 若available_tools为空，返回blocked
+        if not available_tools:
+            return self._handle_blocked([], state)
+
         response = await self._llm_client.ainvoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},

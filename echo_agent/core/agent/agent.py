@@ -22,7 +22,7 @@ from ..runtime.algorithm import (
     maybe_compress_conversation,
 )
 from ..tool import ToolDefinition, ToolRegistry
-from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_tool, create_knowledge_base_query_tool
+from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_tool, create_knowledge_base_query_tool, create_read_file_tool, create_write_file_tool
 from ..tool.utils import to_tool_definition
 from .agent_config import AgentConfig
 
@@ -411,10 +411,14 @@ class Agent:
         load_skill = create_load_skill_tool(self._skill_manager)
         read_skill = create_read_skill_resource_tool(self._skill_manager)
         # knowledge_base_query = create_knowledge_base_query_tool()
+        read_file = create_read_file_tool(self._agent_config.allowed_directories)
+        write_file = create_write_file_tool(self._agent_config.allowed_directories)
 
         self._tool_registry.register(to_tool_definition(load_skill), load_skill)
         self._tool_registry.register(to_tool_definition(read_skill), read_skill)
         #self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)
+        self._tool_registry.register(to_tool_definition(read_file), read_file)
+        self._tool_registry.register(to_tool_definition(write_file), write_file)
 
     async def register_mcp_tools(self) -> list[ToolDefinition]:
         """组装期异步注册 MCP 工具（写入 Agent 持有的同一 registry）。"""

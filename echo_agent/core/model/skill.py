@@ -21,6 +21,18 @@ class SkillStatus(Enum):
     DISCARDED = "discarded"  # 废弃
 
 
+class SkillSource(BaseModel):
+    """
+    Skill Source: 描述Skill来源
+
+    参数:
+        name: Skill名称
+        url: 地址(本地文件路径、远端url地址)
+    """
+    name: str
+    url: str
+
+
 class SkillFrontmatter(BaseModel):
     """
     Skill Frontmatter 模型: 用于描述SKILL.md中的 YAML frontmatter

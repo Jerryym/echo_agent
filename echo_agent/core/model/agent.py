@@ -1,10 +1,9 @@
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, Field
 
 from .conversation import ConversationState
-from .skill import SkillFrontmatter
+from .skill import SkillFrontmatter, SkillSource
 from .token_usage import TokenUsage
 
 
@@ -19,7 +18,7 @@ class AgentResources(BaseModel):
         kb_list: 知识库列表
     """
     system_prompt: str | None = None
-    skill_list: dict[str, Any] | None = Field(default_factory=dict)
+    skill_list: list[SkillSource] | None = Field(default_factory=list)
     skill_frontmatter_list: dict[str, SkillFrontmatter] | None = Field(default_factory=dict)
     kb_list: list[str] = Field(default_factory=list)
 
@@ -60,7 +59,7 @@ class AgentResult(BaseModel):
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
     def apply_llm_result(self, content: str, token_usage: TokenUsage) -> None:
-        """将一次 LLM 调用的思考内容与词元用量写入本轮 AgentResult。"""
+        """将一次 LLM 调用的思考内容与词元用量写入本轮 AgentResult"""
         self.token_usage = self.token_usage.add(token_usage)
         if content:
             self.reasoning.append(content)

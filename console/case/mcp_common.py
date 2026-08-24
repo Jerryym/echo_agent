@@ -103,7 +103,7 @@ async def _abuild_react_mcp_agent(
         name=name,
         description=name,
         llm_config=llm_config,
-        mcp_allowed_directories=REPO_ROOT,
+        allowed_directories=REPO_ROOT,
         mcp_servers=list(MCP_SERVERS),
         enable_builtin_fetch=True,
         enable_builtin_filesystem=True,

@@ -1,10 +1,11 @@
-from typing import Any, Self
+from typing import Mapping, Self, Sequence
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..llm.llm_config import LLMConfig
 from ..mcp import MCPConnectionConfig, builtin_mcp_servers
 from ..model.agent import AgentMode
+from ..model.skill import SkillSource
 
 
 class AgentConfig(BaseModel):
@@ -19,7 +20,7 @@ class AgentConfig(BaseModel):
         mode: Agent 运行模式
         kb_list: 知识库列表
         skill_list: 技能列表
-        mcp_allowed_directories: 内置 Filesystem 允许访问的目录；
+        allowed_directories: 允许访问的目录；
             仅当 enable_builtin_filesystem=True 时必填
         mcp_servers: 额外 MCP Server 连接配置；同名覆盖内置，其余追加
         enable_builtin_fetch: 是否合并内置 Fetch MCP（默认关闭）
@@ -34,9 +35,9 @@ class AgentConfig(BaseModel):
     mode: list[AgentMode] = Field(default_factory=lambda: [AgentMode.AGENT])
 
     kb_list: list[str] = Field(default_factory=list)
-    skill_list: dict[str, Any] = Field(default_factory=dict)
+    skill_list: list[SkillSource] = Field(default_factory=list)
 
-    mcp_allowed_directories: str | list[str] | None = None
+    allowed_directories: str | list[str] | None = None
     mcp_servers: list[MCPConnectionConfig] = Field(default_factory=list)
 
     enable_builtin_fetch: bool = False
@@ -44,10 +45,22 @@ class AgentConfig(BaseModel):
 
     conversation_max_tokens: int = 128000
 
+    @field_validator("skill_list", mode="before")
+    @classmethod
+    def _coerce_skill_list(cls, value: Mapping[str, str] | Sequence[SkillSource] | Sequence[Mapping[str, str]] | None) -> list[SkillSource]:
+        if value is None:
+            return []
+        if isinstance(value, Mapping):
+            return [SkillSource(name=name, url=url) for name, url in value.items()]
+        return [
+            item if isinstance(item, SkillSource) else SkillSource.model_validate(item)
+            for item in value
+        ]
+
     @model_validator(mode="after")
     def _merge_builtin_mcp(self) -> Self:
         if self.enable_builtin_filesystem:
-            dirs = self.mcp_allowed_directories
+            dirs = self.allowed_directories
             if dirs is None or (isinstance(dirs, str) and not dirs.strip()) or (
                 isinstance(dirs, list) and not dirs
             ):
@@ -57,7 +70,7 @@ class AgentConfig(BaseModel):
                 )
 
         builtin_list = builtin_mcp_servers(
-            allowed_directories=self.mcp_allowed_directories or [],
+            allowed_directories=self.allowed_directories or [],
             enable_fetch=self.enable_builtin_fetch,
             enable_filesystem=self.enable_builtin_filesystem,
         )
