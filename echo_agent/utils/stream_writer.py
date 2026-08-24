@@ -22,8 +22,10 @@ def _emit_agent_result_update() -> None:
         writer = get_stream_writer()
     except Exception:
         return
+
     if writer is None:
         return
+
     try:
         writer({"type": "agent_result"})
     except Exception:

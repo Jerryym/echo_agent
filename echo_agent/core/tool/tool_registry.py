@@ -28,6 +28,10 @@ class ToolRegistry:
 
     def get_tools(self) -> list[dict[str, Any]]:
         return to_openai_tool_json_schema(self.list_definitions())
+
+    def get_tool_names(self) -> list[str]:
+        """获取所有工具名称"""
+        return list(self._tools.keys())
     
     def get(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)
@@ -42,3 +46,23 @@ class ToolRegistry:
         return [
             tool for tool in self._tools.values() if tool.name in DEFAULT_TOOLS
         ]
+
+    def resolve_tools(self, tool_names: list[str]) -> list[ToolDefinition]:
+        """根据工具名称列表解析工具定义列表"""
+        results: list[ToolDefinition] = []
+
+        for name in tool_names:
+            definition = self.get(name)
+            if definition is None:
+                definition = self._find_tool_by_original_name(name)
+            if definition is not None:
+                results.append(definition)
+                
+        return results
+
+    def _find_tool_by_original_name(self, original_name: str) -> ToolDefinition | None:
+        """根据原始名称查找工具定义（主要用于MCP工具）"""
+        for definition in self.list_definitions():
+            if definition.meta_data.get("original_name") == original_name:
+                return definition
+        return None

@@ -41,7 +41,7 @@ class ReActStrategy(BaseStrategy):
         )
 
         # 定义节点
-        reason_node = ReasonNode(name="reason", llm_config=self._llm_config)
+        reason_node = ReasonNode(name="reason", llm_config=self._llm_config, tool_registry=self._tool_registry)
         action_node = ActionNode(
             name="action",
             llm_config=self._llm_config,

@@ -14,6 +14,7 @@ from ....runtime.runtime_config import RuntimeConfig
 from .....utils import update_agent_result
 from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState
+from ....tool import ToolRegistry
 
 logger = get_logger("react.reason")
 
@@ -24,7 +25,8 @@ class ReasonStructuredOutput(BaseModel):
 
     参数:
         thought: 思考结果，面向调试和可观测性的思考过程
-        reasoning: 推理结果，面向 Action 节点的推理结果，用于指导下一步能力选择，不包含工具信息
+        reasoning: 执行推理结果，用于指导下一步执行
+        tool_list: 下一步执行所需的工具名称列表
         task_status: 任务状态，用于驱动 ReAct 流程
     """
     thought: str = Field(
@@ -37,26 +39,35 @@ class ReasonStructuredOutput(BaseModel):
     )
     reasoning: str = Field(
         description=(
-            "A structured execution-oriented reasoning result describing what "
-            "capability or operation should be performed next. This output will "
-            "be consumed by the Action node for capability and tool selection. "
-            "Do not mention tool names, implementation details, or specific "
-            "tool parameters."
+            "A structured execution-oriented reasoning result describing the "
+            "operation or capability that should be performed next. This output "
+            "will be consumed by the Action node to generate tool calls. "
+            "Do not include tool names, tool parameters, or tool call arguments."
+        )
+    )
+    tool_list: list[str] = Field(
+        default_factory=list,
+        description=(
+            "A list of tool names required for the next execution step. "
+            "Only select names from the available tool name list. "
+            "This field represents required capabilities, not final tool calls. "
+            "Do not include parameters."
         )
     )
     task_status: Literal["in_progress", "completed"] = Field(
         description=(
             "Reason-owned lifecycle signal only. "
             "Allowed values: 'in_progress' | 'completed'. "
-            "Do NOT output human_in_the_loop, no_tool_calls, invalid_tools, cancelled, or failed "
-            "(those are set by Action/runtime). "
-            "'in_progress': the user objective is not yet achieved; further execution "
-            "is required. Put the next required capability in 'reasoning'. "
-            "'completed': the user objective has been achieved AND confirmed by "
-            "existing observations (tool results). "
-            "If there are no confirming observations, you MUST use 'in_progress' "
-            "even when a conversational reply seems sufficient—Final, not Reason, "
-            "produces the user-facing answer. "
+            "Do NOT output human_in_the_loop, no_tool_calls, invalid_tools, "
+            "cancelled, or failed (those are set by Action/runtime). "
+            "'in_progress': the user objective is not yet achieved; further "
+            "execution is required. Put the next required operation in "
+            "'reasoning' and identify the required tools in 'tool_list'. "
+            "'completed': the user objective has been achieved AND confirmed "
+            "by existing observations (tool results). "
+            "If there are no confirming observations, you MUST use "
+            "'in_progress' even when a conversational reply seems sufficient—"
+            "Final, not Reason, produces the user-facing answer. "
             "Never mark 'completed' because Action produced no tool calls; "
             "that signal is handled by runtime status, not by this field."
         )
@@ -75,10 +86,11 @@ class ReasonNode(Node):
         5. 根据任务状态、执行步数和重试次数决定下一节点
         6. 将当前 ReAct Loop 的 Observation 累积到 ReActState
     """
-    def __init__(self, name: str, llm_config: LLMConfig):
+    def __init__(self, name: str, llm_config: LLMConfig, tool_registry: ToolRegistry):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
+        self._tool_registry = tool_registry
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
@@ -88,27 +100,30 @@ class ReasonNode(Node):
 
         # 构建Observation
         observation_list = self._build_observations(state)
-        # 构建历史记录
-        history = self._build_history(state, runtime.context)
-        log_messages(logger, "reason", history)
 
         # 如果任务状态为取消、失败或阻塞，则直接返回
         if state.task_status in ("cancelled", "failed", "blocked"):
             return self._router(state, runtime.context, {
                 "task_status": state.task_status,
                 "observations": observation_list,
+                "tool_list": [],
             })
+        
         # 检查工具执行失败
         if self._has_tool_error(state):
             return self._handle_tool_error(state, runtime.context, observation_list)
 
         # 构建输入
         input = self._build_input(state, observation_list)
+        # 构建历史记录
+        history = self._build_history(state, runtime.context)
+        log_messages(logger, "reason", history)
         # 调用llm-结构化输出
         response = self._llm_client.invoke_structured(
             prompt=self._prompt,
             user_input=input,
             history=history,
+            tool_name_list=self._tool_registry.get_tool_names(),
             schema=ReasonStructuredOutput,
             context=runtime.context,
             agent_resources=runtime.context.resources,
@@ -118,7 +133,7 @@ class ReasonNode(Node):
         
         # 更新AgentResult
         update_agent_result(runtime.context, result.reasoning, response.token_usage)
-        logger.info("thought=%s reasoning=%s task_status=%s", result.thought, result.reasoning, result.task_status)
+        logger.info("thought=%s reasoning=%s tool_list=%s task_status=%s", result.thought, result.reasoning, result.tool_list, result.task_status)
 
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
@@ -131,27 +146,30 @@ class ReasonNode(Node):
 
         # 构建Observation
         observation_list = self._build_observations(state)
-        # 构建历史记录
-        history = self._build_history(state, runtime.context)
-        log_messages(logger, "reason", history)
-
-        # 如果任务状态为取消或失败，则直接返回
-        if state.task_status in ("cancelled", "failed"):
+        
+       # 如果任务状态为取消、失败或阻塞，则直接返回
+        if state.task_status in ("cancelled", "failed", "blocked"):
             return self._router(state, runtime.context, {
                 "task_status": state.task_status,
                 "observations": observation_list,
+                "tool_list": [],
             })
+        
         # 检查工具执行失败
         if self._has_tool_error(state):
             return self._handle_tool_error(state, runtime.context, observation_list)
 
         # 构建输入
         input = self._build_input(state, observation_list)
+        # 构建历史记录
+        history = self._build_history(state, runtime.context)
+        log_messages(logger, "reason", history)
         # 调用llm-结构化输出
         response = await self._llm_client.ainvoke_structured(
             prompt=self._prompt,
             user_input=input,
             history=history,
+            tool_name_list=self._tool_registry.get_tool_names(),
             schema=ReasonStructuredOutput,
             context=runtime.context,
             agent_resources=runtime.context.resources,
@@ -161,7 +179,7 @@ class ReasonNode(Node):
 
         # 更新AgentResult
         update_agent_result(runtime.context, result.reasoning, response.token_usage)
-        logger.info("thought=%s reasoning=%s task_status=%s", result.thought, result.reasoning, result.task_status)
+        logger.info("thought=%s reasoning=%s tool_list=%s task_status=%s", result.thought, result.reasoning, result.tool_list, result.task_status)
 
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
@@ -241,6 +259,7 @@ class ReasonNode(Node):
             "step_count": state.step_count + 1,
             "tool_state": ToolState(tool_calls=[], tool_results=[]), # 清空工具调用和执行结果
             "observations": observation_list, # 包含工具执行失败的结果
+            "tool_list": [],
         }
         return self._router(state, context, result)
 
@@ -252,6 +271,7 @@ class ReasonNode(Node):
             "task_status": response.task_status,
             "reasoning": response.reasoning,
             "observations": observation_list, # 更新observations
+            "tool_list": response.tool_list,
         }
 
         # 非法工具时，清空工具状态

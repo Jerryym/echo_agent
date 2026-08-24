@@ -28,6 +28,7 @@ class ReActState(BaseState):
         task: 任务
         conversation: 对话上下文
         reasoning: 推理结果
+        tool_list: 工具列表, 用于指导ActionNode节点绑定工具
         task_status: 任务状态
             in_progress: 进行中
             human_in_the_loop: 需要人类干预
@@ -45,6 +46,7 @@ class ReActState(BaseState):
     task: StrategyTask = Field(default_factory=StrategyTask)
     conversation: list[Message] = Field(default_factory=list)
     reasoning: str = ""
+    tool_list: list[str] = Field(default_factory=list)
     task_status: Literal[
         "in_progress", 
         "human_in_the_loop", 

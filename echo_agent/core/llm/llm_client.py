@@ -52,6 +52,7 @@ class LLMClient:
         prompt: str, 
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
+        tool_name_list: Optional[list[str]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
@@ -64,6 +65,7 @@ class LLMClient:
             prompt: 提示语
             user_input: 用户输入
             history: 历史记录
+            tool_name_list: 工具名称列表
             tool_list: 工具列表
             context: Runtime Context（含 active_skills）
             agent_resources: Agent 静态资源（system_prompt / skill_list；可空）
@@ -75,6 +77,7 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 context=context,
                 agent_resources=agent_resources,
@@ -95,6 +98,7 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
+        tool_name_list: Optional[list[str]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
@@ -118,6 +122,7 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 context=context,
                 agent_resources=agent_resources,
@@ -139,6 +144,7 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
+        tool_name_list: Optional[list[str]] = None,
         *,
         method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
         strict: bool | None = None,
@@ -156,6 +162,7 @@ class LLMClient:
             prompt: 提示语
             user_input: 用户输入
             history: 历史记录
+            tool_name_list: 工具名称列表
             method: 结构化输出方式
             strict: 是否严格匹配 schema
             context: Runtime Context（含 active_skills）
@@ -168,6 +175,7 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
                 context=context,
                 agent_resources=agent_resources,
             )
@@ -196,6 +204,7 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
+        tool_name_list: Optional[list[str]] = None,
         *,
         method: Literal["json_schema", "function_calling", "json_mode"] = "json_schema",
         strict: bool | None = None,
@@ -213,6 +222,7 @@ class LLMClient:
             prompt: 提示语
             user_input: 用户输入
             history: 历史记录
+            tool_name_list: 工具名称列表
             method: 结构化输出方式
             strict: 是否严格匹配 schema
             context: Runtime Context（含 active_skills）
@@ -225,6 +235,7 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
                 context=context,
                 agent_resources=agent_resources,
             )
@@ -251,6 +262,7 @@ class LLMClient:
         self, prompt: str, 
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
+        tool_name_list: Optional[list[str]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
@@ -274,6 +286,7 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 context=context,
                 agent_resources=agent_resources,
@@ -296,6 +309,7 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
+        tool_name_list: Optional[list[str]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
@@ -308,6 +322,7 @@ class LLMClient:
             prompt: 提示语
             user_input: 用户输入
             history: 历史记录
+            tool_name_list: 工具名称列表
             tool_list: 工具列表
             context: Runtime Context（含 active_skills）
             agent_resources: Agent 静态资源（system_prompt / skill_list；可空）
@@ -319,6 +334,7 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 context=context,
                 agent_resources=agent_resources,
@@ -396,6 +412,7 @@ class LLMClient:
         prompt: str, 
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
+        tool_name_list: Optional[list[str]] = None,
         tool_list: Optional[list[dict[str, Any]]] = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
@@ -408,6 +425,7 @@ class LLMClient:
         # 添加系统提示词（含 Runtime Context 注入的 Loaded Skills，不写入 history）
         system_prompt = self._build_prompt(
             prompt,
+            tool_name_list=tool_name_list,
             tool_list=tool_list,
             context=context,
             agent_resources=agent_resources,
@@ -428,6 +446,7 @@ class LLMClient:
     def _build_prompt(
         self,
         prompt: str,
+        tool_name_list: list[str] | None = None,
         tool_list: list[dict[str, Any]] | None = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
@@ -440,6 +459,7 @@ class LLMClient:
                 agent_prompt=agent_resources.system_prompt if agent_resources else None,
                 system_prompt=prompt,
                 agent_mode=runtime_config.agent_mode,
+                tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 skill_frontmatter_list=agent_resources.skill_frontmatter_list if agent_resources else None,
                 active_skills=context.active_skills if context else None,

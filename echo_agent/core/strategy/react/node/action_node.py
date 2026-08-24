@@ -28,11 +28,10 @@ class ActionNode(Node):
     Action Node：动作节点
 
     节点职责：
-        1. 工具选择
-        2. 工具参数生成
+        1. 根据 Reason 节点的 tool_list 确定本次工具范围
+        2. 生成工具调用及工具参数
         3. 工具参数校验
-        4. 工具执行
-        5. HITL 交互处理
+        4. HITL 交互处理
     """
     def __init__(self, name: str, llm_config: LLMConfig, tool_registry: ToolRegistry):
         super().__init__(name)
@@ -51,18 +50,18 @@ class ActionNode(Node):
             return self._handle_hitl(state)
 
         runtime_config = RuntimeConfig.get_runtime_config()
-        available_tools = self._available_tools(runtime.context, runtime_config.agent_mode)
+        bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode)
         response = self._llm_client.invoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
             history=self._build_history(state, runtime.context),
-            tool_list=to_openai_tool_json_schema(available_tools),
+            tool_list=to_openai_tool_json_schema(bound_tools),
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
-        return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, available_tools)
+        return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, bound_tools)
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
         """
@@ -74,38 +73,38 @@ class ActionNode(Node):
             return self._handle_hitl(state)
 
         runtime_config = RuntimeConfig.get_runtime_config()
-        available_tools = self._available_tools(runtime.context, runtime_config.agent_mode)
+        bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode)
         response = await self._llm_client.ainvoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
             history=self._build_history(state, runtime.context),
-            tool_list=to_openai_tool_json_schema(available_tools),
+            tool_list=to_openai_tool_json_schema(bound_tools),
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
-        return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, available_tools)
+        return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, bound_tools)
 
-    def _route_after_tool_selection(self, state: ReActState, agent_mode: AgentMode, tool_calls: list[ToolCall] | None, available_tools: list[ToolDefinition]) -> Command:
+    def _route_after_tool_selection(self, state: ReActState, agent_mode: AgentMode, tool_calls: list[ToolCall] | None, bound_tools: list[ToolDefinition]) -> Command:
         if not tool_calls:
             return self._handle_no_tool_calls(state)
 
         # 判断是否存在非法工具
-        invalid_names = self._get_invalid_tools(tool_calls, available_tools)
+        invalid_names = self._get_invalid_tools(tool_calls, bound_tools)
         if invalid_names:
             logger.warning(
                 "invalid_tools selected=%s invalid=%s available=%s",
                 [tc.name for tc in tool_calls],
                 invalid_names,
-                [tool.name for tool in available_tools],
+                [tool.name for tool in bound_tools],
             )
             invalid_tools = [tc for tc in tool_calls if tc.name in invalid_names]
             return self._handle_invalid_tools(invalid_tools, state)
 
         # 检查工具权限
         for tool_call in tool_calls:
-            if self._authorize_tool(available_tools, tool_call, agent_mode) is False:
+            if self._authorize_tool(bound_tools, tool_call, agent_mode) is False:
                 logger.warning(
                     "tool_call blocked=%s tool=%s",
                     tool_call.name,
@@ -387,7 +386,7 @@ class ActionNode(Node):
             return tool_list
 
         default_names = {tool.name for tool in default_tools}
-        available_tools = [
+        bound_tools = [
             tool
             for tool in tool_list
             if tool.name not in default_names
@@ -397,29 +396,22 @@ class ActionNode(Node):
             )
         ]
         # 根据 AgentMode 过滤工具
-        return self._tool_gateway.filter([*default_tools, *available_tools], agent_mode)
+        return self._tool_gateway.filter([*default_tools, *bound_tools], agent_mode)
 
-    def _get_invalid_tools(self, tool_calls: list[ToolCall], available_tools: list[ToolDefinition] | None = None) -> list[str]:
+    def _get_invalid_tools(self, tool_calls: list[ToolCall], bound_tools: list[ToolDefinition] | None = None) -> list[str]:
         """
         获取非法工具
         """
-        valid_names = self._valid_tool_names(available_tools)
+        valid_names = self._valid_tool_names(bound_tools)
         return [
             tc.name
             for tc in tool_calls
             if tc.name not in valid_names
         ]
 
-    def _valid_tool_names(self, available_tools: list[ToolDefinition] | None = None) -> set[str]:
-        """
-        获取合法工具名称列表
-        """
-        tools = (
-            available_tools
-            if available_tools is not None
-            else self._tool_registry.list_definitions()
-        )
-        return {tool.name for tool in tools}
+    def _valid_tool_names(self, bound_tools: list[ToolDefinition] | None = None) -> set[str]:
+        """获取合法工具名称列表"""
+        return {tool.name for tool in bound_tools}
 
     def _build_fields(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> dict[str, list[dict[str, str]]]:
         """
@@ -512,3 +504,23 @@ class ActionNode(Node):
                 return True
 
         return False
+
+    def _resolve_tools(self, state: ReActState, context: ReActContext, agent_mode: AgentMode) -> list[ToolDefinition]:
+        """"根据reasonnode生成的tool_list，解析出可用的工具列表"""
+        tool_names = set(state.tool_list)
+
+        # 获取active skill中的可用工具
+        for skill in context.active_skills.values():
+            if skill.status != SkillStatus.LOADED:
+                continue
+            allowed_tools= skill.package.frontmatter.allowed_tools
+            if allowed_tools:
+                tool_names.update(allowed_tools)
+
+        if not tool_names:
+            return []
+
+        tools = self._tool_registry.resolve_tools(list(tool_names))
+
+        # 根据 AgentMode 过滤工具
+        return self._tool_gateway.filter(tools, agent_mode)
