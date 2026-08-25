@@ -1,7 +1,8 @@
 from langgraph.runtime import Runtime
 
 from ....common import get_logger
-from ...graph import BaseContext, BaseState, Node, START_NODE, END_NODE, SubGraph
+from ....utils import MessageAdapter
+from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE
 from ...llm import LLMConfig
 from ...model.input import UserInput
 from ...model.message import Message, Role
@@ -12,6 +13,7 @@ from ..strategy import BaseStrategy
 from ..strategy_task import StrategyTask
 from .node import ActionNode, FinalNode, ReasonNode
 from .schema import ReActContext, ReActInput, ReActOutput, ReActState
+
 
 logger = get_logger("react")
 
@@ -79,12 +81,21 @@ class ReActStrategy(BaseStrategy):
         将 Parent State 映射为 Strategy Input
         """
         # 构建Task
-        text = state.input.text if isinstance(state.input, UserInput) else str(state.input or "")
+        if isinstance(state.input, UserInput):
+            text = state.input.text
+            attachments = list(state.input.attachments)
+            user_content = MessageAdapter.to_human_message(state.input).content
+        else:
+            text = str(state.input or "")
+            attachments = []
+            user_content = text
         task = StrategyTask(
             name="react",
             description=text,
             goal=text,
+            attachments=attachments,
         )
+        logger.info("to_strategy_input | task=%s, user_content=%s", task, user_content)
 
         # 构建Conversation
         conversation = context.agent_state.conversation if context else None
@@ -96,7 +107,7 @@ class ReActStrategy(BaseStrategy):
         logger.info("to_strategy_input | task=%s, messages=%s", task, len(view))
 
         # 增加User Input
-        view.append(Message(role=Role.USER, content=text))
+        view.append(Message(role=Role.USER, content=user_content))
         
         return ReActInput(
             task=task,

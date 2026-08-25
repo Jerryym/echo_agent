@@ -187,11 +187,14 @@ def agent_config_from_fields(
     return AgentConfig(**kwargs)
 
 
-def attachment_from_fields(*, type: str, data: str) -> Attachment:
+def attachment_from_fields(*, type: str, format: str, data: str) -> Attachment:
     att_type = (type or "").strip()
     if att_type not in ("image", "audio", "file"):
         raise ValueError(f"unsupported attachment type: {att_type!r}")
-    return Attachment(type=att_type, data=data)  # type: ignore[arg-type]
+    att_format = (format or "").strip()
+    if att_format not in ("base64", "url"):
+        raise ValueError(f"unsupported attachment format: {att_format!r}")
+    return Attachment(type=att_type, format=att_format, data=data)
 
 
 def user_input_from_fields(

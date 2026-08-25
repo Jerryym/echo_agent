@@ -11,6 +11,7 @@ from echo_agent.adapter.grpc.convert_grpc import (
     agent_config_from_proto,
     agent_event_to_proto,
     agent_response_to_proto,
+    attachment_from_proto,
     runtime_options_from_proto,
     user_input_from_proto,
 )
@@ -157,11 +158,14 @@ def test_user_input_and_response_events():
     user = user_input_from_proto(
         pb.UserInput(
             text="hello",
-            attachments=[pb.Attachment(type="file", data="https://x/a.pdf")],
+            attachments=[
+                pb.Attachment(type="file", format="url", data="https://x/a.pdf")
+            ],
         )
     )
     assert user.text == "hello"
     assert user.attachments[0].type == "file"
+    assert user.attachments[0].format == "url"
 
     resp = agent_response_to_proto(
         output="ok",
@@ -174,6 +178,14 @@ def test_user_input_and_response_events():
     event = agent_event_to_proto("message", {"role": "assistant", "content": "hi"})
     assert event.type == "message"
     assert json.loads(event.data.decode("utf-8"))["content"] == "hi"
+
+
+def test_attachment_from_proto_rejects_invalid_format():
+    try:
+        attachment_from_proto(pb.Attachment(type="file", data="https://x/a.pdf"))
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "format" in str(exc)
 
 
 def test_runtime_options_from_proto():

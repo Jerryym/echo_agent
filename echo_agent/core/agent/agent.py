@@ -22,7 +22,21 @@ from ..runtime.algorithm import (
     maybe_compress_conversation,
 )
 from ..tool import ToolDefinition, ToolRegistry
-from ..tool.toolkit import create_load_skill_tool, create_read_skill_resource_tool, create_knowledge_base_query_tool, create_read_file_tool, create_write_file_tool
+from ..tool.toolkit import (
+    create_directory_tool,
+    create_edit_file_tool,
+    create_knowledge_base_query_tool,
+    create_list_directory_tool,
+    create_load_skill_tool,
+    create_read_file_tool,
+    create_read_skill_resource_tool,
+    create_search_files_tool,
+    create_write_file_tool,
+    create_read_xls_tool,
+    create_write_xls_tool,
+    create_read_xlsx_tool,
+    create_write_xlsx_tool,
+)
 from ..tool.utils import to_tool_definition
 from .agent_config import AgentConfig
 
@@ -59,6 +73,7 @@ class Agent:
             if agent_config.mcp_servers
             else None
         )
+
         self._agent_state_map: dict[str, AgentState] = {} # 会话ID -> 智能体状态
         self._active_skills_map: dict[str, dict[str, SkillRuntimeContext]] = {}
         self._pending_inputs: dict[str, UserInput | type[BaseInput]] = {}
@@ -76,22 +91,22 @@ class Agent:
 # region 属性
     @property
     def mcp_client(self) -> MCPClient | None:
-        """Agent 持有的 MCPClient；mcp_servers 为空时为 None。"""
+        """MCPClient"""
         return self._mcp_client
 
     @property
     def tool_registry(self) -> ToolRegistry:
-        """Agent 持有的工具注册表（内置 toolkit + MCP 共用）。"""
+        """工具注册表"""
         return self._tool_registry
 
     @property
     def skill_manager(self) -> SkillManager:
-        """Agent 持有的 Skill 管理器。"""
+        """Skill 管理器"""
         return self._skill_manager
 
     @property
     def agent_results(self) -> dict[str, list[AgentResult]]:
-        """Agent 已完成轮次的执行结果。"""
+        """Agent Result"""
         return self._agent_results
 # endregion
 
@@ -401,27 +416,45 @@ class Agent:
         )
 
     def _register_tools(self) -> None:
-        """
-        注册工具。
-        """
+        """注册工具"""
         self._register_builtin_toolkit()
 
     def _register_builtin_toolkit(self) -> None:
         """注册内部工具"""
+        # 能力工具
         load_skill = create_load_skill_tool(self._skill_manager)
         read_skill = create_read_skill_resource_tool(self._skill_manager)
         # knowledge_base_query = create_knowledge_base_query_tool()
-        read_file = create_read_file_tool(self._agent_config.allowed_directories)
-        write_file = create_write_file_tool(self._agent_config.allowed_directories)
-
         self._tool_registry.register(to_tool_definition(load_skill), load_skill)
         self._tool_registry.register(to_tool_definition(read_skill), read_skill)
-        #self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)
+        # self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)
+
+        # 读写文件
+        read_file = create_read_file_tool()
+        write_file = create_write_file_tool()
+        edit_file = create_edit_file_tool()
+        search_files = create_search_files_tool()
+        list_directory = create_list_directory_tool()
+        create_directory = create_directory_tool()
         self._tool_registry.register(to_tool_definition(read_file), read_file)
         self._tool_registry.register(to_tool_definition(write_file), write_file)
+        self._tool_registry.register(to_tool_definition(edit_file), edit_file)
+        self._tool_registry.register(to_tool_definition(search_files), search_files)
+        self._tool_registry.register(to_tool_definition(list_directory), list_directory)
+        self._tool_registry.register(to_tool_definition(create_directory), create_directory)
+
+        # 读写 XLS / XLSX
+        read_xls = create_read_xls_tool()
+        write_xls = create_write_xls_tool()
+        read_xlsx = create_read_xlsx_tool()
+        write_xlsx = create_write_xlsx_tool()
+        self._tool_registry.register(to_tool_definition(read_xls), read_xls)
+        self._tool_registry.register(to_tool_definition(write_xls), write_xls)
+        self._tool_registry.register(to_tool_definition(read_xlsx), read_xlsx)
+        self._tool_registry.register(to_tool_definition(write_xlsx), write_xlsx)
 
     async def register_mcp_tools(self) -> list[ToolDefinition]:
-        """组装期异步注册 MCP 工具（写入 Agent 持有的同一 registry）。"""
+        """注册MCP工具"""
         if self._mcp_client is None:
             return []
         return await self._mcp_client.register_tools()
@@ -443,7 +476,7 @@ class Agent:
         metadata: Mapping[str, Any] | None = None,
     ) -> RunnableConfig:
         """
-        构建图级 RunnableConfig。
+        构建图级 RunnableConfig
         """
         runtime = RuntimeConfig(
             thread_id=session_id,

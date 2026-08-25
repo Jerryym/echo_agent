@@ -92,7 +92,7 @@ def agent_config_from_proto(msg: pb.AgentConfig) -> AgentConfig:
 
 
 def attachment_from_proto(msg: pb.Attachment) -> Attachment:
-    return attachment_from_fields(type=msg.type or "", data=msg.data)
+    return attachment_from_fields(type=msg.type or "", format=msg.format or "", data=msg.data)
 
 
 def user_input_from_proto(msg: pb.UserInput) -> UserInput:

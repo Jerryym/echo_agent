@@ -126,8 +126,10 @@ message UserInput {
 message Attachment {
   // image | audio | file
   string type = 1;
-  // base64 或 url
+  // 附件内容（配合 format）
   string data = 2;
+  // base64 | url
+  string format = 3;
 }
 
 message HttpRequest {

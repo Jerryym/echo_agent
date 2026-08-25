@@ -238,7 +238,7 @@ class ReasonNode(Node):
         构建输入
         """
         return {
-            "task": state.task.model_dump(),
+            "task": state.task.dump_attachments(),
             "observations": state.observations + observation_list, # 本次ReAct Loop完整的观察结果
         }
 

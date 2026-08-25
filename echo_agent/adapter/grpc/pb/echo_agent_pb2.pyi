@@ -125,12 +125,14 @@ class UserInput(_message.Message):
     def __init__(self, text: _Optional[str] = ..., attachments: _Optional[_Iterable[_Union[Attachment, _Mapping]]] = ...) -> None: ...
 
 class Attachment(_message.Message):
-    __slots__ = ("type", "data")
+    __slots__ = ("type", "data", "format")
     TYPE_FIELD_NUMBER: _ClassVar[int]
     DATA_FIELD_NUMBER: _ClassVar[int]
+    FORMAT_FIELD_NUMBER: _ClassVar[int]
     type: str
     data: str
-    def __init__(self, type: _Optional[str] = ..., data: _Optional[str] = ...) -> None: ...
+    format: str
+    def __init__(self, type: _Optional[str] = ..., data: _Optional[str] = ..., format: _Optional[str] = ...) -> None: ...
 
 class HttpRequest(_message.Message):
     __slots__ = ("url", "headers")

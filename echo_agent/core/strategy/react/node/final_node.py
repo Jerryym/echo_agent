@@ -110,7 +110,7 @@ class FinalNode(Node):
         Build the input
         """
         return {
-            "task": state.task.model_dump(),
+            "task": state.task.dump_attachments(),
             "reasoning": state.reasoning,
             "observations": state.observations,
         }

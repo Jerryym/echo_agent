@@ -77,9 +77,9 @@ class MessageAdapter:
                     })
             elif attachment.format == "url":
                 content.append({
-                    "type": attachment.type,
-                    "url": attachment.data,
-                })
+                    "type": "text",
+                    "text": f"[{attachment.type}] {attachment.data}",
+                })  
 
         return HumanMessage(content=content)
 
