@@ -13,6 +13,7 @@ class AgentConfig(BaseModel):
     Agent 配置
 
     参数:
+        id: Agent ID
         name: Agent 名称
         description: 描述
         llm_config: LLM 配置
@@ -27,6 +28,8 @@ class AgentConfig(BaseModel):
         enable_builtin_filesystem: 是否合并内置 Filesystem MCP（默认关闭）
         conversation_max_tokens: 对话最大词元数
     """
+    id: str | None = None
+
     name: str
     description: str | None = None
 

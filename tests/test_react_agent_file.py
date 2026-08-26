@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
+from echo_agent.core.app import Application
 from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolRegistry
@@ -49,6 +50,9 @@ def build_react_file_agent(
     name: str, config: LLMConfig
 ) -> tuple[Agent, ToolRegistry, Path]:
     sandbox = _ensure_sandbox()
+    Application._instance = None
+    app = Application()
+
     agent_config = AgentConfig(
         name=name,
         description=name,
@@ -67,6 +71,7 @@ def build_react_file_agent(
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(agent_config, compile_options, placeholder)
+    app.add_agent(agent)
 
     react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,

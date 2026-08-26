@@ -1,10 +1,10 @@
 from typing import Any, Literal
 
-from langchain_core.runnables.config import RunnableConfig
 from langgraph.runtime import Runtime
 from langgraph.types import Command
 
 from .....common import get_logger
+from ....app import Application
 from .....prompt import PromptLoader
 from .....utils import MessageAdapter, update_agent_result
 from ....graph import Node
@@ -37,22 +37,31 @@ class ActionNode(Node):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
-        self._tool_registry = tool_registry
+        # self._tool_registry = tool_registry
         self._tool_gateway = ToolGateWay()
 
-    def run(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
+    def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
         Run the node
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
+        # 获取运行时信息
+        runtime_config = RuntimeConfig.get_runtime_config()
+        # 获取tool registry
+        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
         # 已存在待处理的 HITL 请求或响应，仅允许通过 HITL 恢复流程继续
         if state.hitl_state.request or state.hitl_state.response:
-            return self._handle_hitl(state)
+            return self._handle_hitl(state, tool_registry)
 
+        # 获取运行时信息
         runtime_config = RuntimeConfig.get_runtime_config()
-        bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode)
+        # 获取tool registry
+        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
+        # 生成tool_list
+        bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode, tool_registry)
         if not bound_tools:
             return self._handle_blocked([], state)
+        # 调用llm
         response = self._llm_client.invoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
@@ -63,21 +72,27 @@ class ActionNode(Node):
             config=runtime_config.to_llm_runnable_config(),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
-        return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, bound_tools)
+        return self._route_after_tool_selection(state, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
 
-    async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
+    async def arun(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
         异步运行
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
+
+        # 获取运行时信息
+        runtime_config = RuntimeConfig.get_runtime_config()
+        # 获取tool registry
+        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
         # 已存在待处理的 HITL 请求或响应，仅允许通过 HITL 恢复流程继续
         if state.hitl_state.request or state.hitl_state.response:
-            return self._handle_hitl(state)
+            return self._handle_hitl(state, tool_registry)
 
-        runtime_config = RuntimeConfig.get_runtime_config()
-        bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode)
+        # 生成tool_list
+        bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode, tool_registry)
         if not bound_tools:
             return self._handle_blocked([], state)
+        # 调用llm
         response = await self._llm_client.ainvoke(
             prompt=self._prompt,
             user_input={"reasoning": state.reasoning},
@@ -88,9 +103,9 @@ class ActionNode(Node):
             config=runtime_config.to_llm_runnable_config(),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
-        return self._route_after_tool_selection(state, runtime_config.agent_mode, response.tool_calls, bound_tools)
+        return self._route_after_tool_selection(state, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
 
-    def _route_after_tool_selection(self, state: ReActState, agent_mode: AgentMode, tool_calls: list[ToolCall] | None, bound_tools: list[ToolDefinition]) -> Command:
+    def _route_after_tool_selection(self, state: ReActState, agent_mode: AgentMode, tool_registry: ToolRegistry, tool_calls: list[ToolCall] | None, bound_tools: list[ToolDefinition]) -> Command:
         if not tool_calls:
             return self._handle_no_tool_calls(state)
 
@@ -117,26 +132,15 @@ class ActionNode(Node):
                 return self._handle_blocked(tool_calls, state)
 
         # 判断是否存在缺失参数
-        missing_parameters_map = self._get_missing_parameters(tool_calls)
+        missing_parameters_map = self._get_missing_parameters(tool_registry, tool_calls)
         if missing_parameters_map:
-            return self._handle_missing_parameters(tool_calls, missing_parameters_map, state)
+            return self._handle_missing_parameters(state, tool_registry, tool_calls, missing_parameters_map)
 
         # 判断是否需要人工审核
-        if self._need_approval(tool_calls):
-            return self._handle_approval(tool_calls, state)
+        if self._need_approval(tool_registry, tool_calls):
+            return self._handle_approval(state, tool_calls)
 
         return self._handle_ready(tool_calls, state)
-
-    def _build_runnable_config(self, config: RunnableConfig | None) -> RunnableConfig:
-        conf = (config or {}).get("configurable") or {}
-        thread_id = str(conf.get("thread_id") or "")
-        agent_mode = conf.get("agent_mode")
-        return RuntimeConfig(
-            thread_id=thread_id,
-            session_id=str(conf.get("session_id") or thread_id),
-            agent_mode=agent_mode,
-            metadata=dict(conf.get("metadata") or {}),
-        ).to_llm_runnable_config()
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """
@@ -162,7 +166,7 @@ class ActionNode(Node):
         except ToolAuthorizationError:
             return False
 
-    def _handle_hitl(self, state: ReActState) -> Command:
+    def _handle_hitl(self, state: ReActState, tool_registry: ToolRegistry) -> Command:
         """
         处理 HITL 恢复场景
         """
@@ -178,7 +182,7 @@ class ActionNode(Node):
 
             if hitl_state.request:
                 if hitl_state.request.type == HITLType.INPUT:# INPUT 类型
-                    return self._handle_hitl_input(state, hitl_state)
+                    return self._handle_hitl_input(state, tool_registry, hitl_state)
                 if hitl_state.request.type == HITLType.APPROVAL:# APPROVAL 类型
                     return self._handle_hitl_approval(state, hitl_state)
 
@@ -192,21 +196,21 @@ class ActionNode(Node):
             "hitl_state": HITLInteraction(request=None, response=None),
         })
 
-    def _handle_hitl_input(self, state: ReActState, hitl_interaction: HITLInteraction) -> Command:
+    def _handle_hitl_input(self, state: ReActState, tool_registry: ToolRegistry, hitl_interaction: HITLInteraction) -> Command:
         """
         处理 HITL INPUT 类型
         """
         tool_calls = self._fill_tool_calls(state.tool_state.tool_calls, hitl_interaction.response)
         
         # 二次参数校验
-        missing_map = self._get_missing_parameters(tool_calls)
+        missing_map = self._get_missing_parameters(tool_registry, tool_calls)
         if missing_map:
-            return self._handle_missing_parameters(tool_calls, missing_map, state)
+            return self._handle_missing_parameters(state, tool_registry, tool_calls, missing_map)
         # 参数完整，清理 missing_args
         tool_calls = self._mark_missing_parameters(tool_calls, {})
         # 判断是否需要人工审核
-        if self._need_approval(tool_calls):
-            return self._handle_approval(tool_calls, state)
+        if self._need_approval(tool_registry, tool_calls):
+            return self._handle_approval(state, tool_calls)
         
         return self._router(state, {
             "task_status": "in_progress",
@@ -279,14 +283,14 @@ class ActionNode(Node):
             ],
         })
 
-    def _handle_missing_parameters(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]], state: ReActState) -> Command:
+    def _handle_missing_parameters(self, state: ReActState, tool_registry: ToolRegistry, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> Command:
         """
         处理缺少参数状态
         """
         updated_tool_calls = self._mark_missing_parameters(tool_calls, missing_parameters_map)
 
         # 构建 HITL 请求（fields / resume values 均按 tool_call_id 分组，避免多工具同名缺参串写）
-        fields_by_call = self._build_fields(updated_tool_calls, missing_parameters_map)
+        fields_by_call = self._build_fields(tool_registry, updated_tool_calls, missing_parameters_map)
         request = HITLInput(
             type=HITLType.INPUT,
             description="Please provide the missing parameters. ",
@@ -315,7 +319,7 @@ class ActionNode(Node):
 
         return self._router(state, update_state)
 
-    def _handle_approval(self, tool_calls: list[ToolCall], state: ReActState) -> Command:
+    def _handle_approval(self, state: ReActState, tool_calls: list[ToolCall]) -> Command:
         """
         处理人工审核状态
         """
@@ -359,49 +363,6 @@ class ActionNode(Node):
         return "reason"
 # endregion
 
-    def _available_tools(self, context: ReActContext, agent_mode: AgentMode) -> list[ToolDefinition]:
-        """Return tools visible to the model for the current skill state."""
-        tool_list = self._tool_registry.list_definitions()
-        default_tools = self._tool_registry.default_tools()
-
-        if not context.resources.skill_list:
-            return tool_list
-
-        loaded_skills = [
-            skill
-            for skill in context.active_skills.values()
-            if skill.status == SkillStatus.LOADED
-        ]
-        if not loaded_skills:
-            return default_tools
-
-        allowed_names: set[str] = set()
-        has_explicit_allowlist = False
-        for skill in loaded_skills:
-            configured = skill.package.frontmatter.allowed_tools
-            if configured is None:
-                continue
-            has_explicit_allowlist = True
-            allowed_names.update(configured)
-
-        # Backward compatibility: existing skills without allowed_tools keep
-        # the previous all-tools behavior after they are explicitly loaded.
-        if not has_explicit_allowlist:
-            return tool_list
-
-        default_names = {tool.name for tool in default_tools}
-        bound_tools = [
-            tool
-            for tool in tool_list
-            if tool.name not in default_names
-            and (
-                tool.name in allowed_names
-                or tool.meta_data.get("original_name") in allowed_names
-            )
-        ]
-        # 根据 AgentMode 过滤工具
-        return self._tool_gateway.filter([*default_tools, *bound_tools], agent_mode)
-
     def _get_invalid_tools(self, tool_calls: list[ToolCall], bound_tools: list[ToolDefinition] | None = None) -> list[str]:
         """
         获取非法工具
@@ -417,7 +378,7 @@ class ActionNode(Node):
         """获取合法工具名称列表"""
         return {tool.name for tool in bound_tools}
 
-    def _build_fields(self, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> dict[str, list[dict[str, str]]]:
+    def _build_fields(self, tool_registry: ToolRegistry, tool_calls: list[ToolCall], missing_parameters_map: dict[str, list[str]]) -> dict[str, list[dict[str, str]]]:
         """
         按 tool_call_id 构建信息补全字段，避免多工具同名缺参互相覆盖。
         """
@@ -426,7 +387,7 @@ class ActionNode(Node):
             missing_parameters = missing_parameters_map.get(tool_call.tool_call_id, [])
             if not missing_parameters:
                 continue
-            tool_definition = self._tool_registry.get(tool_call.name)
+            tool_definition = tool_registry.get(tool_call.name)
             fields_by_call[tool_call.tool_call_id] = [
                 {   
                     "name": param,
@@ -467,13 +428,13 @@ class ActionNode(Node):
             updated_tool_calls.append(tool_call)
         return updated_tool_calls
 
-    def _get_missing_parameters(self, tool_calls: list[ToolCall]) -> dict[str, list[str]]:
+    def _get_missing_parameters(self, tool_registry: ToolRegistry, tool_calls: list[ToolCall]) -> dict[str, list[str]]:
         """
         获取缺失的参数
         """
         missing_params_map = {}
         for tool_call in tool_calls:
-            definition = self._tool_registry.get(tool_call.name)
+            definition = tool_registry.get(tool_call.name)
             if not definition:
                 continue
 
@@ -498,18 +459,18 @@ class ActionNode(Node):
             return not value.strip()
         return False
 
-    def _need_approval(self, tool_calls: list[ToolCall]) -> bool:
+    def _need_approval(self, tool_registry: ToolRegistry, tool_calls: list[ToolCall]) -> bool:
         """
         判断是否需要人工审核
         """
         for tool_call in tool_calls:
-            definition = self._tool_registry.get(tool_call.name)
+            definition = tool_registry.get(tool_call.name)
             if definition and definition.requires_approval:
                 return True
 
         return False
 
-    def _resolve_tools(self, state: ReActState, context: ReActContext, agent_mode: AgentMode) -> list[ToolDefinition]:
+    def _resolve_tools(self, state: ReActState, context: ReActContext, agent_mode: AgentMode, tool_registry: ToolRegistry) -> list[ToolDefinition]:
         """"根据reasonnode生成的tool_list，解析出可用的工具列表"""
         tool_names = set(state.tool_list)
 
@@ -524,7 +485,7 @@ class ActionNode(Node):
         if not tool_names:
             return []
 
-        tools = self._tool_registry.resolve_tools(list(tool_names))
+        tools = tool_registry.resolve_tools(list(tool_names))
 
         # 根据 AgentMode 过滤工具
         return self._tool_gateway.filter(tools, agent_mode)

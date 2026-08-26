@@ -1,4 +1,3 @@
-from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from .....common import get_logger, log_messages
@@ -22,7 +21,7 @@ class FinalNode(Node):
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/final.md")
 
-    def run(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> dict:
+    def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> dict:
         """
         Run the node
         """
@@ -32,6 +31,8 @@ class FinalNode(Node):
         history = self._build_history(state, runtime.context)
         log_messages(logger, "final", history)
 
+        # 获取运行时信息
+        runtime_config = RuntimeConfig.get_runtime_config()
         # 构建输入
         input = self._build_input(state)
         # 调用llm
@@ -41,30 +42,27 @@ class FinalNode(Node):
             history=history,
             context=runtime.context,
             agent_resources=runtime.context.resources,
-            config=self._build_runnable_config(config),
+            config=runtime_config.to_llm_runnable_config(),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
-        # 更新状态
-        preview = response.text[:300]
-        suffix = "..." if len(response.text) > 300 else ""
-        logger.info("response=%s%s", preview, suffix)
         return {
             "response": response.text,
             "trajectory": [Message(role=Role.ASSISTANT, content=response.text)],
         }
 
-    async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> dict:
+    async def arun(self, state: ReActState, runtime: Runtime[ReActContext]) -> dict:
         """
         异步运行
         """
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
         logger.info("observations=%s", [observation.model_dump_json() for observation in state.observations])
 
-        history = self._build_history(state, runtime.context)
-        log_messages(logger, "final", history)
-
+        # 获取运行时信息
+        runtime_config = RuntimeConfig.get_runtime_config()
         # 构建输入
         input = self._build_input(state)
+        # 构建历史记录
+        history = self._build_history(state, runtime.context)
         # 调用llm
         response = await self._llm_client.ainvoke(
             prompt=self._prompt,
@@ -72,28 +70,25 @@ class FinalNode(Node):
             history=history,
             context=runtime.context,
             agent_resources=runtime.context.resources,
-            config=self._build_runnable_config(config),
+            config=runtime_config.to_llm_runnable_config(),
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
-
-        # 更新状态
-        preview = response.text[:300]
-        suffix = "..." if len(response.text) > 300 else ""
-        logger.info("response=%s%s", preview, suffix)
         return {
             "response": response.text,
             "trajectory": [Message(role=Role.ASSISTANT, content=response.text)],
         }
 
-    def _build_runnable_config(self, config: RunnableConfig | None) -> RunnableConfig:
-        conf = (config or {}).get("configurable") or {}
-        thread_id = str(conf.get("thread_id") or "")
-        return RuntimeConfig(
-            thread_id=thread_id,
-            session_id=str(conf.get("session_id") or thread_id),
-            metadata=dict(conf.get("metadata") or {}),
-        ).to_llm_runnable_config()
-
+# region Private Functions
+    def _build_input(self, state: ReActState) -> dict:
+        """
+        Build the input
+        """
+        return {
+            "task": state.task.dump_attachments(),
+            "reasoning": state.reasoning,
+            "observations": state.observations,
+        }
+    
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """
         构建跨轮会话历史与本轮执行轨迹。
@@ -104,13 +99,4 @@ class FinalNode(Node):
             *state.conversation,
             *state.trajectory,
         ]
-
-    def _build_input(self, state: ReActState) -> dict:
-        """
-        Build the input
-        """
-        return {
-            "task": state.task.dump_attachments(),
-            "reasoning": state.reasoning,
-            "observations": state.observations,
-        }
+# endregion

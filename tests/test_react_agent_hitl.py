@@ -10,6 +10,7 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
+from echo_agent.core.app import Application
 from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolDefinition, ToolRegistry
@@ -78,19 +79,8 @@ def select_tool_set() -> tuple[str, Sequence[Any]]:
 
 
 def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Agent:
-    tool_registry = build_tool_registry(tools)
-
-    # 创建 ReAct 策略子图
-    react_subgraph = StrategyFactory.create_as_node(
-        StrategyType.REACT,
-        llm_config=config,
-        tool_registry=tool_registry,
-    )
-
-    graph = RootGraph(state_schema=State)
-    graph.add_node(react_subgraph)
-    graph.add_edge(START_NODE, react_subgraph.name)
-    graph.add_edge(react_subgraph.name, END_NODE)
+    Application._instance = None
+    app = Application()
 
     agent_config = AgentConfig(
         name=name,
@@ -99,7 +89,31 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
         allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
-    return Agent(agent_config, compile_options, graph)
+
+    placeholder = RootGraph(state_schema=State)
+    placeholder.add_edge(START_NODE, END_NODE)
+    agent = Agent(agent_config, compile_options, placeholder)
+    app.add_agent(agent)
+
+    business_registry = build_tool_registry(tools)
+    for definition in business_registry.list_definitions():
+        agent.tool_registry.register(
+            definition,
+            business_registry.get_handler(definition.name),
+        )
+
+    react_subgraph = StrategyFactory.create_as_node(
+        StrategyType.REACT,
+        llm_config=config,
+        tool_registry=agent.tool_registry,
+    )
+    graph = RootGraph(state_schema=State)
+    graph.add_node(react_subgraph)
+    graph.add_edge(START_NODE, react_subgraph.name)
+    graph.add_edge(react_subgraph.name, END_NODE)
+    agent._graph = graph
+    agent._compiled_graph = graph.compile(compile_options)
+    return agent
 
 
 def _message_chunk_text(message: AIMessageChunk) -> str:

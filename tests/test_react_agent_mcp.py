@@ -31,6 +31,7 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
+from echo_agent.core.app import Application
 from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.mcp import MCPConnectionConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
@@ -73,6 +74,9 @@ async def build_react_agent(
     因 Strategy 构建需要已注册工具，先用占位图创建 Agent，
     注册后再构建 ReAct 图并重新编译到同一 Agent。
     """
+    Application._instance = None
+    app = Application()
+
     agent_config = AgentConfig(
         name=name,
         description=name,
@@ -87,6 +91,7 @@ async def build_react_agent(
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(agent_config, compile_options, placeholder)
+    app.add_agent(agent)
     assert agent.mcp_client is not None
 
     definitions = await agent.register_mcp_tools()

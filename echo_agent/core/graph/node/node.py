@@ -24,14 +24,13 @@ class Node(ABC):
         return self._name
 
     @abstractmethod
-    def run(self, state: BaseState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None,) -> dict:
+    def run(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
         """
         运行
 
         Parameters:
             state: 状态
-            context: 上下文
-            config: 配置
+            runtime: 运行时上下文
             
         Returns:
             dict: 状态
@@ -39,14 +38,13 @@ class Node(ABC):
         pass
 
     @abstractmethod
-    async def arun(self, state: BaseState, runtime: Runtime[BaseContext], config: RunnableConfig | None = None,) -> dict:
+    async def arun(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
         """
         异步运行
 
         Parameters:
             state: 状态
-            context: 上下文
-            config: 配置
+            runtime: 运行时上下文
             
         Returns:
             dict: 状态

@@ -27,6 +27,7 @@ from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
+from echo_agent.core.app import Application
 from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
 from echo_agent.core.model.agent import AgentResources, AgentState
 from echo_agent.core.model.skill import SkillSource
@@ -58,6 +59,9 @@ async def build_react_skill_agent(
     skill_list: dict[str, Any] | None = None,
 ) -> tuple[Agent, ToolRegistry]:
     """组装带 Skill 的 ReAct Agent；返回 (agent, tool_registry)。"""
+    Application._instance = None
+    app = Application()
+
     agent_config = AgentConfig(
         name=name,
         description=name,
@@ -70,6 +74,7 @@ async def build_react_skill_agent(
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(agent_config, compile_options, placeholder)
+    app.add_agent(agent)
 
     react_subgraph = StrategyFactory.create_as_node(
         StrategyType.REACT,

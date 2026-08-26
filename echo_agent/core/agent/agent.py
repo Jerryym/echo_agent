@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator, Iterator
 import json
 from typing import Any, Mapping
+from uuid import uuid4
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import Command
@@ -88,7 +89,19 @@ class Agent:
         # 注册工具
         self._register_tools()
 
+        self._agent_config.id = self._generate_agent_id()
+
 # region 属性
+    @property
+    def agent_config(self) -> AgentConfig:
+        """Agent 配置"""
+        return self._agent_config
+
+    @property
+    def agent_id(self) -> str:
+        """Agent ID"""
+        return self._agent_config.id
+
     @property
     def mcp_client(self) -> MCPClient | None:
         """MCPClient"""
@@ -479,6 +492,7 @@ class Agent:
         构建图级 RunnableConfig
         """
         runtime = RuntimeConfig(
+            agent_id=self.agent_config.id,
             thread_id=session_id,
             session_id=session_id,
             agent_mode=agent_mode,
@@ -731,3 +745,13 @@ class Agent:
         if isinstance(value, str):
             return value
         return json.dumps(value, ensure_ascii=False, default=str)
+
+    def _generate_agent_id(self) -> str:
+        """生成 Agent ID"""
+        if self._agent_config.id is not None:
+            return self._agent_config.id
+        
+        while True:
+            id = "ak-" + str(uuid4())
+            if id not in self._agent_state_map:
+                return id

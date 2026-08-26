@@ -1,20 +1,21 @@
 from typing import Literal
 
 from langgraph.runtime import Runtime
-from langgraph.types import Command, RunnableConfig
+from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from .....common import get_logger, log_messages
+from .....common import get_logger
+from ....app import Application
 from .....prompt import PromptLoader
+from .....utils import update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message
 from ....model.tool import ToolState
 from ....runtime.runtime_config import RuntimeConfig
-from .....utils import update_agent_result
+from ....tool import ToolRegistry
 from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState
-from ....tool import ToolRegistry
 
 logger = get_logger("react.reason")
 
@@ -90,9 +91,9 @@ class ReasonNode(Node):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
-        self._tool_registry = tool_registry
+        # self._tool_registry = tool_registry
 
-    def run(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
+    def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
         Run the node
         """
@@ -108,26 +109,28 @@ class ReasonNode(Node):
                 "observations": observation_list,
                 "tool_list": [],
             })
-        
         # 检查工具执行失败
         if self._has_tool_error(state):
             return self._handle_tool_error(state, runtime.context, observation_list)
 
+        # 获取运行时信息
+        runtime_config = RuntimeConfig.get_runtime_config()
+        # 获取tool registry
+        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
         # 构建输入
         input = self._build_input(state, observation_list)
         # 构建历史记录
         history = self._build_history(state, runtime.context)
-        log_messages(logger, "reason", history)
         # 调用llm-结构化输出
         response = self._llm_client.invoke_structured(
             prompt=self._prompt,
             user_input=input,
             history=history,
-            tool_name_list=self._tool_registry.get_tool_names(),
+            tool_name_list=tool_registry.get_tool_names(),
             schema=ReasonStructuredOutput,
             context=runtime.context,
             agent_resources=runtime.context.resources,
-            config=self._build_runnable_config(config),
+            config=runtime_config.to_llm_runnable_config(),
         )
         result = response.structured
         
@@ -138,7 +141,7 @@ class ReasonNode(Node):
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
 
-    async def arun(self, state: ReActState, runtime: Runtime[ReActContext], config: RunnableConfig | None = None) -> Command:
+    async def arun(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
         异步运行
         """
@@ -154,26 +157,28 @@ class ReasonNode(Node):
                 "observations": observation_list,
                 "tool_list": [],
             })
-        
         # 检查工具执行失败
         if self._has_tool_error(state):
             return self._handle_tool_error(state, runtime.context, observation_list)
 
+        # 获取运行时信息
+        runtime_config = RuntimeConfig.get_runtime_config()
+        # 获取tool registry
+        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
         # 构建输入
         input = self._build_input(state, observation_list)
         # 构建历史记录
         history = self._build_history(state, runtime.context)
-        log_messages(logger, "reason", history)
         # 调用llm-结构化输出
         response = await self._llm_client.ainvoke_structured(
             prompt=self._prompt,
             user_input=input,
             history=history,
-            tool_name_list=self._tool_registry.get_tool_names(),
+            tool_name_list=tool_registry.get_tool_names(),
             schema=ReasonStructuredOutput,
             context=runtime.context,
             agent_resources=runtime.context.resources,
-            config=self._build_runnable_config(config),
+            config=runtime_config.to_llm_runnable_config(),
         )
         result = response.structured
 
@@ -183,15 +188,6 @@ class ReasonNode(Node):
 
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
-
-    def _build_runnable_config(self, config: RunnableConfig | None) -> RunnableConfig:
-        conf = (config or {}).get("configurable") or {}
-        thread_id = str(conf.get("thread_id") or "")
-        return RuntimeConfig(
-            thread_id=thread_id,
-            session_id=str(conf.get("session_id") or thread_id),
-            metadata=dict(conf.get("metadata") or {}),
-        ).to_llm_runnable_config()
 
     def _build_observations(self, state: ReActState) -> list[Observation]:
         """

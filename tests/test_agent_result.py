@@ -14,7 +14,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
 from echo_agent.adapter.events import iter_agent_events, iter_agent_events_sync
-from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
+from echo_agent.core.app import Application
+from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions
 from echo_agent.core.model.agent import AgentResult
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolDefinition, ToolRegistry
@@ -57,6 +58,9 @@ def build_tool_registry(tools: Sequence[Any]) -> ToolRegistry:
 
 
 def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Agent:
+    Application._instance = None
+    app = Application()
+
     agent_config = AgentConfig(
         name=name,
         description=name,
@@ -68,6 +72,7 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
     placeholder = RootGraph(state_schema=State)
     placeholder.add_edge(START_NODE, END_NODE)
     agent = Agent(agent_config, compile_options, placeholder)
+    app.add_agent(agent)
 
     business_registry = build_tool_registry(tools)
     for definition in business_registry.list_definitions():
