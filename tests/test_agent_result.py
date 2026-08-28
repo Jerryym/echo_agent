@@ -12,10 +12,10 @@ from langchain_core.tools import StructuredTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.checkpoint.memory import InMemorySaver
 
-from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
+from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, UserInput
 from echo_agent.adapter.events import iter_agent_events, iter_agent_events_sync
 from echo_agent.core.app import Application
-from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions
+from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions, GraphSchema
 from echo_agent.core.model.agent import AgentResult
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolDefinition, ToolRegistry
@@ -68,10 +68,7 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
         allowed_directories=REPO_ROOT,
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
-
-    placeholder = RootGraph(state_schema=State)
-    placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(agent_config, compile_options, placeholder)
+    agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)
     app.add_agent(agent)
 
     business_registry = build_tool_registry(tools)
@@ -86,12 +83,10 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
         llm_config=config,
         tool_registry=agent.tool_registry,
     )
-    graph = RootGraph(state_schema=State)
-    graph.add_node(react_node)
-    graph.add_edge(START_NODE, react_node.name)
-    graph.add_edge(react_node.name, END_NODE)
-    agent._graph = graph
-    agent._compiled_graph = graph.compile(compile_options)
+    agent.add_node(react_node)
+    agent.add_edge(START_NODE, react_node.name)
+    agent.add_edge(react_node.name, END_NODE)
+    agent.compile()
     return agent
 
 

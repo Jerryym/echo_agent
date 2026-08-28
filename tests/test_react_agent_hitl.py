@@ -4,14 +4,13 @@ from typing import Any, Sequence
 import warnings
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessageChunk
 from langchain_core.tools import StructuredTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.checkpoint.memory import InMemorySaver
 
-from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
+from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, UserInput
 from echo_agent.core.app import Application
-from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions, GraphSchema
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolDefinition, ToolRegistry
 from env_config import build_config
@@ -89,10 +88,7 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
         allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
-
-    placeholder = RootGraph(state_schema=State)
-    placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(agent_config, compile_options, placeholder)
+    agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)
     app.add_agent(agent)
 
     business_registry = build_tool_registry(tools)
@@ -107,53 +103,11 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
         llm_config=config,
         tool_registry=agent.tool_registry,
     )
-    graph = RootGraph(state_schema=State)
-    graph.add_node(react_subgraph)
-    graph.add_edge(START_NODE, react_subgraph.name)
-    graph.add_edge(react_subgraph.name, END_NODE)
-    agent._graph = graph
-    agent._compiled_graph = graph.compile(compile_options)
+    agent.add_node(react_subgraph)
+    agent.add_edge(START_NODE, react_subgraph.name)
+    agent.add_edge(react_subgraph.name, END_NODE)
+    agent.compile()
     return agent
-
-
-def _message_chunk_text(message: AIMessageChunk) -> str:
-    content = message.content
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
-                parts.append(block.get("text", ""))
-        return "".join(parts)
-    return ""
-
-
-def extract_stream_text(chunk, *, node: str | None = "final") -> str:
-    """从 stream(v2) 事件中提取可打印的 token 文本。
-
-    Args:
-        chunk: Agent.stream() 产出的事件
-        node: 只提取指定 LangGraph 节点的 token；None 表示不过滤
-    """
-    metadata = None
-
-    if isinstance(chunk, dict) and chunk.get("type") == "messages":
-        message, metadata = chunk["data"]
-    elif isinstance(chunk, tuple) and len(chunk) == 2:
-        message, metadata = chunk
-    else:
-        return ""
-
-    if not isinstance(message, AIMessageChunk):
-        return ""
-
-    if node is not None and metadata and metadata.get("langgraph_node") != node:
-        return ""
-
-    return _message_chunk_text(message)
 
 
 def _get_pending_interrupt(agent: Agent, session_id: str) -> dict | None:
@@ -240,7 +194,7 @@ async def chat_invoke(agent: Agent, session_id: str) -> None:
             result = await agent.aresume(session_id, resume_values)
 
         print("\nAssistant:")
-        print(result.get("response", result) if isinstance(result, dict) else result)
+        print(getattr(result, "text", result) if not isinstance(result, dict) else result.get("response", result))
         state = agent.get_state(session_id)
         print(f"[DEBUG] state values: {state.values}")
         print("\n------------------------------\n")
@@ -257,11 +211,14 @@ async def chat_stream(agent: Agent, session_id: str) -> None:
             break
 
         print("\nAssistant: ", end="", flush=True)
+        printed = ""
         stream = await agent.astream(session_id, UserInput(text=user_text))
         async for chunk in stream:
-            text = extract_stream_text(chunk, node="final")
-            if text:
-                print(text, end="", flush=True)
+            text = getattr(chunk, "text", "") or ""
+            delta = text[len(printed):] if text.startswith(printed) else text
+            printed = text
+            if delta:
+                print(delta, end="", flush=True)
 
         while True:
             request = _get_pending_interrupt(agent, session_id)
@@ -274,11 +231,14 @@ async def chat_stream(agent: Agent, session_id: str) -> None:
                 break
 
             print("\nAssistant: ", end="", flush=True)
+            printed = ""
             stream = await agent.astream_resume(session_id, resume_values)
             async for chunk in stream:
-                text = extract_stream_text(chunk, node="final")
-                if text:
-                    print(text, end="", flush=True)
+                text = getattr(chunk, "text", "") or ""
+                delta = text[len(printed):] if text.startswith(printed) else text
+                printed = text
+                if delta:
+                    print(delta, end="", flush=True)
 
         state = agent.get_state(session_id)
         print(f"\n[DEBUG] state values: {state.values}")

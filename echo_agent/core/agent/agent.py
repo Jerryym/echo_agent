@@ -1,15 +1,23 @@
 from collections.abc import AsyncIterator, Iterator
 import json
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from langchain_core.runnables.config import RunnableConfig
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from ...common import get_logger
 from ...common.network import HttpRequest
 from ..capability.skill import SkillManager
-from ..graph import BaseContext, BaseInput, GraphCompileOptions, RootGraph
+from ..graph import (
+    BaseContext,
+    BaseInput,
+    Graph,
+    GraphCompileOptions,
+    GraphSchema,
+    Node,
+)
 from ..llm import LLMClient
 from ..mcp import MCPClient
 from ..model.agent import AgentMode, AgentResources, AgentResult, AgentState
@@ -31,42 +39,48 @@ from ..tool.toolkit import (
     create_load_skill_tool,
     create_read_file_tool,
     create_read_skill_resource_tool,
+    create_read_xls_tool,
+    create_read_xlsx_tool,
     create_search_files_tool,
     create_write_file_tool,
-    create_read_xls_tool,
     create_write_xls_tool,
-    create_read_xlsx_tool,
     create_write_xlsx_tool,
 )
 from ..tool.utils import to_tool_definition
 from .agent_config import AgentConfig
+from .agent_session import AgentSession
 
 logger = get_logger("agent")
 
 
 class Agent:
     """
-    Agent 类：用于定义 Agent 的运行实体，包括 AgentConfig、GraphCompileOptions、RootGraph 等。
+    Agent 类：用于定义 Agent 的运行实体，包括 AgentConfig、GraphSchema、GraphCompileOptions、Graph、CompiledStateGraph 等。
 
     Attributes:
         agent_config: Agent 配置
+        graph_schema: 图模式
         graph_compile_options: 图编译选项
-        graph: RootGraph 根图
+        graph: 图
         compiled_graph: 编译后的图
         tool_registry: 工具注册器
         skill_manager: Skill 管理器
-        mcp_client: MCP 客户端（由 AgentConfig.mcp_servers 在构造时内部创建；
-            可选合并内置 Fetch / Filesystem，默认关闭）
+        mcp_client: MCP 客户端
+        agent_sessions: Agent Session 管理器
     """
-    def __init__(self, agent_config: AgentConfig, compile_options: GraphCompileOptions, graph: RootGraph):
+    def __init__(self, agent_config: AgentConfig, graph_schema: GraphSchema, compile_options: GraphCompileOptions):
         # 配置
         self._agent_config = agent_config
+        if agent_config.id is None:
+            self._agent_config.id = self._generate_agent_id()
+        self._graph_schema = graph_schema
         self._graph_compile_options = compile_options
 
         # 图
-        self._graph = graph
-        self._compiled_graph = self._graph.compile(compile_options)
+        self._graph: Graph = self._init_graph(graph_schema)
+        self._compiled_graph: CompiledStateGraph | None = None
 
+        # Agent Resources
         self._tool_registry = ToolRegistry()
         self._skill_manager = SkillManager(agent_config.skill_list)
         self._mcp_client = (
@@ -75,21 +89,21 @@ class Agent:
             else None
         )
 
-        self._agent_state_map: dict[str, AgentState] = {} # 会话ID -> 智能体状态
-        self._active_skills_map: dict[str, dict[str, SkillRuntimeContext]] = {}
+        # Agent Session
+        self._agent_sessions: dict[str, AgentSession] = {}
         self._pending_inputs: dict[str, UserInput | type[BaseInput]] = {}
         self._pending_results: dict[str, AgentResult] = {}
+
+        # Conversation
         self._conversation_compressor = ConversationCompressor(
             LLMClient(agent_config.llm_config)
         )
 
         # 智能体执行结果
-        self._agent_results: dict[str, list[AgentResult]] = {}
+        # self._agent_results: dict[str, list[AgentResult]] = {}
 
         # 注册工具
         self._register_tools()
-
-        self._agent_config.id = self._generate_agent_id()
 
 # region 属性
     @property
@@ -116,13 +130,39 @@ class Agent:
     def skill_manager(self) -> SkillManager:
         """Skill 管理器"""
         return self._skill_manager
-
-    @property
-    def agent_results(self) -> dict[str, list[AgentResult]]:
-        """Agent Result"""
-        return self._agent_results
 # endregion
 
+# region Build Graph API
+    def add_node(self, node: Node) -> None:
+        """添加节点"""
+        self._graph.add_node(node)
+
+    def add_subgraph(self, name: str, subgraph: CompiledStateGraph) -> None:
+        """添加子图"""
+        self._graph.add_subgraph(name, subgraph)
+
+    def add_edge(self, from_node: str, to_node: str) -> None:
+        """添加边"""
+        self._graph.add_edge(from_node, to_node)
+
+    def add_conditional_edge(self, from_node: str, condition: Callable[[Any], str], path_map: dict[str, str] | None = None) -> None:
+        """"添加条件边"""
+        self._graph.add_conditional_edges(
+            from_node,
+            condition,
+            path_map,
+        )
+
+    def compile(self) -> None:
+        """编译图"""
+        builder = self._graph.build()
+        self._compiled_graph = builder.compile(
+            checkpointer=self._graph_compile_options.checkpointer,
+            store=self._graph_compile_options.store,
+        )
+# endregion
+
+# region Invoke and Stream
     def invoke(
         self,
         session_id: str,
@@ -143,7 +183,7 @@ class Agent:
         """
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
-        context = self._build_context(session_id, resume=False)
+        context = self._build_context(session_id, http_request, resume=False)
         self._unload_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         result = self._compiled_graph.invoke(graph_input, runnable_config, context=context)
@@ -162,7 +202,7 @@ class Agent:
         """
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
-        context = self._build_context(session_id, resume=False)
+        context = self._build_context(session_id, http_request, resume=False)
         self._unload_idle_skills_for_user_turn(context)
         self._pending_inputs[session_id] = input
         result = await self._compiled_graph.ainvoke(graph_input, runnable_config, context=context)
@@ -289,7 +329,9 @@ class Agent:
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         context = self._build_context(session_id, http_request, resume=True)
         return self._astream_iterator(Command(resume=values), runnable_config, context, session_id, version)
+# endregion
 
+# region Public Functions
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
         """
         [Debug] 获取当前状态
@@ -322,14 +364,13 @@ class Agent:
         return self._compiled_graph.get_state_history(runnable_config)
 
     def get_agent_results(self, session_id: str) -> list[AgentResult]:
-        """获取指定会话已完成的各轮 AgentResult。"""
-        return list(self._agent_results.get(session_id, []))
+        """获取指定会话所有的AgentResult"""
+        session = self._agent_sessions.get(session_id)
+        if session is None:
+            return []
+        return list(session.results)
 
-    def restore_checkpoint(
-        self,
-        session_id: str,
-        checkpoint_id: str | None,
-    ) -> None:
+    def restore_checkpoint(self, session_id: str, checkpoint_id: str | None) -> None:
         """
         将 thread tip fork 回开跑前基线（Cancel 用）。
 
@@ -359,74 +400,26 @@ class Agent:
         # - HITL interrupt 基线 → tip.next 保留，可再次 Resume
         self._compiled_graph.update_state(config, values=values)
 
-    def _restore_first_turn_baseline(self, session_id: str) -> None:
-        """首轮无基线：若已有 tip（半成品），写成空完成态；否则 no-op。"""
-        tip = self.get_state(session_id)
-        tip_config = getattr(tip, "config", None) or {}
-        tip_configurable = (
-            tip_config.get("configurable") if isinstance(tip_config, dict) else None
-        ) or {}
-        if not tip_configurable.get("checkpoint_id"):
-            return
-        values = self._empty_state_values()
-        config = RunnableConfig(configurable={"thread_id": session_id})
-        self._compiled_graph.update_state(config, values=values)
+    async def register_mcp_tools(self) -> list[ToolDefinition]:
+        """注册MCP工具"""
+        if self._mcp_client is None:
+            return []
+        return await self._mcp_client.register_tools()
+    
+# endregion
 
-    def _empty_state_values(self) -> dict[str, Any]:
-        """用 state_schema 默认值构造空完成态；失败则 {}。"""
-        schema = self._graph.state_schema
-        if schema is None:
-            return {}
-        try:
-            instance = schema()
-        except Exception:
-            return {}
-        if hasattr(instance, "model_dump"):
-            return instance.model_dump()
-        if isinstance(instance, dict):
-            return dict(instance)
-        return {}
-
-    @staticmethod
-    def _normalize_checkpoint_values(values: Any) -> dict[str, Any]:
-        """将 StateSnapshot.values 规范为 update_state 可用的 dict。"""
-        if values is None:
-            return {}
-        if hasattr(values, "model_dump"):
-            return values.model_dump()
-        if isinstance(values, dict):
-            out: dict[str, Any] = {}
-            for key, value in values.items():
-                if hasattr(value, "model_dump"):
-                    out[key] = value.model_dump()
-                else:
-                    out[key] = value
-            return out
-        try:
-            return dict(values)
-        except Exception:
-            return {}
-
-    @staticmethod
-    def _config_for_checkpoint(
-        session_id: str,
-        checkpoint_id: str,
-        baseline: Any,
-    ) -> RunnableConfig:
-        """构造带 checkpoint_ns 的 config（get_state 按 id 取回时可能缺 ns）。"""
-        checkpoint_ns = ""
-        baseline_config = getattr(baseline, "config", None) or {}
-        if isinstance(baseline_config, dict):
-            configurable = baseline_config.get("configurable") or {}
-            if isinstance(configurable, dict) and configurable.get("checkpoint_ns") is not None:
-                checkpoint_ns = str(configurable.get("checkpoint_ns") or "")
-        return RunnableConfig(
-            configurable={
-                "thread_id": session_id,
-                "checkpoint_id": checkpoint_id,
-                "checkpoint_ns": checkpoint_ns,
-            }
-        )
+# region Private Functions
+    def _init_graph(self, graph_schema: GraphSchema) -> Graph:
+        """初始化图"""
+        return Graph(graph_schema=graph_schema)
+        
+    def _generate_agent_id(self) -> str:
+        """生成 Agent ID"""
+        if self._agent_config.id is not None:
+            return self._agent_config.id
+        
+        id = "ak-" + str(uuid4())
+        return id
 
     def _register_tools(self) -> None:
         """注册工具"""
@@ -466,12 +459,6 @@ class Agent:
         self._tool_registry.register(to_tool_definition(read_xlsx), read_xlsx)
         self._tool_registry.register(to_tool_definition(write_xlsx), write_xlsx)
 
-    async def register_mcp_tools(self) -> list[ToolDefinition]:
-        """注册MCP工具"""
-        if self._mcp_client is None:
-            return []
-        return await self._mcp_client.register_tools()
-
     def _build_input(self, input: UserInput | type[BaseInput]) -> dict | BaseInput:
         """构建输入"""
         input_schema = self._graph.input_schema
@@ -500,7 +487,7 @@ class Agent:
             metadata=dict(metadata) if metadata else {},
         )
         return runtime.to_graph_runnable_config()
-
+    
     def _build_context(self, session_id: str, http_request: HttpRequest | None = None, *, resume: bool = False) -> BaseContext:
         """
         构建上下文
@@ -536,21 +523,27 @@ class Agent:
             object.__setattr__(context, "agent_result", agent_result)
         return context
 
+    def _get_session(self, session_id: str) -> AgentSession:
+            """获取 Agent Session"""
+            session = self._agent_sessions.get(session_id)
+            if session is None:
+                session = AgentSession(session_id)
+                self._agent_sessions[session_id] = session
+            return session
+    
+    def _get_agent_state(self, session_id: str) -> AgentState:
+        """获取智能体状态"""
+        return self._get_session(session_id).state
+    
+    def _get_active_skills(self, session_id: str) -> dict[str, SkillRuntimeContext]:
+        """获取指定会话中已加载的Skill"""
+        return self._get_session(session_id).active_skills
+
     def _unload_idle_skills_for_user_turn(self, context: BaseContext) -> None:
         """按用户交互推进 skill idle；HITL resume 不调用"""
         unloaded_skills = self._skill_manager.unload_idle_skills(context)
         if unloaded_skills:
             logger.info("unloaded idle skills (user turn): %s", unloaded_skills)
-
-    def _get_agent_state(self, session_id: str) -> AgentState:
-        """
-        获取智能体状态
-        """
-        return self._agent_state_map.setdefault(session_id, AgentState(session_id=session_id))
-
-    def _get_active_skills(self, session_id: str) -> dict[str, SkillRuntimeContext]:
-        """获取会话级已加载 Skill（同 dict 引用，供 load_skill 写回）。"""
-        return self._active_skills_map.setdefault(session_id, {})
 
     @staticmethod
     def _extract_response_text(result: Any) -> str:
@@ -598,7 +591,8 @@ class Agent:
             return agent_result.model_copy(deep=True)
 
         self._update_token_usage(session_id, context)
-        self._agent_results.setdefault(session_id, []).append(agent_result.model_copy(deep=True))
+        # 更新AgentResult
+        self._get_session(session_id).add_result(agent_result.model_copy(deep=True))
         self._pending_results.pop(session_id, None)
         if compress:
             self._compress_conversation(session_id)
@@ -746,12 +740,72 @@ class Agent:
             return value
         return json.dumps(value, ensure_ascii=False, default=str)
 
-    def _generate_agent_id(self) -> str:
-        """生成 Agent ID"""
-        if self._agent_config.id is not None:
-            return self._agent_config.id
-        
-        while True:
-            id = "ak-" + str(uuid4())
-            if id not in self._agent_state_map:
-                return id
+    def _restore_first_turn_baseline(self, session_id: str) -> None:
+            """首轮无基线：若已有 tip（半成品），写成空完成态；否则 no-op。"""
+            tip = self.get_state(session_id)
+            tip_config = getattr(tip, "config", None) or {}
+            tip_configurable = (
+                tip_config.get("configurable") if isinstance(tip_config, dict) else None
+            ) or {}
+            if not tip_configurable.get("checkpoint_id"):
+                return
+            values = self._empty_state_values()
+            config = RunnableConfig(configurable={"thread_id": session_id})
+            self._compiled_graph.update_state(config, values=values)
+    
+    def _empty_state_values(self) -> dict[str, Any]:
+        """用 state_schema 默认值构造空完成态；失败则 {}。"""
+        schema = self._graph.state_schema
+        if schema is None:
+            return {}
+        try:
+            instance = schema()
+        except Exception:
+            return {}
+        if hasattr(instance, "model_dump"):
+            return instance.model_dump()
+        if isinstance(instance, dict):
+            return dict(instance)
+        return {}
+    
+    @staticmethod
+    def _normalize_checkpoint_values(values: Any) -> dict[str, Any]:
+        """将 StateSnapshot.values 规范为 update_state 可用的 dict。"""
+        if values is None:
+            return {}
+        if hasattr(values, "model_dump"):
+            return values.model_dump()
+        if isinstance(values, dict):
+            out: dict[str, Any] = {}
+            for key, value in values.items():
+                if hasattr(value, "model_dump"):
+                    out[key] = value.model_dump()
+                else:
+                    out[key] = value
+            return out
+        try:
+            return dict(values)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _config_for_checkpoint(
+        session_id: str,
+        checkpoint_id: str,
+        baseline: Any,
+    ) -> RunnableConfig:
+        """构造带 checkpoint_ns 的 config（get_state 按 id 取回时可能缺 ns）。"""
+        checkpoint_ns = ""
+        baseline_config = getattr(baseline, "config", None) or {}
+        if isinstance(baseline_config, dict):
+            configurable = baseline_config.get("configurable") or {}
+            if isinstance(configurable, dict) and configurable.get("checkpoint_ns") is not None:
+                checkpoint_ns = str(configurable.get("checkpoint_ns") or "")
+        return RunnableConfig(
+            configurable={
+                "thread_id": session_id,
+                "checkpoint_id": checkpoint_id,
+                "checkpoint_ns": checkpoint_ns,
+            }
+        )
+# endregion

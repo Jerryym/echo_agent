@@ -13,12 +13,11 @@ import warnings
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
-from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
+from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, UserInput
 from echo_agent.core.app import Application
-from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions, GraphSchema
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolRegistry
 from env_config import build_config
@@ -67,10 +66,7 @@ def build_react_file_agent(
         skill_list=[],
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
-
-    placeholder = RootGraph(state_schema=State)
-    placeholder.add_edge(START_NODE, END_NODE)
-    agent = Agent(agent_config, compile_options, placeholder)
+    agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)
     app.add_agent(agent)
 
     react_subgraph = StrategyFactory.create_as_node(
@@ -78,43 +74,11 @@ def build_react_file_agent(
         llm_config=config,
         tool_registry=agent.tool_registry,
     )
-    graph = RootGraph(state_schema=State)
-    graph.add_node(react_subgraph)
-    graph.add_edge(START_NODE, react_subgraph.name)
-    graph.add_edge(react_subgraph.name, END_NODE)
-    agent._graph = graph
-    agent._compiled_graph = graph.compile(compile_options)
+    agent.add_node(react_subgraph)
+    agent.add_edge(START_NODE, react_subgraph.name)
+    agent.add_edge(react_subgraph.name, END_NODE)
+    agent.compile()
     return agent, agent.tool_registry, sandbox
-
-
-def _message_chunk_text(message: AIMessageChunk) -> str:
-    content = message.content
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
-                parts.append(block.get("text", ""))
-        return "".join(parts)
-    return ""
-
-
-def extract_stream_text(chunk, *, node: str | None = "final") -> str:
-    metadata = None
-    if isinstance(chunk, dict) and chunk.get("type") == "messages":
-        message, metadata = chunk["data"]
-    elif isinstance(chunk, tuple) and len(chunk) == 2:
-        message, metadata = chunk
-    else:
-        return ""
-    if not isinstance(message, AIMessageChunk):
-        return ""
-    if node is not None and metadata and metadata.get("langgraph_node") != node:
-        return ""
-    return _message_chunk_text(message)
 
 
 def _print_result(result) -> None:
@@ -146,10 +110,13 @@ def chat_stream(agent: Agent, session_id: str) -> None:
         if user_text.lower() in ["exit", "quit"]:
             break
         print("\nAssistant: ", end="", flush=True)
+        printed = ""
         for chunk in agent.stream(session_id, UserInput(text=user_text)):
-            text = extract_stream_text(chunk, node="final")
-            if text:
-                print(text, end="", flush=True)
+            text = getattr(chunk, "text", "") or ""
+            delta = text[len(printed):] if text.startswith(printed) else text
+            printed = text
+            if delta:
+                print(delta, end="", flush=True)
         print(f"\n[DEBUG] state values: {agent.get_state(session_id).values}")
         print("\n------------------------------\n")
 

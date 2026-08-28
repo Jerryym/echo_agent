@@ -1,57 +1,53 @@
 from abc import ABC
 from typing import Any, Callable
 
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import START, END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.utils.runnable import RunnableCallable
 
 from .node import Node
+from .graph_schema import GraphSchema
 from .schema import BaseContext, BaseInput, BaseOutput, BaseState
 
 
 START_NODE = START
 END_NODE = END
 
-class Graph(ABC):
+class Graph:
     """
-    Graph：图结构定义，负责描述一个 LangGraph，包括状态模型、节点和边，不负责图的编译与运行。
+    Graph：图结构定义，负责描述一个 LangGraph，包括状态模型、节点和边，不负责图的编译与运行
 
     参数：
-        state_schema: 状态
-        context_schema: 上下文
-        input_schema: 输入
-        output_schema: 输出
+        graph_schema: 图
         nodes: 节点列表
         subgraphs: 子图列表
         edges: 边列表
         conditional_edges: 条件边列表
     """
-    def __init__(self, state_schema: type[BaseState], context_schema: type[BaseContext] | None = None, input_schema: type[BaseInput] | None = None, output_schema: type[BaseOutput] | None = None):
-        self._state_schema = state_schema
-        self._context_schema = context_schema if context_schema is not None else BaseContext
-        self._input_schema = input_schema
-        self._output_schema = output_schema
-
+    def __init__(self, graph_schema: GraphSchema):
+        self._graph_schema = graph_schema
         self._nodes: dict[str, Node] = {}
         self._subgraphs: dict[str, CompiledStateGraph] = {}
         self._edges: list[tuple[str, str]] = []
         self._conditional_edges: list[tuple[str, Callable[[Any], str], dict[str, str] | None]] = []
 
+# region 属性
     @property
-    def state_schema(self):
-        return self._state_schema
+    def state_schema(self) -> type[BaseState]:
+        return self._graph_schema.state_schema
 
     @property
-    def context_schema(self):
-        return self._context_schema
+    def context_schema(self) -> type[BaseContext] | None:
+        return self._graph_schema.context_schema
 
     @property
-    def input_schema(self):
-        return self._input_schema
+    def input_schema(self) -> type[BaseInput] | None:
+        return self._graph_schema.input_schema
 
     @property
-    def output_schema(self):
-        return self._output_schema
+    def output_schema(self) -> type[BaseOutput] | None:
+        return self._graph_schema.output_schema
+# endregion
 
     def add_node(self, node: Node) -> None:
         self._nodes[node.name] = node
@@ -67,17 +63,17 @@ class Graph(ABC):
 
     def build(self) -> StateGraph:
         """
-        构建 LangGraph StateGraph。
+        构建 LangGraph StateGraph
         """
-        kwargs: dict = {
-            "state_schema": self._state_schema,
-            "context_schema": self._context_schema, # 默认使用 BaseContext
+        kwargs: dict[str, Any] = {
+            "state_schema": self._graph_schema.state_schema,
+            "context_schema": self.context_schema or BaseContext, # 默认使用 BaseContext
         }
 
-        if self._input_schema is not None:
-            kwargs["input_schema"] = self._input_schema
-        if self._output_schema is not None:
-            kwargs["output_schema"] = self._output_schema
+        if self.input_schema is not None:
+            kwargs["input_schema"] = self.input_schema
+        if self.output_schema is not None:
+            kwargs["output_schema"] = self.output_schema
         builder = StateGraph(**kwargs)
 
         # 注册节点：同步 / 异步路径同时挂上，避免 is_async 标记与实现不一致时硬失败

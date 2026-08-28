@@ -1,9 +1,9 @@
+from .compile_options import GraphCompileOptions
 from .graph import START_NODE, END_NODE, Graph
+from .graph_schema import GraphSchema
 from .node import Node
-from .rootgraph import RootGraph
 from .schema import BaseContext, BaseInput, BaseOutput, BaseState
 from .subgraph import SubGraph
-from .compile_options import GraphCompileOptions
 
 
 __all__ = [
@@ -16,6 +16,6 @@ __all__ = [
     "Graph",
     "START_NODE",
     "END_NODE",
-    "RootGraph",
     "GraphCompileOptions",
+    "GraphSchema",
 ]

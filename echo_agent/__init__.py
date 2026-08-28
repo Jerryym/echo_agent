@@ -11,7 +11,6 @@ from .core import (
     Role,
     UserInput,
     Graph,
-    RootGraph,
     Node,
     SubGraph,
     BaseInput,
@@ -20,6 +19,7 @@ from .core import (
     BaseContext,
     Agent,
     AgentConfig,
+    GraphSchema,
 )
 
 __all__ = [
@@ -35,7 +35,6 @@ __all__ = [
     "Role",
     "Message",
     "Graph",
-    "RootGraph",
     "Node",
     "SubGraph",
     "BaseInput",
@@ -44,4 +43,5 @@ __all__ = [
     "BaseContext",
     "Agent",
     "AgentConfig",
+    "GraphSchema",
 ]

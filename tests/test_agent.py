@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
 from echo_agent import (
@@ -11,10 +10,9 @@ from echo_agent import (
     LLMClient,
     LLMConfig,
     Node,
-    RootGraph,
 )
 from echo_agent.core.agent import AgentConfig
-from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions
+from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions, GraphSchema
 from echo_agent.core.model.message import Message, Role
 from echo_agent.core.model.input import UserInput
 from env_config import build_config
@@ -52,12 +50,7 @@ class LLMInvokeNode(Node):
 
 
 def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
-    graph = RootGraph(state_schema=State)
     llm_node = LLMInvokeNode("llm_node", config, system_prompt)
-    graph.add_node(llm_node)
-    graph.add_edge(START_NODE, llm_node.name)
-    graph.add_edge(llm_node.name, END_NODE)
-
     agent_config = AgentConfig(
         name=name,
         description=name,
@@ -66,37 +59,12 @@ def build_agent(name: str, config: LLMConfig, system_prompt: str) -> Agent:
         allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
-    return Agent(agent_config, compile_options, graph)
-
-
-def _message_chunk_text(message: AIMessageChunk) -> str:
-    content = message.content
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
-                parts.append(block.get("text", ""))
-        return "".join(parts)
-    return ""
-
-
-def extract_stream_text(chunk) -> str:
-    """从 stream(v2) 事件中提取可打印的 token 文本。"""
-    if isinstance(chunk, dict) and chunk.get("type") == "messages":
-        message, _metadata = chunk["data"]
-    elif isinstance(chunk, tuple) and len(chunk) == 2:
-        message, _metadata = chunk
-    else:
-        return ""
-
-    if not isinstance(message, AIMessageChunk):
-        return ""
-
-    return _message_chunk_text(message)
+    agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)
+    agent.add_node(llm_node)
+    agent.add_edge(START_NODE, llm_node.name)
+    agent.add_edge(llm_node.name, END_NODE)
+    agent.compile()
+    return agent
 
 
 def chat_invoke(agent: Agent, session_id: str) -> None:
@@ -111,7 +79,7 @@ def chat_invoke(agent: Agent, session_id: str) -> None:
 
         result = agent.invoke(session_id, UserInput(text=user_text))
         print("\nAssistant:")
-        print(result.get("response", result))
+        print(getattr(result, "text", result))
         print("\n------------------------------\n")
 
 
@@ -126,10 +94,13 @@ def chat_stream(agent: Agent, session_id: str) -> None:
             break
 
         print("\nAssistant: ", end="", flush=True)
+        printed = ""
         for chunk in agent.stream(session_id, UserInput(text=user_text)):
-            text = extract_stream_text(chunk)
-            if text:
-                print(text, end="", flush=True)
+            text = getattr(chunk, "text", "") or ""
+            delta = text[len(printed):] if text.startswith(printed) else text
+            printed = text
+            if delta:
+                print(delta, end="", flush=True)
         print("\n\n------------------------------\n")
 
 

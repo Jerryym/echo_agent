@@ -3,9 +3,9 @@ from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
 
-from echo_agent import Agent, AgentConfig, BaseState, RootGraph, UserInput
+from echo_agent import Agent, AgentConfig, BaseState, UserInput
 from echo_agent.common import format_value
-from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions
+from echo_agent.core.graph import START_NODE, END_NODE, GraphCompileOptions, GraphSchema
 from echo_agent.core.llm import LLMConfig
 from echo_agent.core.runtime.human_in_the_loop import (
     HITLInput,
@@ -48,16 +48,8 @@ def _make_hitl_input(
 
 def build_hitl_agent(hitl_type: HITLType) -> Agent:
     hitl = HITLSubgraph()
-    hitl_input = _make_hitl_input(hitl_type)
-    # as_node() 当前未接收 HITLInput，测试侧直接构造 HITLNode
-    hitl_node = HITLNode(name="HITL", hitl=hitl, input=hitl_input)
+    hitl_node = HITLNode(name="HITL", hitl=hitl)
 
-    graph = RootGraph(state_schema=State)
-    graph.add_node(hitl_node)
-    graph.add_edge(START_NODE, hitl_node.name)
-    graph.add_edge(hitl_node.name, END_NODE)
-
-    # AgentConfig 强制要 llm_config，这里给占位即可（本图不用 LLM）
     agent_config = AgentConfig(
         name=f"hitl_only_{hitl_type.value}",
         description="HITLSubgraph unit harness",
@@ -69,7 +61,12 @@ def build_hitl_agent(hitl_type: HITLType) -> Agent:
         allowed_directories=str(Path(__file__).resolve().parents[1]),
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
-    return Agent(agent_config, compile_options, graph)
+    agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)
+    agent.add_node(hitl_node)
+    agent.add_edge(START_NODE, hitl_node.name)
+    agent.add_edge(hitl_node.name, END_NODE)
+    agent.compile()
+    return agent
 
 
 def get_pending_interrupt(agent: Agent, session_id: str) -> dict | None:

@@ -5,7 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from ....common import get_logger
-from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE
+from ...graph import BaseContext, BaseState, GraphSchema, Node, SubGraph, START_NODE, END_NODE
 from ...model.hitl import HITLInput, HITLOutput, HITLType, HITLInteraction
 from .node import ApprovalFlow, InputFlow, NormalizeResultNode
 from .schema import HITLState
@@ -36,7 +36,12 @@ class HITLSubgraph:
         """
         graph = SubGraph(
             name="HITL",
-            state_schema=self._state_schema,
+            graph_schema=GraphSchema(
+                state_schema=self._state_schema,
+                context_schema=self._context_schema,
+                input_schema=self._input_schema,
+                output_schema=self._output_schema,
+            ),
         )
 
         input_flow = InputFlow(name="input_flow")

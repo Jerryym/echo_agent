@@ -9,7 +9,7 @@ from .llm import (
 )
 from .model.input import Attachment, UserInput
 from .model.message import Message, Role
-from .graph import Graph, RootGraph, Node, SubGraph, BaseInput, BaseOutput, BaseState, BaseContext
+from .graph import Graph, Node, SubGraph, BaseInput, BaseOutput, BaseState, BaseContext, GraphSchema
 from .agent import Agent, AgentConfig
 
 __all__ = [
@@ -25,7 +25,6 @@ __all__ = [
     "Role",
     "Message",
     "Graph",
-    "RootGraph",
     "Node",
     "SubGraph",
     "BaseInput",
@@ -34,4 +33,5 @@ __all__ = [
     "BaseContext",
     "Agent",
     "AgentConfig",
+    "GraphSchema",
 ]

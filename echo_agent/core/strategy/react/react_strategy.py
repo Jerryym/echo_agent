@@ -2,7 +2,7 @@ from langgraph.runtime import Runtime
 
 from ....common import get_logger
 from ....utils import MessageAdapter
-from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE
+from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE, GraphSchema
 from ...llm import LLMConfig
 from ...model.input import UserInput
 from ...model.message import Message, Role
@@ -36,10 +36,12 @@ class ReActStrategy(BaseStrategy):
         """
         graph = SubGraph(
             name="ReAct",
-            state_schema=self.state_schema,
-            context_schema=self.context_schema,
-            input_schema=self.input_schema,
-            output_schema=self.output_schema,
+            graph_schema=GraphSchema(
+                state_schema=ReActState,
+                input_schema=ReActInput, 
+                output_schema=ReActOutput, 
+                context_schema=ReActContext
+            ),
         )
 
         # 定义节点
