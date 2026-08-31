@@ -91,8 +91,6 @@ class Agent:
 
         # Agent Session
         self._agent_sessions: dict[str, AgentSession] = {}
-        self._pending_inputs: dict[str, UserInput | type[BaseInput]] = {}
-        self._pending_results: dict[str, AgentResult] = {}
 
         # Conversation
         self._conversation_compressor = ConversationCompressor(
@@ -183,9 +181,8 @@ class Agent:
         """
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
-        context = self._build_context(session_id, http_request, resume=False)
+        context = self._build_context(session_id, input, http_request, resume=False)
         self._unload_idle_skills_for_user_turn(context)
-        self._pending_inputs[session_id] = input
         result = self._compiled_graph.invoke(graph_input, runnable_config, context=context)
         return self._generate_result(session_id, context, result)
 
@@ -202,9 +199,8 @@ class Agent:
         """
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
-        context = self._build_context(session_id, http_request, resume=False)
+        context = self._build_context(session_id, input, http_request, resume=False)
         self._unload_idle_skills_for_user_turn(context)
-        self._pending_inputs[session_id] = input
         result = await self._compiled_graph.ainvoke(graph_input, runnable_config, context=context)
         return await self._agenerate_result(session_id, context, result)
 
@@ -229,9 +225,8 @@ class Agent:
         """
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
-        context = self._build_context(session_id, http_request, resume=False)
+        context = self._build_context(session_id, input, http_request, resume=False)
         self._unload_idle_skills_for_user_turn(context)
-        self._pending_inputs[session_id] = input
         return self._stream_iterator(graph_input, runnable_config, context, session_id, version)
 
     async def astream(
@@ -248,9 +243,8 @@ class Agent:
         """
         graph_input = self._build_input(input)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
-        context = self._build_context(session_id, http_request, resume=False)
+        context = self._build_context(session_id, input, http_request, resume=False)
         self._unload_idle_skills_for_user_turn(context)
-        self._pending_inputs[session_id] = input
         return self._astream_iterator(graph_input, runnable_config, context, session_id, version)
 
     def resume(
@@ -385,8 +379,8 @@ class Agent:
             raise ValueError("session_id is required")
 
         # 当轮未完成，不写 conversation
-        self._pending_inputs.pop(session_id, None)
-        self._pending_results.pop(session_id, None)
+        session = self._get_session(session_id)
+        session.clear_turn()
 
         if checkpoint_id is None or not str(checkpoint_id).strip():
             self._restore_first_turn_baseline(session_id)
@@ -488,7 +482,7 @@ class Agent:
         )
         return runtime.to_graph_runnable_config()
     
-    def _build_context(self, session_id: str, http_request: HttpRequest | None = None, *, resume: bool = False) -> BaseContext:
+    def _build_context(self, session_id: str, input: UserInput | type[BaseInput] | None = None, http_request: HttpRequest | None = None, resume: bool = False) -> BaseContext:
         """
         构建上下文
 
@@ -497,15 +491,26 @@ class Agent:
 
         resume=True 时复用未完成的本轮 AgentResult；否则新建本轮结果。
         """
-        agent_state = self._get_agent_state(session_id)
+        session = self._get_session(session_id)
+        # 获取当前会话状态
+        agent_state = session.state
         if agent_state.session_id != session_id:
             raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
-        active_skills = self._get_active_skills(session_id)
-        if resume and session_id in self._pending_results:
-            agent_result = self._pending_results[session_id]
+
+        # 获取当前会话活动SKill
+        active_skills = session.active_skills
+
+        # 复用未完成的本轮 AgentResult
+        if resume:
+            turn = session.current_turn
+            if turn is None:
+                raise ValueError("Cannot resume without an active turn")
         else:
-            agent_result = AgentResult()
-            self._pending_results[session_id] = agent_result
+            if input is None:
+                raise ValueError("input is required when starting a new turn")
+            turn = session.start_turn(input)
+
+        # 构建Context
         context = BaseContext(
             agent_state=agent_state,
             resources=AgentResources(
@@ -515,12 +520,13 @@ class Agent:
                 kb_list=self._agent_config.kb_list,
             ),
             active_skills=active_skills,
-            agent_result=agent_result,
+            agent_result=turn.result,
         )
+
         if context.active_skills is not active_skills:
             object.__setattr__(context, "active_skills", active_skills)
-        if context.agent_result is not agent_result:
-            object.__setattr__(context, "agent_result", agent_result)
+        if context.agent_result is not turn.result:
+            object.__setattr__(context, "agent_result", turn.result)
         return context
 
     def _get_session(self, session_id: str) -> AgentSession:
@@ -558,52 +564,43 @@ class Agent:
             return ""
         return str(response)
 
-    def _generate_result(
-        self,
-        session_id: str,
-        context: BaseContext,
-        result: Any = None,
-        *,
-        compress: bool = True,
-    ) -> AgentResult:
+    def _generate_result(self, session_id: str, context: BaseContext, result: Any = None, compress: bool = True) -> AgentResult:
         """
         生成结果
         """
+        session = self._get_session(session_id)
+        turn = session.current_turn
+        if turn is None:
+            raise ValueError("Cannot generate result without an active turn")
+        agent_result = turn.result
         self._append_conversation(session_id, result)
-        agent_result = context.agent_result or self._pending_results.get(session_id) or AgentResult()
-        snapshot = self.get_state(session_id)
 
+        snapshot = self.get_state(session_id)
+        # Graph 处于 HITL 等中断状态，保留当前 Turn
         if snapshot.next:
             agent_result.text = ""
-            self._pending_results[session_id] = agent_result
             return agent_result.model_copy(deep=True)
 
         response_text = self._extract_response_text(result)
         if not response_text:
-            snapshot = self.get_state(session_id)
             response_text = self._extract_response_text(getattr(snapshot, "values", None))
         if response_text:
             agent_result.text = response_text
 
-        snapshot = self.get_state(session_id)
-        if snapshot.next:
-            self._pending_results[session_id] = agent_result
-            return agent_result.model_copy(deep=True)
-
+        # 更新 Token Usage
         self._update_token_usage(session_id, context)
-        # 更新AgentResult
-        self._get_session(session_id).add_result(agent_result.model_copy(deep=True))
-        self._pending_results.pop(session_id, None)
+
+        # 当前 Turn 完成，保存结果并清理当前 Turn
+        final_result = agent_result.model_copy(deep=True)
+        session.add_result(final_result)
+        session.clear_turn()
+
         if compress:
             self._compress_conversation(session_id)
-        return agent_result.model_copy(deep=True)
 
-    async def _agenerate_result(
-        self,
-        session_id: str,
-        context: BaseContext,
-        result: Any = None,
-    ) -> AgentResult:
+        return final_result
+
+    async def _agenerate_result(self, session_id: str,  context: BaseContext, result: Any = None) -> AgentResult:
         """
         生成结果(异步)
         """
@@ -696,12 +693,14 @@ class Agent:
         if snapshot.next:
             return
 
+        # 获取当轮交互
+        session = self._get_session(session_id)
+        turn = session.current_turn
+        if turn is None:
+            return
+
         if result is None:
             result = snapshot.values
-
-        pending_input = self._pending_inputs.get(session_id)
-        if pending_input is None:
-            return
 
         response = (
             result.get("response")
@@ -721,7 +720,7 @@ class Agent:
             [
                 Message(
                     role=Role.USER,
-                    content=self._input_text(pending_input),
+                    content=self._input_text(turn.input),
                 ),
                 Message(
                     role=Role.ASSISTANT,
@@ -729,7 +728,6 @@ class Agent:
                 ),
             ],
         )
-        self._pending_inputs.pop(session_id, None)
 
     def _input_text(self,input: UserInput | type[BaseInput]) -> str:
         """将 Agent 输入转换为会话消息文本。"""

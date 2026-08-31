@@ -39,8 +39,6 @@ class HITLSubgraph:
             graph_schema=GraphSchema(
                 state_schema=self._state_schema,
                 context_schema=self._context_schema,
-                input_schema=self._input_schema,
-                output_schema=self._output_schema,
             ),
         )
 
