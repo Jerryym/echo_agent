@@ -20,6 +20,7 @@ class LLMConfig(BaseModel):
         output_version: AIMessage 输出版本（如 responses/v1）
         builtin_tools: 模型/provider 内置工具列表，由调用方按模型能力传入
         extra_body: provider 扩展请求参数（如 enable_thinking）
+        default_headers: 默认请求头
     """
     base_url: str
     api_key: str
@@ -33,3 +34,4 @@ class LLMConfig(BaseModel):
     output_version: Optional[str] = None
     builtin_tools: list[dict[str, Any]] = Field(default_factory=list)
     extra_body: dict[str, Any] = Field(default_factory=dict)
+    default_headers: dict[str, str] = Field(default_factory=dict)

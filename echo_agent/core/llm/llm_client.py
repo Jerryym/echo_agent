@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 from ...common import get_logger
-from ...prompt import PromptAssembler, PromptLoader
+from ...prompt import PromptAssembler
 from ...utils import MessageAdapter
 from ..graph.schema import BaseContext
 from ..model.agent import AgentResources
@@ -367,12 +367,16 @@ class LLMClient:
             "model_provider": self._config.model_provider,
             "base_url": self._config.base_url,
             "temperature": self._config.temperature,
-            "max_tokens": self._config.max_tokens,
+            "max_completion_tokens": self._config.max_tokens,
             "timeout": self._config.timeout,
             "max_retries": self._config.max_retries,
         }
+        # extra_body
         if self._config.extra_body:
             model_kwargs["extra_body"] = self._config.extra_body
+        # default_headers
+        if self._config.default_headers:
+            model_kwargs["default_headers"] = dict(self._config.default_headers)
         return init_chat_model(**model_kwargs)
 
     def _initialize_model_with_responses_api(self):
@@ -383,11 +387,10 @@ class LLMClient:
                 "api_key": self._config.api_key,
                 "base_url": self._config.base_url,
                 "temperature": self._config.temperature,
-                "max_tokens": self._config.max_tokens,
+                "max_completion_tokens": self._config.max_tokens,
                 "timeout": self._config.timeout,
                 "max_retries": self._config.max_retries,
                 "use_responses_api": self._config.use_responses_api,
-
             }
             # output_version
             if self._config.output_version:
@@ -395,6 +398,9 @@ class LLMClient:
             # extra_body
             if self._config.extra_body:
                 model_kwargs["extra_body"] = self._config.extra_body
+            # default_headers
+            if self._config.default_headers:
+                model_kwargs["default_headers"] = dict(self._config.default_headers)
             # 初始化模型
             model = ChatOpenAI(**model_kwargs)
             # 绑定内置工具

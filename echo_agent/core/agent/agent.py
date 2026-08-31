@@ -366,7 +366,9 @@ class Agent:
 
     def restore_checkpoint(self, session_id: str, checkpoint_id: str | None) -> None:
         """
-        将 thread tip fork 回开跑前基线（Cancel 用）。
+        将 thread tip fork 回开跑前基线（Cancel 用）。只 clear 当轮，
+        不修改 conversation / token_usage。无 checkpoint_id 且已有
+        会话消息时跳过空图基线，避免误伤已结算历史。
 
         LangGraph 的 update_state 不删除历史，只 fork 出新 tip，使后续
         无 checkpoint_id 的 get_state / invoke / astream 读到基线语义。
@@ -378,11 +380,18 @@ class Agent:
         if not session_id or not str(session_id).strip():
             raise ValueError("session_id is required")
 
-        # 当轮未完成，不写 conversation
+        # 当轮未完成：丢 turn，不改 conversation / token_usage
         session = self._get_session(session_id)
         session.clear_turn()
 
         if checkpoint_id is None or not str(checkpoint_id).strip():
+            if session.state.conversation.messages:
+                logger.warning(
+                    "restore_checkpoint: skip empty-graph baseline "
+                    "(conversation already has %s messages)",
+                    len(session.state.conversation.messages),
+                )
+                return
             self._restore_first_turn_baseline(session_id)
             return
 
@@ -573,7 +582,6 @@ class Agent:
         if turn is None:
             raise ValueError("Cannot generate result without an active turn")
         agent_result = turn.result
-        self._append_conversation(session_id, result)
 
         snapshot = self.get_state(session_id)
         # Graph 处于 HITL 等中断状态，保留当前 Turn
@@ -584,8 +592,12 @@ class Agent:
         response_text = self._extract_response_text(result)
         if not response_text:
             response_text = self._extract_response_text(getattr(snapshot, "values", None))
+        if not response_text:
+            response_text = agent_result.text or ""
         if response_text:
             agent_result.text = response_text
+
+        self._append_conversation(session_id, result)
 
         # 更新 Token Usage
         self._update_token_usage(session_id, context)
@@ -702,13 +714,13 @@ class Agent:
         if result is None:
             result = snapshot.values
 
-        response = (
-            result.get("response")
-            if isinstance(result, dict)
-            else getattr(result, "response", None)
-        )
-        if not response:
-            return
+        assistant = self._extract_response_text(result)
+        if not assistant:
+            assistant = self._extract_response_text(getattr(snapshot, "values", None))
+        if not assistant:
+            assistant = (turn.result.text or "").strip()
+        if not assistant:
+            assistant = "本轮已结束，无最终回复。"
 
         agent_state = self._get_agent_state(session_id)
         if agent_state.session_id != session_id:
@@ -724,7 +736,7 @@ class Agent:
                 ),
                 Message(
                     role=Role.ASSISTANT,
-                    content=str(response),
+                    content=assistant,
                 ),
             ],
         )

@@ -83,7 +83,7 @@ class EchoAgentServiceServicer:
     """
 
     def CreateAgent(self, request, context):
-        """按 AgentConfig（+ 可选 RuntimeOptions）创建默认 ReAct Agent，返回 agent_id
+        """按 AgentConfig（+ 可选 RuntimeOptions）调用注入的 factory 创建 Agent，返回 agent_id
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -104,7 +104,7 @@ class EchoAgentServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Stream(self, request, context):
-        """流式执行；事件由 Adapter 从 LangGraph messages 流映射
+        """流式执行；事件由 Adapter 从 AgentResult 流映射
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

@@ -32,10 +32,30 @@ def runtime_options_from_fields(
     )
 
 
-def parse_llm_extra_json(extra_json: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """解析 llm_config.extra_json → (extra_body, builtin_tools)。非法 JSON → ValueError。"""
+_LLM_EXTRA_JSON_RESERVED = ("builtin_tools", "extra_body", "default_headers")
+
+
+def _parse_default_headers(raw: Any) -> dict[str, str]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("llm_config.extra_json default_headers must be a JSON object")
+    headers: dict[str, str] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise ValueError(
+                "llm_config.extra_json default_headers must be a string-to-string object"
+            )
+        headers[key] = value
+    return headers
+
+
+def parse_llm_extra_json(
+    extra_json: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
+    """解析 llm_config.extra_json → (extra_body, builtin_tools, default_headers)。非法 JSON → ValueError。"""
     if not extra_json:
-        return {}, []
+        return {}, [], {}
     try:
         payload = json.loads(extra_json)
     except json.JSONDecodeError as exc:
@@ -43,6 +63,7 @@ def parse_llm_extra_json(extra_json: str) -> tuple[dict[str, Any], list[dict[str
     if not isinstance(payload, dict):
         raise ValueError("llm_config.extra_json must be a JSON object")
     builtin_tools = list(payload.get("builtin_tools") or [])
+    default_headers = _parse_default_headers(payload.get("default_headers"))
     body = payload.get("extra_body")
     if isinstance(body, dict):
         extra_body = body
@@ -50,9 +71,9 @@ def parse_llm_extra_json(extra_json: str) -> tuple[dict[str, Any], list[dict[str
         extra_body = {
             k: v
             for k, v in payload.items()
-            if k not in ("builtin_tools", "extra_body")
+            if k not in _LLM_EXTRA_JSON_RESERVED
         }
-    return extra_body, builtin_tools
+    return extra_body, builtin_tools, default_headers
 
 
 def llm_config_from_fields(
@@ -78,7 +99,7 @@ def llm_config_from_fields(
     if not base_url or not api_key or not model_name:
         raise ValueError("llm_config requires base_url, api_key, model_name")
 
-    extra_body, builtin_tools = parse_llm_extra_json(extra_json)
+    extra_body, builtin_tools, default_headers = parse_llm_extra_json(extra_json)
     kwargs: dict[str, Any] = {
         "base_url": base_url,
         "api_key": api_key,
@@ -87,6 +108,7 @@ def llm_config_from_fields(
         "use_responses_api": bool(use_responses_api),
         "builtin_tools": builtin_tools,
         "extra_body": extra_body,
+        "default_headers": default_headers,
     }
     if temperature is not None:
         kwargs["temperature"] = float(temperature)

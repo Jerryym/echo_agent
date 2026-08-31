@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, TypeAlias
@@ -40,10 +39,10 @@ class AgentRuntime:
     """
     Runtime Adapter 入口（非 core）。
 
-    - 持有 agent_id → Agent
+    - 持有 agent_id → Agent（id 与 Agent.agent_id / Application 登记一致）
     - CreateAgent 时必须调用集成方注入的 factory
     - 转发 invoke / stream / resume 到现有 Agent API
-    - 当轮执行登记为 asyncio.Task，Cancel 可取消并回滚 checkpoint
+    - 当轮执行登记为 asyncio.Task；新请求会先 Cancel 同 session 上的当轮再开跑
     """
 
     def __init__(
@@ -61,6 +60,8 @@ class AgentRuntime:
         self._max_agents = max_agents
         # (agent_id, session_id) → 当轮 ActiveRun
         self._active_runs: dict[tuple[str, str], _ActiveRun] = {}
+        # 串行化 Cancel / 开跑，避免重叠请求撞 session already running
+        self._schedule_lock = asyncio.Lock()
 
     def get_agent(self, agent_id: str) -> Agent:
         """
@@ -89,7 +90,15 @@ class AgentRuntime:
             raise TypeError(
                 f"agent factory must return Agent, got {type(agent).__name__}"
             )
-        agent_id = str(uuid.uuid4())
+        if getattr(agent, "_compiled_graph", None) is None:
+            raise TypeError(
+                "agent factory must call Agent.compile() before returning"
+            )
+        agent_id = (agent.agent_id or "").strip()
+        if not agent_id:
+            raise TypeError("agent factory must set Agent.agent_id")
+        if agent_id in self._agent_map:
+            raise ValueError(f"agent already exists: {agent_id}")
         self._agent_map[agent_id] = agent
         return agent_id
 
@@ -129,6 +138,16 @@ class AgentRuntime:
         self._require_session_id(session_id)
         agent = self.get_agent(agent_id)
 
+        async with self._schedule_lock:
+            return await self._cancel_locked(agent, agent_id, session_id)
+
+    async def _cancel_locked(
+        self,
+        agent: Agent,
+        agent_id: str,
+        session_id: str,
+    ) -> bool:
+        """Cancel 当轮（调用方须已持有 _schedule_lock）。"""
         key = (agent_id, session_id)
         run = self._active_runs.get(key)
         if run is None:
@@ -140,7 +159,6 @@ class AgentRuntime:
         except asyncio.CancelledError:
             pass
 
-        # 仅当仍是本轮登记时移除（自然结束 / 消费端 finally 可能已 _end_run）
         current = self._active_runs.get(key)
         if current is run:
             self._active_runs.pop(key, None)
@@ -263,9 +281,11 @@ class AgentRuntime:
         runner: Callable[[], Awaitable[AgentInvokeResult]],
     ) -> AgentInvokeResult:
         """将单次 ainvoke/aresume 放入 Task 并登记，供 Cancel 取消。"""
-        pre_checkpoint_id = self._read_pre_checkpoint_id(agent, session_id)
-        task = asyncio.create_task(runner())
-        self._begin_run(agent_id, session_id, task, pre_checkpoint_id)
+        async with self._schedule_lock:
+            await self._cancel_locked(agent, agent_id, session_id)
+            pre_checkpoint_id = self._read_pre_checkpoint_id(agent, session_id)
+            task = asyncio.create_task(runner())
+            self._begin_run(agent_id, session_id, task, pre_checkpoint_id)
         try:
             return await task
         finally:
@@ -285,10 +305,12 @@ class AgentRuntime:
         producer: Callable[[asyncio.Queue[Any]], Awaitable[None]],
     ) -> AsyncIterator[AgentEvent]:
         """将 astream 消费放入 Task + Queue，供 Cancel 取消生产者。"""
-        pre_checkpoint_id = self._read_pre_checkpoint_id(agent, session_id)
-        queue: asyncio.Queue[Any] = asyncio.Queue()
-        task = asyncio.create_task(producer(queue))
-        self._begin_run(agent_id, session_id, task, pre_checkpoint_id)
+        async with self._schedule_lock:
+            await self._cancel_locked(agent, agent_id, session_id)
+            pre_checkpoint_id = self._read_pre_checkpoint_id(agent, session_id)
+            queue: asyncio.Queue[Any] = asyncio.Queue()
+            task = asyncio.create_task(producer(queue))
+            self._begin_run(agent_id, session_id, task, pre_checkpoint_id)
         completed_ok = False
         try:
             while True:
@@ -351,7 +373,7 @@ class AgentRuntime:
         task: asyncio.Task[Any],
         pre_checkpoint_id: str | None,
     ) -> None:
-        """登记当轮执行。"""
+        """登记当轮执行。调用方须已 Cancel 同 session 并持有 _schedule_lock。"""
         key = (agent_id, session_id)
         if key in self._active_runs:
             raise RuntimeError(f"session already running: {session_id}")

@@ -14,7 +14,7 @@ option go_package = "github.com/echo-agent/echo-agent/api/v1;echoagentv1";
 // ---------------------------------------------------------------------------
 
 service EchoAgentService {
-  // 按 AgentConfig（+ 可选 RuntimeOptions）创建默认 ReAct Agent，返回 agent_id
+  // 按 AgentConfig（+ 可选 RuntimeOptions）调用注入的 factory 创建 Agent，返回 agent_id
   rpc CreateAgent(CreateAgentRequest) returns (AgentHandle);
 
   // 销毁进程内 Agent 实例（宿主业务结束时调用）
@@ -23,7 +23,7 @@ service EchoAgentService {
   // 同步执行一轮（需 session_id）
   rpc Invoke(InvokeRequest) returns (AgentResponse);
 
-  // 流式执行；事件由 Adapter 从 LangGraph messages 流映射
+  // 流式执行；事件由 Adapter 从 AgentResult 流映射
   rpc Stream(InvokeRequest) returns (stream AgentEvent);
 
   // HITL 恢复（对齐 Agent.resume）
@@ -97,7 +97,7 @@ message LLMConfig {
   int32 max_retries = 8;
   bool use_responses_api = 9;
   string output_version = 10;
-  // builtin_tools / extra_body 等扩展，JSON 字符串
+  // builtin_tools / extra_body / default_headers 等扩展，JSON 字符串
   string extra_json = 11;
 }
 

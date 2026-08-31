@@ -7,6 +7,7 @@ import json
 import math
 
 from echo_agent.adapter import AgentRuntime
+from echo_agent.core.model.skill import SkillSource
 from echo_agent.adapter.grpc.convert_grpc import (
     agent_config_from_proto,
     agent_event_to_proto,
@@ -37,6 +38,7 @@ def test_agent_config_from_proto_basic():
                 {
                     "extra_body": {"enable_thinking": True},
                     "builtin_tools": [{"type": "web_search"}],
+                    "default_headers": {"Authorization": "Bearer x"},
                 }
             ),
         ),
@@ -60,6 +62,7 @@ def test_agent_config_from_proto_basic():
     assert config.llm_config.max_tokens == 256
     assert config.llm_config.extra_body == {"enable_thinking": True}
     assert config.llm_config.builtin_tools == [{"type": "web_search"}]
+    assert config.llm_config.default_headers == {"Authorization": "Bearer x"}
     assert config.skill_list == [SkillSource(name="pdf", url="/tmp/pdf")]
     assert config.allowed_directories == "/tmp"
     remote = next(s for s in config.mcp_servers if s.name == "remote")
@@ -137,6 +140,22 @@ def test_llm_config_extra_json_must_be_object():
         raise AssertionError("expected ValueError")
     except ValueError as exc:
         assert "JSON object" in str(exc)
+
+
+def test_llm_config_extra_json_default_headers_must_be_string_map():
+    from echo_agent.adapter.grpc.convert_grpc import llm_config_from_proto
+
+    msg = pb.LLMConfig(
+        base_url="http://x",
+        api_key="k",
+        model_name="m",
+        extra_json=json.dumps({"default_headers": {"x": 1}}),
+    )
+    try:
+        llm_config_from_proto(msg)
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "default_headers" in str(exc)
 
 
 def test_servicer_parse_resume_invalid_values_json_raises_value_error():
