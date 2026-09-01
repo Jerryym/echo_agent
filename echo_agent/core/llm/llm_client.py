@@ -513,6 +513,8 @@ class LLMClient:
         try:
             text, reasoning = self._normalize_content(response)
             usage_metadata = getattr(response, "usage_metadata", None) or {}
+            input_token_details = usage_metadata.get("input_token_details", None) or {}
+            output_token_details = usage_metadata.get("output_token_details", None) or {}
             return LLMResult(
                     text=text,
                     reasoning=reasoning,
@@ -522,6 +524,9 @@ class LLMClient:
                     token_usage=TokenUsage(
                         input_tokens=usage_metadata.get("input_tokens", 0),
                         output_tokens=usage_metadata.get("output_tokens", 0),
+                        cache_creation=input_token_details.get("cache_creation", 0) if input_token_details else 0,
+                        cache_hit=input_token_details.get("cache_read", 0) if input_token_details else 0,
+                        reasoning_tokens=output_token_details.get("reasoning", 0) if output_token_details else 0,
                     )
                 )
         except Exception as e:
@@ -549,7 +554,9 @@ class LLMClient:
                 )
 
             text, reasoning = self._normalize_content(raw)
-            usage_metadata = getattr(response, "usage_metadata", None) or {}
+            usage_metadata = getattr(raw, "usage_metadata", None) or {}
+            input_token_details = usage_metadata.get("input_token_details", None) or {}
+            output_token_details = usage_metadata.get("output_token_details", None) or {}
             return LLMResult(
                 text=text,
                 reasoning=reasoning,
@@ -559,6 +566,9 @@ class LLMClient:
                 token_usage=TokenUsage(
                     input_tokens=usage_metadata.get("input_tokens", 0),
                     output_tokens=usage_metadata.get("output_tokens", 0),
+                    cache_creation=input_token_details.get("cache_creation", 0) if input_token_details else 0,
+                    cache_hit=input_token_details.get("cache_read", 0) if input_token_details else 0,
+                    reasoning_tokens=output_token_details.get("reasoning", 0) if output_token_details else 0,
                 )
             )
         except Exception as e:

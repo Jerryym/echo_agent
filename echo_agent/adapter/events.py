@@ -78,6 +78,9 @@ def agent_result_event_data(result: AgentResult) -> dict[str, Any]:
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
             "total_tokens": usage.total_tokens,
+            "cache_creation": usage.cache_creation,
+            "cache_hit": usage.cache_hit,
+            "reasoning_tokens": usage.reasoning_tokens,
         },
     }
 
