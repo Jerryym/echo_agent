@@ -502,7 +502,9 @@ class LLMClient:
 
         # 绑定工具
         if tool_list:
-            return model.bind_tools(tool_list, parallel_tool_calls=True)
+            if self._config.use_responses_api and self._config.parallel_tool_calls:
+                tool_list = tool_list + self._config.builtin_tools
+            return model.bind_tools(tool_list, parallel_tool_calls=self._config.parallel_tool_calls)
 
         return model
 

@@ -16,6 +16,7 @@ class LLMConfig(BaseModel):
         max_tokens: 最大 token 数
         timeout: 超时时间（秒）
         max_retries: 最大重试次数
+        parallel_tool_calls: 是否并行调用工具
         use_responses_api: 是否使用 Responses API
         output_version: AIMessage 输出版本（如 responses/v1）
         builtin_tools: 模型/provider 内置工具列表，由调用方按模型能力传入
@@ -30,6 +31,7 @@ class LLMConfig(BaseModel):
     max_tokens: int = 1024
     timeout: int = 1200
     max_retries: int = 3
+    parallel_tool_calls: bool = True
     use_responses_api: bool = False
     output_version: Optional[str] = None
     builtin_tools: list[dict[str, Any]] = Field(default_factory=list)
