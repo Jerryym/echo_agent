@@ -394,9 +394,6 @@ class LLMClient:
                 model_kwargs["default_headers"] = dict(self._config.default_headers)
             # 初始化模型
             model = ChatOpenAI(**model_kwargs)
-            # 绑定内置工具
-            if self._config.builtin_tools:
-                model = model.bind(tools=self._config.builtin_tools)
         else:
             raise LLMInitializeError(
                 message="model provider not supported",
