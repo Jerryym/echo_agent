@@ -87,11 +87,10 @@ class ReasonNode(Node):
         5. 根据任务状态、执行步数和重试次数决定下一节点
         6. 将当前 ReAct Loop 的 Observation 累积到 ReActState
     """
-    def __init__(self, name: str, llm_config: LLMConfig, tool_registry: ToolRegistry):
+    def __init__(self, name: str, llm_config: LLMConfig):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
-        # self._tool_registry = tool_registry
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
@@ -123,20 +122,20 @@ class ReasonNode(Node):
         history = self._build_history(state, runtime.context)
         # 调用llm-结构化输出
         response = self._llm_client.invoke_structured(
+            schema=ReasonStructuredOutput,
             prompt=self._prompt,
             user_input=input,
             history=history,
             tool_name_list=tool_registry.get_tool_names(),
-            schema=ReasonStructuredOutput,
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
         )
-        result = response.structured
+        result = ReasonStructuredOutput.model_validate(response.structured)
+        logger.info("result=%r", result)
         
         # 更新AgentResult
         update_agent_result(runtime.context, result.reasoning, response.token_usage)
-        logger.info("thought=%s reasoning=%s tool_list=%s task_status=%s", result.thought, result.reasoning, result.tool_list, result.task_status)
 
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
@@ -171,20 +170,20 @@ class ReasonNode(Node):
         history = self._build_history(state, runtime.context)
         # 调用llm-结构化输出
         response = await self._llm_client.ainvoke_structured(
+            schema=ReasonStructuredOutput,
             prompt=self._prompt,
             user_input=input,
             history=history,
             tool_name_list=tool_registry.get_tool_names(),
-            schema=ReasonStructuredOutput,
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
         )
-        result = response.structured
+        result = ReasonStructuredOutput.model_validate(response.structured)
+        logger.info("result=%r", result)
 
         # 更新AgentResult
         update_agent_result(runtime.context, result.reasoning, response.token_usage)
-        logger.info("thought=%s reasoning=%s tool_list=%s task_status=%s", result.thought, result.reasoning, result.tool_list, result.task_status)
 
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)

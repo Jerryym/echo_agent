@@ -158,24 +158,6 @@
   {
     "type": "function",
     "function": {
-      "name": "query_weather",
-      "description": "查询城市天气。\n\nArgs:\n    city:\n        城市名称。",
-      "parameters": {
-        "properties": {
-          "city": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "city"
-        ],
-        "type": "object"
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
       "name": "generate_business_report",
       "description": "根据指标生成业务报告。\n\nArgs:\n    title:\n        报告标题。\n\n    metrics:\n        数据指标。\n        必须由用户提供。\n        不允许自动生成。",
       "parameters": {

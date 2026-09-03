@@ -23,6 +23,6 @@ class LLMResult(BaseModel):
     reasoning: str | None = Field(default=None)
     tool_calls: list[ToolCall] | None = Field(default_factory=list)
     raw: Any = None
-    structured: BaseModel | dict[str, Any] | None = None
+    structured: dict[str, Any] | None = None
     response_metadata: dict[str, Any] | None = None
     token_usage: TokenUsage

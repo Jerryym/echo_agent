@@ -45,12 +45,8 @@ class ReActStrategy(BaseStrategy):
         )
 
         # 定义节点
-        reason_node = ReasonNode(name="reason", llm_config=self._llm_config, tool_registry=self._tool_registry)
-        action_node = ActionNode(
-            name="action",
-            llm_config=self._llm_config,
-            tool_registry=self._tool_registry,
-        )
+        reason_node = ReasonNode(name="reason", llm_config=self._llm_config)
+        action_node = ActionNode(name="action", llm_config=self._llm_config)
         tool_node = ToolNode(name="tool", tool_executor=self._tool_executor, message_field="trajectory")
         final_node = FinalNode(name="final", llm_config=self._llm_config)
         hitl_node = HITLSubgraph().as_node()

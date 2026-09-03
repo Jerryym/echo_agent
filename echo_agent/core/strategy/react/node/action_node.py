@@ -33,11 +33,10 @@ class ActionNode(Node):
         3. 工具参数校验
         4. HITL 交互处理
     """
-    def __init__(self, name: str, llm_config: LLMConfig, tool_registry: ToolRegistry):
+    def __init__(self, name: str, llm_config: LLMConfig):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
-        # self._tool_registry = tool_registry
         self._tool_gateway = ToolGateWay()
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:

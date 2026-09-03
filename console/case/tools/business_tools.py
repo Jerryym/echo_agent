@@ -335,28 +335,6 @@ def currency_exchange(
         "currency": to_currency,
     }
 
-
-# =========================
-# Weather
-# =========================
-@tool
-def query_weather(
-    city: str,
-) -> str:
-    """
-    查询城市天气。
-
-    Args:
-        city:
-            城市名称。
-    """
-
-    return _WEATHER.get(
-        city,
-        "unknown city",
-    )
-
-
 # =========================
 # Report
 # =========================
@@ -468,7 +446,6 @@ BUSINESS_TOOLS = [
     get_refund_status,
     query_salary,
     currency_exchange,
-    query_weather,
     generate_business_report,
     query_user_by_name,
     query_user_orders,
