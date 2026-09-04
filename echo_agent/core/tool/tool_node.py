@@ -62,14 +62,6 @@ class ToolNode(Node):
             tool_results.append(result)
         return self._build_result(tool_results)
 
-    # def _touch_skills_for_tool(self, context: BaseContext, tool_call: ToolCall) -> None:
-    #     """执行 allowed_tools 内工具时重置对应 skill 的 idle。"""
-    #     definition = self._tool_executor.get_definition(tool_call.name)
-    #     original_name = None
-    #     if definition is not None:
-    #         original_name = definition.meta_data.get("original_name")
-    #     SkillManager.reset_idle_rounds_for_tool(context, tool_call.name, original_name)
-
     def _build_result(self, tool_results: list[ToolResult]) -> dict:
         tool_messages = self._build_tool_messages(tool_results)
         logger.debug("appended %s ToolMessage(s) to messages", len(tool_messages))

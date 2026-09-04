@@ -86,7 +86,7 @@ class FinalNode(Node):
         return {
             "task": state.task.dump_attachments(),
             "reasoning": state.reasoning,
-            "observations": state.observations,
+            # "observations": state.observations,
         }
     
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:

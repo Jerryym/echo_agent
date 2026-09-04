@@ -65,8 +65,10 @@ class ReasonStructuredOutput(BaseModel):
             "execution is required. Put the next required operation in "
             "'reasoning' and identify the required tools in 'tool_list'. "
             "'completed': the user objective has been achieved AND confirmed "
-            "by existing observations (tool results). "
-            "If there are no confirming observations, you MUST use "
+            "by the current-step observations and/or by tool messages already "
+            "present in conversation history. Do not require observations to "
+            "repeat tool-message payloads. "
+            "If neither channel confirms the objective, you MUST use "
             "'in_progress' even when a conversational reply seems sufficient—"
             "Final, not Reason, produces the user-facing answer. "
             "Never mark 'completed' because Action produced no tool calls; "
@@ -234,7 +236,7 @@ class ReasonNode(Node):
         """
         return {
             "task": state.task.dump_attachments(),
-            "observations": state.observations + observation_list, # 本次ReAct Loop完整的观察结果
+            "observations": observation_list, # 本次ReAct Loop完整的观察结果
         }
 
     def _has_tool_error(self, state: ReActState) -> bool:
@@ -276,6 +278,7 @@ class ReasonNode(Node):
         # 只有确定进入下一次 Action 执行时，才消耗 step
         if response.task_status == "in_progress":
             result["step_count"] = state.step_count + 1
+            result["tool_state"] = ToolState(tool_calls=[], tool_results=[])
 
         return self._router(state, context, result)
 

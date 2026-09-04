@@ -27,11 +27,12 @@ class ObservationBuilder:
     @staticmethod
     def build(tool_result: ToolResult) -> Observation:
         if tool_result.success:
-            content = format_tool_content(tool_result.result)
+            content = (
+                f"Tool {tool_result.name} succeeded."
+            )
         else:
             content = (
-                f"Tool execution failed: "
-                f"{tool_result.error or 'unknown error'}"
+                f"Tool {tool_result.name} failed: {tool_result.error or 'unknown error'}"
             )
         observation = Observation(
             source=tool_result.name,
