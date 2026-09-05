@@ -18,18 +18,12 @@ from ..graph import (
     GraphSchema,
     Node,
 )
-from ..llm import LLMClient
 from ..mcp import MCPClient
 from ..model.agent import AgentMode, AgentResources, AgentResult, AgentState
 from ..model.input import UserInput
 from ..model.message import Message, Role, append_messages
 from ..model.skill import SkillRuntimeContext
 from ..runtime import RuntimeConfig
-from ..runtime.algorithm import (
-    ConversationCompressor,
-    amaybe_compress_conversation,
-    maybe_compress_conversation,
-)
 from ..tool import ToolDefinition, ToolRegistry
 from ..tool.toolkit import (
     create_directory_tool,
@@ -91,14 +85,6 @@ class Agent:
 
         # Agent Session
         self._agent_sessions: dict[str, AgentSession] = {}
-
-        # Conversation
-        self._conversation_compressor = ConversationCompressor(
-            LLMClient(agent_config.llm_config)
-        )
-
-        # 智能体执行结果
-        # self._agent_results: dict[str, list[AgentResult]] = {}
 
         # 注册工具
         self._register_tools()
@@ -326,6 +312,9 @@ class Agent:
 # endregion
 
 # region Public Functions
+    def get_sesion(self, session_id: str) -> AgentSession:
+        return self._get_session(session_id)
+
     def get_state(self, session_id: str, checkpoint_id: str | None = None):
         """
         [Debug] 获取当前状态
@@ -542,7 +531,7 @@ class Agent:
             """获取 Agent Session"""
             session = self._agent_sessions.get(session_id)
             if session is None:
-                session = AgentSession(session_id)
+                session = AgentSession(session_id, self._agent_config.conversation_max_tokens, self._agent_config.llm_config)
                 self._agent_sessions[session_id] = session
             return session
     
@@ -573,7 +562,7 @@ class Agent:
             return ""
         return str(response)
 
-    def _generate_result(self, session_id: str, context: BaseContext, result: Any = None, compress: bool = True) -> AgentResult:
+    def _generate_result(self, session_id: str, context: BaseContext, result: Any = None) -> AgentResult:
         """
         生成结果
         """
@@ -607,19 +596,13 @@ class Agent:
         session.add_result(final_result)
         session.clear_turn()
 
-        if compress:
-            self._compress_conversation(session_id)
-
         return final_result
 
     async def _agenerate_result(self, session_id: str,  context: BaseContext, result: Any = None) -> AgentResult:
         """
         生成结果(异步)
         """
-        agent_result = self._generate_result(session_id, context, result, compress=False)
-        snapshot = self.get_state(session_id)
-        if not snapshot.next:
-            await self._acompress_conversation(session_id)
+        agent_result = self._generate_result(session_id, context, result)
         return agent_result
 
     def _update_token_usage(self, session_id: str, context: BaseContext) -> None:
@@ -635,22 +618,6 @@ class Agent:
             usage.output_tokens,
             usage.total_tokens,
             agent_state.token_usage.total_tokens,
-        )
-
-    def _compress_conversation(self, session_id: str) -> None:
-        """交互结束后按需压缩会话历史（同步）。"""
-        maybe_compress_conversation(
-            self._get_agent_state(session_id),
-            self._conversation_compressor,
-            max_tokens=self._agent_config.conversation_max_tokens,
-        )
-
-    async def _acompress_conversation(self, session_id: str) -> None:
-        """交互结束后按需压缩会话历史（异步）。"""
-        await amaybe_compress_conversation(
-            self._get_agent_state(session_id),
-            self._conversation_compressor,
-            max_tokens=self._agent_config.conversation_max_tokens,
         )
 
     def _stream_iterator(

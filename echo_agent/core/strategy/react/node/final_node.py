@@ -1,6 +1,7 @@
 from langgraph.runtime import Runtime
 
 from .....common import get_logger, log_messages
+from ....app import Application
 from .....prompt import PromptLoader
 from .....utils import update_agent_result
 from ....graph import Node
@@ -33,6 +34,9 @@ class FinalNode(Node):
 
         # 获取运行时信息
         runtime_config = RuntimeConfig.get_runtime_config()
+        # 获取指定会话
+        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
+        session.compress_conversation()
         # 构建输入
         input = self._build_input(state)
         # 调用llm
@@ -59,6 +63,9 @@ class FinalNode(Node):
 
         # 获取运行时信息
         runtime_config = RuntimeConfig.get_runtime_config()
+        # 获取指定会话
+        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
+        await session.acompress_conversation()
         # 构建输入
         input = self._build_input(state)
         # 构建历史记录

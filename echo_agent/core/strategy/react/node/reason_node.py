@@ -118,6 +118,10 @@ class ReasonNode(Node):
         runtime_config = RuntimeConfig.get_runtime_config()
         # 获取tool registry
         tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
+        # 获取指定会话
+        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
+        session.compress_conversation()
+
         # 构建输入
         input = self._build_input(state, observation_list)
         # 构建历史记录
@@ -166,6 +170,9 @@ class ReasonNode(Node):
         runtime_config = RuntimeConfig.get_runtime_config()
         # 获取tool registry
         tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
+        # 获取指定会话
+        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
+        await session.acompress_conversation()
         # 构建输入
         input = self._build_input(state, observation_list)
         # 构建历史记录

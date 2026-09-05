@@ -46,7 +46,7 @@ class AgentConfig(BaseModel):
     enable_builtin_fetch: bool = False
     enable_builtin_filesystem: bool = False
 
-    conversation_max_tokens: int = 128000
+    conversation_max_tokens: int = 256000
 
     @field_validator("skill_list", mode="before")
     @classmethod

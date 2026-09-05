@@ -24,6 +24,22 @@ class ConversationSummary(BaseModel):
     constraints: list[str] = Field(default_factory=list, description="约束条件")
     important_facts: list[str] = Field(default_factory=list, description="需要长期保留的事实")
 
+    def render(self) -> str:
+        """将结构化摘要转换为模型可读文本"""
+        def bullets(items: list[str]) -> str:
+            return "\n".join(f"- {x}" for x in items) if items else "- (none)"
+        
+        return (
+            "[Conversation Summary]\n"
+            f"Goal: {self.user_goal}\n"
+            f"Context:\n{bullets(self.context)}\n"
+            f"Decisions:\n{bullets(self.decisions)}\n"
+            f"Completed:\n{bullets(self.completed_tasks)}\n"
+            f"Pending:\n{bullets(self.pending_tasks)}\n"
+            f"Constraints:\n{bullets(self.constraints)}\n"
+            f"Facts:\n{bullets(self.important_facts)}"
+        )
+
 
 class ConversationState(BaseModel):
     """

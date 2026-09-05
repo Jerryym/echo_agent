@@ -6,7 +6,6 @@ from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NOD
 from ...llm import LLMConfig
 from ...model.input import UserInput
 from ...model.message import Message, Role
-from ...runtime.algorithm import ConversationCompressor, trim_conversation
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
@@ -97,11 +96,11 @@ class ReActStrategy(BaseStrategy):
 
         # 构建Conversation
         conversation = context.agent_state.conversation if context else None
-        messages = conversation.messages if conversation else []
         view: list[Message] = []
-        if conversation is not None and conversation.summary is not None:
-            view.append(Message(role=Role.SYSTEM, content=ConversationCompressor.render(conversation.summary)))
-        view.extend(trim_conversation(messages))
+        if conversation is not None:
+            if conversation.summary is not None:
+                view.append(Message(role=Role.SYSTEM, content=conversation.summary.render()))
+            view.extend(conversation.messages)
         logger.info("to_strategy_input | task=%s, messages=%s", task, len(view))
 
         # 增加User Input

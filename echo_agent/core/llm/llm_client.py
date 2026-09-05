@@ -180,7 +180,8 @@ class LLMClient:
             # 创建结构化输出工具
             structured_output_tool = create_structured_output_tool(schema)
             # 绑定工具
-            model = self._model.bind_tools([structured_output_tool], tool_choice=structured_output_tool.name)
+            # model = self._model.bind_tools([structured_output_tool], tool_choice=structured_output_tool.name)
+            model = self._model.bind_tools([structured_output_tool], tool_choice="required")
             # 调用模型
             response = model.invoke(messages, config=config)
             if not isinstance(response, AIMessage):
@@ -234,7 +235,8 @@ class LLMClient:
             # 创建结构化输出工具
             structured_output_tool = create_structured_output_tool(schema)
             # 绑定工具
-            model = self._model.bind_tools([structured_output_tool], tool_choice=structured_output_tool.name)
+            # model = self._model.bind_tools([structured_output_tool], tool_choice=structured_output_tool.name)
+            model = self._model.bind_tools([structured_output_tool], tool_choice="required")
             # 调用模型
             response = await model.ainvoke(messages, config=config)
             if not isinstance(response, AIMessage):
@@ -342,7 +344,6 @@ class LLMClient:
                 message="LLM async stream invoke failed",
                 detail=str(e)
             )
-
     def _initialize_model(self):
         """初始化模型"""
         # Responses API 模型初始化
