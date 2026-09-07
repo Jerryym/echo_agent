@@ -29,17 +29,20 @@ class ConversationCompressor:
         self._keep_rounds = keep_rounds # 保留的对话轮次
         self._trigger_ratio = trigger_ratio
 
-    def compress(self, conversation: ConversationState, token_usage: TokenUsage) -> bool:
+    def compress(self, conversation: ConversationState, context_size: int) -> bool:
         """压缩对话"""
-        if not self._should_compress(token_usage):
+        logger.info("context size=%s", context_size)
+        if not self._should_compress(context_size):
             return False
 
         # 拆分对话
         rounds = self._split_rounds(conversation.messages)
-        if len(rounds) <= self._keep_rounds:
+        if not rounds:
             return False
-        compressed_messages, retained_messages = self._select_messages(rounds)
-        
+        if len(rounds) > self._keep_rounds:
+            compressed_messages, retained_messages = self._select_messages(rounds)
+        else:
+            compressed_messages, retained_messages = (self._select_messages_for_forced_compression(rounds))
         # 生成会话摘要
         summary = self._summarize_conversation(compressed_messages, conversation.summary)
 
@@ -50,16 +53,20 @@ class ConversationCompressor:
 
         return True
 
-    async def acompress(self, conversation: ConversationState, token_usage: TokenUsage) -> bool:
+    async def acompress(self, conversation: ConversationState, context_size: int) -> bool:
         """压缩对话（异步）"""
-        if not self._should_compress(token_usage):
+        logger.info("context size=%s", context_size)
+        if not self._should_compress(context_size):
             return False
         
         # 拆分对话
         rounds = self._split_rounds(conversation.messages)
-        if len(rounds) <= self._keep_rounds:
+        if not rounds:
             return False
-        compressed_messages, retained_messages = self._select_messages(rounds)
+        if len(rounds) > self._keep_rounds:
+            compressed_messages, retained_messages = self._select_messages(rounds)
+        else:
+            compressed_messages, retained_messages = (self._select_messages_for_forced_compression(rounds))
 
         # 生成会话摘要
         summary = await self._asummarize_conversation(compressed_messages, conversation.summary)
@@ -75,9 +82,10 @@ class ConversationCompressor:
         """获取触发压缩的token数量"""
         return int(self._max_context_tokens * self._trigger_ratio)
 
-    def _should_compress(self, token_usage: TokenUsage) -> bool:
+    def _should_compress(self, context_size: int) -> bool:
         """判断是否需要压缩对话"""
-        return token_usage.total_tokens >= self._get_trigger_tokens()
+        logger.info(f"Context size: {context_size}, trigger tokens: {self._get_trigger_tokens()}")
+        return context_size >= self._get_trigger_tokens()
 
     def _select_messages(self, rounds: list[list[Message]]) -> tuple[list[Message], list[Message]]:
         compress_rounds = rounds[:-self._keep_rounds]
@@ -85,6 +93,42 @@ class ConversationCompressor:
         return (
             self._flatten_rounds(compress_rounds),
             self._flatten_rounds(retain_remaining),
+        )
+
+    def _select_messages_for_forced_compression(self, rounds: list[list[Message]]) -> tuple[list[Message], list[Message]]:
+        """
+        强制选择需要压缩和保留的消息
+
+        当上下文已经达到压缩阈值，但轮数不足以执行常规轮次压缩时，尽可能保留最新上下文，并从较旧消息开始压缩
+        """
+        if not rounds:
+            return [], []
+
+        if len(rounds) > 1:
+            compressed_messages = [
+                message
+                for round_messages in rounds[:-1]
+                for message in round_messages
+            ]
+            retained_messages = list(rounds[-1])
+
+            return compressed_messages, retained_messages
+
+        messages = rounds[0]
+        if len(messages) <= 1:
+            return [], list(messages)
+
+        split_index = max(1, len(messages) // 2)
+
+        while (split_index < len(messages) and messages[split_index].role == Role.TOOL):
+            split_index += 1
+
+        if split_index >= len(messages):
+            split_index = len(messages) - 1
+
+        return (
+            messages[:split_index],
+            messages[split_index:],
         )
 
     def _summarize_conversation(self, messages: list[Message], prior_summary: ConversationSummary | None = None) -> ConversationSummary:

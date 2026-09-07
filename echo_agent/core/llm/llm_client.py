@@ -1,5 +1,5 @@
 import json
-from typing import Any, Optional, Sequence, cast
+from typing import Any, Awaitable, Callable, Optional, Sequence, TypeAlias, cast
 
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 
 from ...common import get_logger
 from ...prompt import PromptAssembler
-from ...utils import MessageAdapter
+from ...utils import ContextUsageCalculator, MessageAdapter
 from ..graph.schema import BaseContext
 from ..model.agent import AgentResources
 from ..model.input import UserInput
@@ -28,6 +28,9 @@ from .llm_result import LLMResult
 from ..tool.toolkit import JsonObject, StructuredOutputSchema, create_structured_output_tool
 
 logger = get_logger("llm")
+
+BeforeModelHook: TypeAlias = Callable[[], Sequence[Message] | None]
+AsyncBeforeModelHook: TypeAlias = Callable[[], Awaitable[Sequence[Message] | None]]
 
 
 class LLMClient:
@@ -58,6 +61,7 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
+        before_model: BeforeModelHook | None = None
     ):
         """
         调用模型
@@ -78,6 +82,17 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
+                tool_list=tool_list,
+                context=context,
+                agent_resources=agent_resources,
+            )
+            # Hook: before_model
+            messages = self._before_model(
+                messages=messages,
+                before_model=before_model,
+                prompt=prompt,
+                user_input=user_input,
                 tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 context=context,
@@ -104,6 +119,7 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
+        abefore_model: AsyncBeforeModelHook | None = None,
     ):
         """
         调用模型（异步）
@@ -123,6 +139,17 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
+                tool_list=tool_list,
+                context=context,
+                agent_resources=agent_resources,
+            )
+            # Hook: before_model
+            messages = await self._abefore_model(
+                messages=messages,
+                abefore_model=abefore_model,
+                prompt=prompt,
+                user_input=user_input,
                 tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 context=context,
@@ -150,7 +177,8 @@ class LLMClient:
         tool_name_list: Optional[list[str]] = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
-        config: RunnableConfig | None = None
+        config: RunnableConfig | None = None,
+        before_model: BeforeModelHook | None = None
     ):
         """
         结构化输出调用模型
@@ -168,6 +196,8 @@ class LLMClient:
             config: 配置
         """
         try:
+            # 创建结构化输出工具
+            structured_output_tool = create_structured_output_tool(schema)
             # 构建 Messages
             messages = self._build_messages(
                 prompt=prompt,
@@ -177,8 +207,17 @@ class LLMClient:
                 context=context,
                 agent_resources=agent_resources,
             )
-            # 创建结构化输出工具
-            structured_output_tool = create_structured_output_tool(schema)
+            # Hook: before_model
+            messages = self._before_model(
+                messages=messages,
+                before_model=before_model,
+                prompt=prompt,
+                user_input=user_input,
+                tool_name_list=tool_name_list,
+                tool_list=[structured_output_tool],
+                context=context,
+                agent_resources=agent_resources,
+            )
             # 绑定工具
             # model = self._model.bind_tools([structured_output_tool], tool_choice=structured_output_tool.name)
             model = self._model.bind_tools([structured_output_tool], tool_choice="required")
@@ -206,6 +245,7 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
+        abefore_model: AsyncBeforeModelHook | None = None
     ):
         """
         结构化输出调用模型（异步）
@@ -223,6 +263,8 @@ class LLMClient:
             config: 配置
         """
         try:
+            # 创建结构化输出工具
+            structured_output_tool = create_structured_output_tool(schema)
             # 构建 Messages
             messages = self._build_messages(
                 prompt=prompt,
@@ -232,8 +274,17 @@ class LLMClient:
                 context=context,
                 agent_resources=agent_resources,
             )
-            # 创建结构化输出工具
-            structured_output_tool = create_structured_output_tool(schema)
+            # Hook: before_model
+            messages = await self._abefore_model(
+                messages=messages,
+                prompt=prompt,
+                user_input=user_input,
+                tool_name_list=tool_name_list,
+                tool_list=[structured_output_tool],
+                context=context,
+                agent_resources=agent_resources,
+                abefore_model=abefore_model,
+            )
             # 绑定工具
             # model = self._model.bind_tools([structured_output_tool], tool_choice=structured_output_tool.name)
             model = self._model.bind_tools([structured_output_tool], tool_choice="required")
@@ -260,6 +311,7 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
+        before_model: BeforeModelHook | None = None
     ):
         """
         流式调用模型
@@ -279,6 +331,17 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
+                tool_list=tool_list,
+                context=context,
+                agent_resources=agent_resources,
+            )
+            # Hook: before_model
+            messages = self._before_model(
+                messages=messages,
+                before_model=before_model,
+                prompt=prompt,
+                user_input=user_input,
                 tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 context=context,
@@ -307,6 +370,7 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
+        abefore_model: AsyncBeforeModelHook | None = None
     ):
         """
         流式调用模型（异步）
@@ -327,6 +391,17 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
+                tool_name_list=tool_name_list,
+                tool_list=tool_list,
+                context=context,
+                agent_resources=agent_resources,
+            )
+            # Hook: before_model
+            messages = await self._abefore_model(
+                messages=messages,
+                abefore_model=abefore_model,
+                prompt=prompt,
+                user_input=user_input,
                 tool_name_list=tool_name_list,
                 tool_list=tool_list,
                 context=context,
@@ -469,6 +544,84 @@ class LLMClient:
         if tool_list:
             return model.bind(tools=tool_list, parallel_tool_calls=self._config.parallel_tool_calls)
         return model
+
+# region Hooks
+    def _before_model(
+        self,
+        messages: list[BaseMessage],
+        prompt: str,
+        user_input: UserInput | dict | str,
+        tool_name_list: list[str] | None,
+        tool_list: list[dict[str, Any]] | None,
+        context: BaseContext | None,
+        agent_resources: AgentResources | None,
+        before_model: BeforeModelHook | None,
+    ) -> list[BaseMessage]:
+        """Hook: before model"""
+        # 获取当前上下文用量
+        context_usage = ContextUsageCalculator.calculate(messages, tools=tool_list)
+        logger.info("context usage = %s", context_usage)
+
+        if before_model is None:
+            return messages
+
+        # 获取压缩上下文后的历史记录
+        updated_history = before_model(messages, tools=tool_list)
+        if updated_history is None:
+            return messages
+
+        # 重新构建消息
+        updated_messages = self._build_messages(
+            prompt=prompt,
+            user_input=user_input,
+            history=updated_history,
+            tool_name_list=tool_name_list,
+            tool_list=tool_list,
+            context=context,
+            agent_resources=agent_resources,
+        )
+        updated_context_usage = ContextUsageCalculator.calculate(updated_messages, tools=tool_list)
+        logger.info("context compressed | before=%s after=%s", context_usage, updated_context_usage)
+        return updated_messages
+
+    async def _abefore_model(
+        self,
+        messages: list[BaseMessage],
+        abefore_model: AsyncBeforeModelHook | None,
+        prompt: str,
+        user_input: UserInput | dict | str,
+        tool_name_list: list[str] | None,
+        tool_list: list[dict[str, Any]] | None,
+        context: BaseContext | None,
+        agent_resources: AgentResources | None,
+    ) -> list[Message]:
+        """Hook: async before model"""
+        # 获取当前上下文用量
+        context_usage = ContextUsageCalculator.calculate(messages, tools=tool_list)
+        logger.info("context usage = %s", context_usage)
+
+        if abefore_model is None:
+            return messages
+
+        # 获取压缩上下文后的历史记录
+        updated_history = await abefore_model(messages, tools=tool_list)
+        if updated_history is None:
+            return messages
+
+        # 重新构建消息
+        updated_messages = self._build_messages(
+            prompt=prompt,
+            user_input=user_input,
+            history=updated_history,
+            tool_name_list=tool_name_list,
+            tool_list=tool_list,
+            context=context,
+            agent_resources=agent_resources,
+        )
+        updated_context_usage = ContextUsageCalculator.calculate(updated_messages, tools=tool_list)
+        logger.info("context compressed | before=%s after=%s", context_usage, updated_context_usage)
+        return updated_messages
+# endregion
 
     def _parse_response(self, response: AIMessage):
         """

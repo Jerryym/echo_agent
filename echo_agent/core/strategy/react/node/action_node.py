@@ -52,13 +52,8 @@ class ActionNode(Node):
         if state.hitl_state.request or state.hitl_state.response:
             return self._handle_hitl(state, tool_registry)
 
-        # 获取运行时信息
-        runtime_config = RuntimeConfig.get_runtime_config()
-        # 获取tool registry
-        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
         # 获取指定会话
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        session.compress_conversation()
         # 生成tool_list
         bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode, tool_registry)
         if not bound_tools:
@@ -72,6 +67,7 @@ class ActionNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
+            before_model=session.before_model
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
@@ -86,13 +82,12 @@ class ActionNode(Node):
         runtime_config = RuntimeConfig.get_runtime_config()
         # 获取tool registry
         tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
-        # 获取指定会话
-        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        await session.acompress_conversation()
         # 已存在待处理的 HITL 请求或响应，仅允许通过 HITL 恢复流程继续
         if state.hitl_state.request or state.hitl_state.response:
             return self._handle_hitl(state, tool_registry)
 
+        # 获取指定会话
+        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
         # 生成tool_list
         bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode, tool_registry)
         if not bound_tools:
@@ -106,6 +101,7 @@ class ActionNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
+            abefore_model=session.abefore_model
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)

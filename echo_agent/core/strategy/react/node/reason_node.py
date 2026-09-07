@@ -120,8 +120,6 @@ class ReasonNode(Node):
         tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
         # 获取指定会话
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        session.compress_conversation()
-
         # 构建输入
         input = self._build_input(state, observation_list)
         # 构建历史记录
@@ -136,6 +134,7 @@ class ReasonNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
+            before_model=session.before_model
         )
         result = ReasonStructuredOutput.model_validate(response.structured)
         logger.info("result=%r", result)
@@ -172,7 +171,6 @@ class ReasonNode(Node):
         tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
         # 获取指定会话
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        await session.acompress_conversation()
         # 构建输入
         input = self._build_input(state, observation_list)
         # 构建历史记录
@@ -187,6 +185,7 @@ class ReasonNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
+            abefore_model=session.abefore_model
         )
         result = ReasonStructuredOutput.model_validate(response.structured)
         logger.info("result=%r", result)

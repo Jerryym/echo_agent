@@ -86,6 +86,7 @@ def build_react_agent(name: str, config: LLMConfig, tools: Sequence[Any]) -> Age
         description=name,
         llm_config=config,
         allowed_directories=str(Path(__file__).resolve().parents[1]),
+        conversation_max_tokens=12800
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
     agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)

@@ -36,7 +36,6 @@ class FinalNode(Node):
         runtime_config = RuntimeConfig.get_runtime_config()
         # 获取指定会话
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        session.compress_conversation()
         # 构建输入
         input = self._build_input(state)
         # 调用llm
@@ -47,6 +46,7 @@ class FinalNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
+            before_model=session.before_model
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return {
@@ -65,7 +65,6 @@ class FinalNode(Node):
         runtime_config = RuntimeConfig.get_runtime_config()
         # 获取指定会话
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        await session.acompress_conversation()
         # 构建输入
         input = self._build_input(state)
         # 构建历史记录
@@ -78,6 +77,7 @@ class FinalNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
+            abefore_model=session.abefore_model
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return {

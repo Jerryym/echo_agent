@@ -593,8 +593,7 @@ class Agent:
 
         # 当前 Turn 完成，保存结果并清理当前 Turn
         final_result = agent_result.model_copy(deep=True)
-        session.add_result(final_result)
-        session.clear_turn()
+        session.finish_turn(final_result)
 
         return final_result
 
@@ -718,17 +717,17 @@ class Agent:
         return json.dumps(value, ensure_ascii=False, default=str)
 
     def _restore_first_turn_baseline(self, session_id: str) -> None:
-            """首轮无基线：若已有 tip（半成品），写成空完成态；否则 no-op。"""
-            tip = self.get_state(session_id)
-            tip_config = getattr(tip, "config", None) or {}
-            tip_configurable = (
-                tip_config.get("configurable") if isinstance(tip_config, dict) else None
-            ) or {}
-            if not tip_configurable.get("checkpoint_id"):
-                return
-            values = self._empty_state_values()
-            config = RunnableConfig(configurable={"thread_id": session_id})
-            self._compiled_graph.update_state(config, values=values)
+        """首轮无基线：若已有 tip（半成品），写成空完成态；否则 no-op。"""
+        tip = self.get_state(session_id)
+        tip_config = getattr(tip, "config", None) or {}
+        tip_configurable = (
+            tip_config.get("configurable") if isinstance(tip_config, dict) else None
+        ) or {}
+        if not tip_configurable.get("checkpoint_id"):
+            return
+        values = self._empty_state_values()
+        config = RunnableConfig(configurable={"thread_id": session_id})
+        self._compiled_graph.update_state(config, values=values)
     
     def _empty_state_values(self) -> dict[str, Any]:
         """用 state_schema 默认值构造空完成态；失败则 {}。"""
