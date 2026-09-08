@@ -7,65 +7,61 @@ class ConversationSummary(BaseModel):
     """
     对话摘要
 
-    参数:
-        user_goal: 用户当前主要目标
-        context: 重要背景信息
-        decisions: 已经确定的设计决策
-        completed_tasks: 已经完成事项
-        pending_tasks: 待完成事项
-        constraints: 约束条件
-        important_facts: 需要长期保留的事实
+    参数: 
+        goal: 用户当前或持续性的主要目标 
+        facts: 已确认且未来仍可能需要使用的事实
+        decisions: 已经明确确定的结论或设计决策
+        constraints: 后续交互仍需遵守的约束、要求或偏好
+        completed: 已经完成且对后续任务有意义的事项
+        pending: 尚未完成、仍需继续处理的事项
     """
-    user_goal: str = Field(
+    goal: str = Field(
+        default="",
         description=(
             "The user's current or continuing primary goal. "
-            "Describe what the user wants, not whether the task succeeded or failed. "
-            "If the original goal has been completed but remains the main conversation topic, "
-            "preserve the goal itself. Do not invent information."
-        )
+            "Describe what the user is trying to achieve. "
+            "Preserve the goal while it remains relevant to the conversation. "
+            "Do not describe execution status here."
+        ),
     )
-    context: list[str] = Field(
+    facts: list[str] = Field(
         default_factory=list,
         description=(
-            "Important background information required to understand future turns, "
-            "including the current subject, entity relationships, and reference context."
+            "Confirmed facts that may be needed in future turns. "
+            "Include important entities, identifiers, mappings, relationships, "
+            "attributes, values, execution results, and other reusable factual information. "
+            "Only preserve facts that are supported by the conversation "
+            "or confirmed tool results."
         ),
     )
     decisions: list[str] = Field(
         default_factory=list,
         description=(
-            "Confirmed decisions or conclusions that may affect future interactions."
-        ),
-    )
-    completed_tasks: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Tasks or operations that have already been completed. "
-            "Record completed queries, tool executions, or actions when relevant. "
-            "Store important returned values in important_facts."
-        ),
-    )
-    pending_tasks: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Tasks, questions, or actions that remain unresolved or still require follow-up."
+            "Confirmed decisions, conclusions, or choices that should remain authoritative "
+            "for future interactions unless explicitly changed later."
         ),
     )
     constraints: list[str] = Field(
         default_factory=list,
         description=(
-            "Explicit requirements, restrictions, preferences, or limitations "
-            "that must remain in effect."
+            "Requirements, restrictions, conventions, preferences, or technical constraints "
+            "that remain applicable to future interactions."
         ),
     )
-    important_facts: list[str] = Field(
+    completed: list[str] = Field(
         default_factory=list,
         description=(
-            "Confirmed facts that may be required in future interactions. "
-            "Preserve important query results, tool outputs, entity identifiers, "
-            "name-to-ID mappings, relationships, attributes, and key values. "
-            "For example: 'Zhang Wei has user_id u001'. "
-            "Do not store these facts only in user_goal or completed_tasks."
+            "Meaningful tasks, operations, investigations, or implementation steps "
+            "that have already been completed. "
+            "Record completion state here rather than duplicating returned values. "
+            "Store reusable results in facts."
+        ),
+    )
+    pending: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Tasks, questions, implementation steps, or decisions that remain unresolved "
+            "and may require continuation in future turns."
         ),
     )
 
@@ -76,13 +72,12 @@ class ConversationSummary(BaseModel):
         
         return (
             "[Conversation Summary]\n"
-            f"Goal: {self.user_goal}\n"
-            f"Context:\n{bullets(self.context)}\n"
+            f"Goal: {self.goal or '(none)'}\n"
+            f"Facts:\n{bullets(self.facts)}\n"
             f"Decisions:\n{bullets(self.decisions)}\n"
-            f"Completed:\n{bullets(self.completed_tasks)}\n"
-            f"Pending:\n{bullets(self.pending_tasks)}\n"
             f"Constraints:\n{bullets(self.constraints)}\n"
-            f"Facts:\n{bullets(self.important_facts)}"
+            f"Completed:\n{bullets(self.completed)}\n"
+            f"Pending:\n{bullets(self.pending)}"
         )
 
 

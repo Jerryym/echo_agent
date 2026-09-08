@@ -3,7 +3,6 @@ from ....prompt import PromptLoader
 from ...llm import LLMClient, LLMConfig
 from ...model.conversation import ConversationState, ConversationSummary
 from ...model.message import Message, Role
-from ...model.token_usage import TokenUsage
 
 logger = get_logger("ConversationCompressor")
 
@@ -133,44 +132,42 @@ class ConversationCompressor:
 
     def _summarize_conversation(self, messages: list[Message], prior_summary: ConversationSummary | None = None) -> ConversationSummary:
         """生成会话摘要"""
-        payload = self._build_user_payload(messages, prior_summary)
+        payload = self._build_user_payload(prior_summary)
         result = self._llm_client.invoke_structured(
             schema=ConversationSummary,
             prompt=self._prompt,
             user_input=payload,
+            history=messages,
         )
         summary = ConversationSummary.model_validate(result.structured)
         return summary
 
     async def _asummarize_conversation(self, messages: list[Message], prior_summary: ConversationSummary | None = None) -> ConversationSummary:
         """生成会话摘要（异步）"""
-        payload = self._build_user_payload(messages, prior_summary)
+        payload = self._build_user_payload(prior_summary)
         result = await self._llm_client.ainvoke_structured(
             schema=ConversationSummary,
             prompt=self._prompt,
             user_input=payload,
+            history=messages,
         )
         summary = ConversationSummary.model_validate(result.structured)
         return summary
 
     @staticmethod
-    def _build_user_payload(messages: list[Message], prior_summary: ConversationSummary | None) -> str:
-        """构建用户输入"""
-        lines = [
-            f"[{m.role.value}] {m.content}"
-            for m in messages
-            if (m.content or "").strip()
-        ]
-        prior = (
-            prior_summary.model_dump_json(indent=2)
-            if prior_summary is not None
-            else "(none)"
-        )
+    def _build_user_payload(prior_summary: ConversationSummary | None) -> str:
+        """构建输入"""
+        if prior_summary is None:
+            return (
+                "No previous conversation summary exists. "
+                "Build the conversation summary from the provided history."
+            )
+
         return (
-            "## Prior Summary\n"
-            f"{prior}\n\n"
-            "## Messages To Compress\n"
-            + ("\n".join(lines) if lines else "(empty)")
+            "Previous conversation summary:\n"
+            f"{prior_summary.model_dump_json(indent=2)}\n\n"
+            "Update the complete conversation summary using "
+            "the provided history."
         )
 
     @staticmethod
