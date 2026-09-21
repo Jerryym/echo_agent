@@ -14,7 +14,7 @@ class PromptAssembler:
         agent_prompt: str | None = None,
         system_prompt: str | None = None,
         agent_mode: AgentMode = AgentMode.AGENT,
-        tool_name_list: list[str] | None = None,
+        tool_informations: list[dict[str, str]] | None = None,
         tool_list: list[dict[str, Any]] | None = None,
         skill_frontmatter_list: dict[str, SkillFrontmatter] | None = None,
         active_skills: dict[str, SkillRuntimeContext] | None = None,
@@ -26,10 +26,14 @@ class PromptAssembler:
             prompts.append(agent_prompt.strip())
 
         # Tool Definition Policy
-        if tool_name_list:
+        if tool_informations:
             tool_definitions = PromptLoader.load("prompt/tool_definition_policy.md")
             if tool_definitions:
-                tool_definitions = tool_definitions.replace("{{TOOL_NAME_LIST}}", "\n".join(f"- {name}" for name in tool_name_list))
+                tool_list_text = "\n".join(
+                    f"- `{info.get('name', '')}`: {info.get('description', '')}"
+                    for info in tool_informations
+                )
+                tool_definitions = tool_definitions.replace("{{TOOL_NAME_LIST}}", tool_list_text)
                 prompts.append(tool_definitions)
 
         # Tool Policy

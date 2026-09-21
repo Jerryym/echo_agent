@@ -32,6 +32,16 @@ class ToolRegistry:
     def get_tool_names(self) -> list[str]:
         """获取所有工具名称"""
         return list(self._tools.keys())
+
+    def get_tool_infomations(self) -> list[dict[str, str]]:
+        """获取所有工具信息"""
+        return [
+			{
+				"name": tool.name,
+				"description": tool.description,
+			}
+			for tool in self.list_definitions()
+		]
     
     def get(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)

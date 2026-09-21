@@ -12,16 +12,16 @@ def create_read_xls_tool() -> BaseTool:
     @tool
     def read_xls(path: str, sheet_name: str | None = None) -> str:
         """
-        Read data from an XLS file.
+        Read data from an Excel 97-2003 (.xls) file.
 
         Use this tool when the current task requires reading spreadsheet
-        content from an XLS file.
+        content from an Excel 97-2003 (.xls) file.
 
         If sheet_name is omitted, all sheets are read. If sheet_name is
         provided, only the specified sheet is read.
 
         Args:
-            path: Absolute XLS file path.
+            path: Absolute Excel 97-2003 (.xls) file path.
             sheet_name: Optional sheet name to read.
 
         Returns:
@@ -84,20 +84,20 @@ def create_write_xls_tool() -> BaseTool:
     @tool
     def write_xls(path: str, sheets: dict[str, list[list[Any]]]) -> str:
         """
-        Write data to an XLS file.
+        Write data to an Excel 97-2003 (.xls) file.
 
         Use this tool when the current task requires creating or replacing
-        an XLS spreadsheet.
+        an Excel 97-2003 (.xls) spreadsheet.
 
         Multiple sheets can be written in a single operation.
 
         Args:
-            path: Absolute XLS file path.
+            path: Absolute Excel 97-2003 (.xls) file path.
             sheets: Mapping of sheet names to row data. Each row is a list
                 of cell values.
 
         Returns:
-            A message indicating that the XLS file was written successfully.
+            A message indicating that the Excel 97-2003 (.xls) file was written successfully.
         """
         if not sheets:
             raise ValueError("sheets is required")

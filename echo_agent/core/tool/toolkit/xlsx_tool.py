@@ -11,16 +11,16 @@ def create_read_xlsx_tool() -> BaseTool:
     @tool
     def read_xlsx(path: str, sheet_name: str | None = None) -> str:
         """
-        Read data from an XLSX file.
+        Read data from an Excel (.xlsx) file.
 
         Use this tool when the current task requires reading spreadsheet
-        content.
+        content from an Excel (.xlsx) file.
 
         If sheet_name is omitted, all sheets are read. If sheet_name is
         provided, only the specified sheet is read.
 
         Args:
-            path: Absolute XLSX file path.
+            path: Absolute Excel (.xlsx) file path.
             sheet_name: Optional sheet name to read.
 
         Returns:
@@ -79,20 +79,20 @@ def create_write_xlsx_tool() -> BaseTool:
     @tool
     def write_xlsx(path: str, sheets: dict[str, list[list[Any]]]) -> str:
         """
-        Write data to an XLSX file.
+        Write data to an Excel (.xlsx) file.
 
         Use this tool when the current task requires creating or replacing
-        an XLSX spreadsheet.
+        an Excel (.xlsx) spreadsheet.
 
         Multiple sheets can be written in a single operation.
 
         Args:
-            path: Absolute XLSX file path.
+            path: Absolute Excel (.xlsx) file path.
             sheets: Mapping of sheet names to row data. Each row is a list
                 of cell values.
 
         Returns:
-            A message indicating that the XLSX file was written successfully.
+            A message indicating that the Excel (.xlsx) file was written successfully.
         """
         if not sheets:
             raise ValueError("sheets is required")
