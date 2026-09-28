@@ -1,4 +1,4 @@
-from typing import Sequence
+from collections.abc import Sequence
 
 from langchain_core.messages import BaseMessage
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
