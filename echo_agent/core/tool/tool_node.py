@@ -8,6 +8,7 @@ from ...common import format_value, get_logger
 from ..graph import BaseContext, BaseState, Node
 from ..model.message import Message, Role
 from ..model.tool import ToolArtifact, ToolResult, ToolState
+from .tool_artifact import ToolArtifactManager
 from .tool_executor import ToolExecutor
 from .utils import format_tool_content
 
@@ -32,6 +33,7 @@ class ToolNode(Node):
         self._tool_executor = tool_executor
         self._message_field = message_field
         self._artifact_threshold = self.DEFAULT_ARTIFACT_THRESHOLD
+        self._artifact_manager = ToolArtifactManager()
 
     def run(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
         """
@@ -105,7 +107,7 @@ class ToolNode(Node):
                     )
                 )
             else:
-                artifact = self._write_artifact(content)
+                artifact = self._artifact_manager.store(content)
                 tool_messages.append(
                     Message(
                         role=Role.TOOL,
@@ -116,25 +118,6 @@ class ToolNode(Node):
                 )
 
         return tool_messages
-
-    @staticmethod
-    def _write_artifact(content: str) -> ToolArtifact:
-        """将内容写进临时文件"""
-        fd, raw_path = tempfile.mkstemp(prefix="tool_result_", suffix=".txt")
-        path = Path(raw_path)
-
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as file:
-                file.write(content)
-        except BaseException:
-            path.unlink(missing_ok=True)
-            raise
-
-        return ToolArtifact(
-            path=path,
-            size=path.stat().st_size,
-            media_type="text/plain",
-        )
 
     @staticmethod
     def _format_artifact_content(artifact: ToolArtifact) -> str:
