@@ -13,7 +13,6 @@ from ....llm import LLMClient, LLMConfig
 from ....model.message import Message
 from ....model.tool import ToolState
 from ....runtime.runtime_config import RuntimeConfig
-from ....tool import ToolRegistry
 from ..observation import Observation, ObservationBuilder
 from ..schema import ReActContext, ReActState
 

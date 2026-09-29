@@ -1,7 +1,7 @@
 import json
 import os
 
-from echo_agent import LLMConfig
+from echo_agent import LLMConfig, ReasoningConfig
 
 
 def env_bool(key: str, default: bool = False) -> bool:
@@ -20,6 +20,8 @@ def parse_json_env(key: str, default):
 
 def build_config() -> LLMConfig:
     output_version = os.getenv("OUTPUT_VERSION")
+    reasoning_effort = os.getenv("REASONING_EFFORT")
+
     return LLMConfig(
         base_url=os.getenv("BASE_URL"),
         api_key=os.getenv("API_KEY"),
@@ -31,6 +33,11 @@ def build_config() -> LLMConfig:
         max_retries=int(os.getenv("MAX_RETRIES", 2)),
         use_responses_api=env_bool("USE_RESPONSES_API", False),
         output_version=output_version or None,
+        reasoning=(
+            ReasoningConfig(effort=reasoning_effort)
+            if reasoning_effort
+            else None
+        ),
         builtin_tools=parse_json_env("BUILTIN_TOOLS", []),
         extra_body=parse_json_env("EXTRA_BODY", {}),
     )

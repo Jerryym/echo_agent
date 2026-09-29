@@ -98,7 +98,7 @@ POST .../invoke 或 POST .../stream
 }
 ```
 
-- `config`：`AgentConfig`（字段以 Python 模型为准）。启用内置 Filesystem 时需 `allowed_directories`。
+- `config`：`AgentConfig`（字段以 Python 模型为准）。`allowed_directories` 为保留字段，不驱动 MCP。
 - `runtime_options` 可选；缺省为进程内 Memory checkpointer。
 
 **响应** `200` `AgentHandleBody`

@@ -90,10 +90,10 @@
    - 启动日志：`insecure; host must terminate TLS/auth`；CLI help / 快速接入已说明。
 
 2. **CreateAgent 策略开关 — Pending（依赖 Runtime Gateway）**  
-   - 远程是否允许任意 `stdio` command、内置 Fetch 能力开关、同名覆盖规则等属 **信任边界 / 能力策略**，更适合 Runtime Gateway（或宿主控制面），而非当前仅做协议映射的 Adapter。  
-   - 仓库尚无 Gateway 设计与实现；此时在 Adapter 内写死「一律禁 stdio」会误伤内置 Fetch（本身为 stdio），也不宜半吊子放行。  
+   - 远程是否允许任意 `stdio` command、同名覆盖规则等属 **信任边界 / 能力策略**，更适合 Runtime Gateway（或宿主控制面），而非当前仅做协议映射的 Adapter。  
+   - 仓库尚无 Gateway 设计与实现；此时在 Adapter 内写死「一律禁 stdio」会误伤显式配置的 stdio MCP，也不宜半吊子放行。  
    - **落地前缓解**：方案 1 默认 loopback；跨机须宿主网络隔离 + 鉴权。残余风险：本机或显式公网绑定下，CreateAgent + 任意 stdio 仍可用。  
-   - Gateway 就绪后再定：`allow_remote_stdio_mcp`、远程 `enable_builtin_*`、禁止用 `mcp_servers` 覆盖内置 command 等。
+   - Gateway 就绪后再定：`allow_remote_stdio_mcp` 等。库已放弃内置 Fetch / Filesystem，不再有 `enable_builtin_*`。
 
 3. **宿主鉴权挂钩（不做成平台，仅扩展点）— 可与 Gateway 同批**  
    - 提供可选 `grpc.aio.ServerInterceptor` 注入点（如 `create_server(..., interceptors=())`），Adapter **不实现** JWT/RBAC，只留钩子。  
@@ -351,7 +351,7 @@ proto / HTTP JSON
 | 缺口 | 影响 |
 | --- | --- |
 | 无 `conversation_max_tokens` | 跨语言无法调压缩阈值 |
-| 无 `enable_builtin_fetch` / `enable_builtin_filesystem` | 只能靠本地 factory 打开 |
+| 无 `enable_builtin_fetch` / `enable_builtin_filesystem` | 已放弃内置 MCP，无需协议开关 |
 | `skill_list: map<string,string>` vs Python `dict[str, Any]` | 非 string 值无法表达 |
 | 设计文档写「Adapter 内默认 ReAct 组装」，实现已外置 factory | 文档与实现对齐；**外置更符合目标 2/7** |
 
@@ -359,7 +359,7 @@ proto / HTTP JSON
 
 1. **Proto 增量（可与 #2/#4/#6 同小版本）**  
    - `int32 conversation_max_tokens = 9;`（0 = 未设置 → Python 默认）  
-   - `bool enable_builtin_fetch = 10;` / `bool enable_builtin_filesystem = 11;`（bool 默认 false 与当前 Python 默认一致，可接受）  
+   - ~~`bool enable_builtin_fetch` / `enable_builtin_filesystem`~~ **不再添加**（已放弃内置 MCP）  
    - `skill_list`：短期保持 `map<string,string>`；若需 Any，增加 `string skill_list_json = 12` 并在文档弃用 map，或约定复杂值只走 JSON。
 
 2. **文档回写**  

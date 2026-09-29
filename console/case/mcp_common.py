@@ -1,4 +1,4 @@
-"""Console MCP 相关公共装配：builtin + stdio + http。"""
+"""Console MCP 相关公共装配：显式 stdio + http（无内置 MCP）。"""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ MCP_SERVERS: list[MCPConnectionConfig] = [
     ),
 ]
 
-# HITL APPROVAL：http create_refund + filesystem 写操作
+# HITL APPROVAL：http create_refund + 本地 file toolkit 写操作
 APPROVAL_REQUIRED_TOOLS = {
     "create_refund",
     "write_file",
@@ -82,7 +82,7 @@ def build_react_mcp_agent(
     approval_required: set[str] | None = None,
 ) -> tuple[Agent, list[str]]:
     """
-    同步封装：内置 MCP + stdio/http → register_tools → ReAct 图。
+    同步封装：mcp_servers（stdio/http）→ register_tools → ReAct 图。
     """
     return asyncio.run(
         _abuild_react_mcp_agent(
@@ -105,8 +105,6 @@ async def _abuild_react_mcp_agent(
         llm_config=llm_config,
         allowed_directories=REPO_ROOT,
         mcp_servers=list(MCP_SERVERS),
-        enable_builtin_fetch=True,
-        enable_builtin_filesystem=True,
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
 

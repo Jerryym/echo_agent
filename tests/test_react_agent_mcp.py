@@ -2,8 +2,7 @@
 ReAct Agent + MCP 工具 手动验证脚本
 
 与 test_react_agent.py 类似，工具来源改为 MCP Server。
-固定同时启用：
-  - builtin：Fetch + Filesystem（目录由 mcp_allowed_directories 传入）
+固定同时启用（均经 AgentConfig.mcp_servers 显式声明，无内置 MCP）：
   - stdio：@modelcontextprotocol/server-everything
   - http：本地 streamable HTTP（默认 http://localhost:8000/mcp）
 
@@ -68,7 +67,7 @@ async def build_react_agent(
     llm_config: LLMConfig,
 ) -> tuple[Agent, ToolRegistry]:
     """
-    AgentConfig → 内置 MCP + stdio/http → Agent.register_mcp_tools。
+    AgentConfig.mcp_servers（stdio/http）→ Agent.register_mcp_tools。
 
     因 Strategy 构建需要已注册工具，先用占位图创建 Agent，
     注册后再构建 ReAct 图并重新编译到同一 Agent。
@@ -82,8 +81,6 @@ async def build_react_agent(
         llm_config=llm_config,
         allowed_directories=str(Path(__file__).resolve().parents[1]),
         mcp_servers=MCP_SERVERS,
-        enable_builtin_fetch=True,
-        enable_builtin_filesystem=True,
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
     agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)

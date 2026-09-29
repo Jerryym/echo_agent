@@ -1,9 +1,13 @@
+import os
+from pathlib import Path
+import tempfile
+
 from langgraph.runtime import Runtime
 
 from ...common import format_value, get_logger
 from ..graph import BaseContext, BaseState, Node
 from ..model.message import Message, Role
-from ..model.tool import ToolResult, ToolState
+from ..model.tool import ToolArtifact, ToolResult, ToolState
 from .tool_executor import ToolExecutor
 from .utils import format_tool_content
 
@@ -18,11 +22,16 @@ class ToolNode(Node):
         name: 节点名称
         tool_executor: 工具执行器
         message_field: 消息字段名称
+        artifact_threshold: 工具结果写入 Message 的最大字节数
     """
+
+    DEFAULT_ARTIFACT_THRESHOLD: int = 128 * 1024
+
     def __init__(self, name: str, tool_executor: ToolExecutor, message_field: str | None = None):
         super().__init__(name)
         self._tool_executor = tool_executor
         self._message_field = message_field
+        self._artifact_threshold = self.DEFAULT_ARTIFACT_THRESHOLD
 
     def run(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
         """
@@ -39,7 +48,6 @@ class ToolNode(Node):
                 result.success,
                 format_value(result.result),
             )
-            # self._touch_skills_for_tool(runtime.context, tool_call)
             tool_results.append(result)
         return self._build_result(tool_results)
 
@@ -58,7 +66,6 @@ class ToolNode(Node):
                 result.success,
                 format_value(result.result),
             )
-            # self._touch_skills_for_tool(runtime.context, tool_call)
             tool_results.append(result)
         return self._build_result(tool_results)
 
@@ -75,16 +82,68 @@ class ToolNode(Node):
 
     def _build_tool_messages(self, tool_results: list[ToolResult]) -> list[Message]:
         tool_messages: list[Message] = []
-        if tool_results:
-            for tool_result in tool_results:
-                if tool_result.success:
-                    # 字符串结果直接作为 ToolMessage content，避免 json.dumps 多包一层引号
-                    content = format_tool_content(tool_result.result)
-                else:
-                    content = tool_result.error or "unknown error"
-                tool_messages.append(Message(
-                    role=Role.TOOL,
-                    content=content,
-                    tool_call_id=tool_result.tool_call_id,
-                ))
+
+        for tool_result in tool_results:
+            if not tool_result.success:
+                tool_messages.append(
+                    Message(
+                        role=Role.TOOL,
+                        content=tool_result.error or "unknown error",
+                        tool_call_id=tool_result.tool_call_id,
+                    )
+                )
+                continue
+
+            content = format_tool_content(tool_result.result)
+            content_size = len(content.encode("utf-8"))
+            if content_size <= self._artifact_threshold: # 工具结果小于阈值
+                tool_messages.append(
+                    Message(
+                        role=Role.TOOL,
+                        content=content,
+                        tool_call_id=tool_result.tool_call_id,
+                    )
+                )
+            else:
+                artifact = self._write_artifact(content)
+                tool_messages.append(
+                    Message(
+                        role=Role.TOOL,
+                        content=self._format_artifact_content(artifact),
+                        artifact=artifact,
+                        tool_call_id=tool_result.tool_call_id,
+                    )
+                )
+
         return tool_messages
+
+    @staticmethod
+    def _write_artifact(content: str) -> ToolArtifact:
+        """将内容写进临时文件"""
+        fd, raw_path = tempfile.mkstemp(prefix="tool_result_", suffix=".txt")
+        path = Path(raw_path)
+
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                file.write(content)
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+
+        return ToolArtifact(
+            path=path,
+            size=path.stat().st_size,
+            media_type="text/plain",
+        )
+
+    @staticmethod
+    def _format_artifact_content(artifact: ToolArtifact) -> str:
+        """
+        Build the ToolMessage content for an externalized tool result.
+        """
+        return (
+            "The tool completed successfully, but the result is too large "
+            "to include directly in the conversation context. "
+            "The complete result has been stored as an artifact.\n"
+            f"Artifact size: {artifact.size} bytes."
+        )

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 from typing import Any
 
@@ -34,6 +36,20 @@ class ToolResult(BaseModel):
     result: Any = None
     error: str | None = None
     tool_call_id: str
+
+
+class ToolArtifact(BaseModel):
+    """
+    Tool artifact.
+
+    Args:
+        path: 文件路径.
+        size: 文件大小.
+        media_type: 文件类型.
+    """
+    path: Path
+    size: int
+    media_type: str
 
 
 class ToolState(BaseModel):

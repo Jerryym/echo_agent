@@ -397,6 +397,13 @@ class Agent:
         if self._mcp_client is None:
             return []
         return await self._mcp_client.register_tools()
+
+    async def aclose(self) -> None:
+        """关闭 MCP 客户端"""
+        if self._mcp_client is None:
+            return
+        await self._mcp_client.aclose()
+        self._mcp_client = None
     
 # endregion
 

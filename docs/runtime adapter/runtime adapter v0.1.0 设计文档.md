@@ -129,7 +129,7 @@ class AgentConfig(BaseModel):
     system_prompt: str | None = None
     kb_list: list[str] = []                    # 默认空；当前忽略
     skill_list: dict[str, Any] = {}            # name → path | url
-    mcp_allowed_directories: str | list[str]   # 必填；内置 Filesystem 根
+    allowed_directories: str | list[str] | None = None  # 保留字段；不驱动 MCP
     mcp_servers: list[MCPConnectionConfig] = []
 ```
 
@@ -137,7 +137,7 @@ class AgentConfig(BaseModel):
 
 - `llm_config` / `system_prompt` 为**能力声明**；由 Adapter 内 ReAct 组装在构建期消费（与现有 Agent 模块一致：Agent 运行期不自动注入）
 - `kb_list`：**默认空即可**，CreateAgent 时透传，不做 Knowledge 处理
-- 创建时仍合并内置 Fetch / Filesystem（与 `AgentConfig` 校验器行为一致）
+- MCP **无内置预设**；仅使用 `mcp_servers` 中显式配置的连接。`allowed_directories` 不合并 Fetch / Filesystem。
 
 ### 3.4 构建期仍需 RuntimeConfig
 
@@ -317,7 +317,7 @@ ToolRegistry
     → ReActStrategy / ToolNode
 ```
 
-`mcp_allowed_directories`：创建 `AgentConfig` 时必填，驱动内置 Filesystem MCP 根目录。
+`allowed_directories`：对应 Python `AgentConfig.allowed_directories`（proto：`mcp_allowed_directories`）。保留字段，**不**驱动内置 Filesystem MCP；MCP 仅来自 `mcp_servers`。
 
 ---
 
@@ -399,7 +399,7 @@ message AgentConfig {
   string system_prompt = 4;
   repeated string kb_list = 5;                 // 默认空；服务端忽略
   map<string, string> skill_list = 6;          // name → path 或 url
-  repeated string mcp_allowed_directories = 7; // 对应 Python str | list[str]
+  repeated string mcp_allowed_directories = 7; // 对应 Python allowed_directories；不驱动 MCP
   repeated MCPConnectionConfig mcp_servers = 8;
 }
 
@@ -431,7 +431,7 @@ message MCPConnectionConfig {
 与 Python 对齐注意：
 
 - `skill_list`：实现为 `dict[str, Any]`，当前语义为 name → path|url；proto 用 `map<string,string>` 足够
-- `mcp_allowed_directories`：Python 允许单个 `str`；proto 用 `repeated`，单元素即等价
+- `mcp_allowed_directories`：映射 Python `allowed_directories`（可为单个 `str`）；proto 用 `repeated`，单元素即等价。**不**再作为内置 Filesystem 根。
 - `kb_list`：可省略或传空；**不做 Knowledge**
 
 ### 9.4 Invoke / Stream

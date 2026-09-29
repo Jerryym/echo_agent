@@ -39,7 +39,7 @@ uv sync --group dev
 | Agent / Graph / LLM / Tool | 统一入口、Workflow、模型调用与工具执行 |
 | ReAct | 默认 Execution Strategy |
 | HITL | 审批 / 补参中断与恢复 |
-| MCP | Client 接入；内置 Fetch / Filesystem |
+| MCP | Client 接入；`mcp_servers` 显式配置（无内置 Fetch / Filesystem）
 | Skill | 本地包；激活进 Runtime Context（详情不进 messages）；会话隔离；3 轮未触达自动 expire |
 | Prompt | PromptAssembler：Agent / Policy / Loaded Skills |
 | Context 治理 | Token 计量；会话裁剪；超阈值历史摘要 |
@@ -59,10 +59,9 @@ from pathlib import Path
 
 from langgraph.checkpoint.memory import InMemorySaver
 
-from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, RootGraph, UserInput
-from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions
+from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, UserInput
+from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions, GraphSchema
 from echo_agent.core.strategy import StrategyFactory, StrategyType
-from echo_agent.core.tool import ToolRegistry
 
 
 class State(BaseState):
@@ -70,28 +69,27 @@ class State(BaseState):
 
 
 def build_agent(llm_config: LLMConfig) -> Agent:
-    tool_registry = ToolRegistry()  # 可注册业务工具；内置 load_skill 等由 Agent 注册
-
-    react = StrategyFactory.create_as_node(
-        StrategyType.REACT,
-        llm_config=llm_config,
-        tool_registry=tool_registry,
-    )
-
-    graph = RootGraph(state_schema=State)
-    graph.add_node(react)
-    graph.add_edge(START_NODE, react.name)
-    graph.add_edge(react.name, END_NODE)
-
     agent_config = AgentConfig(
         name="demo",
         description="demo agent",
         llm_config=llm_config,
-        mcp_allowed_directories=str(Path.cwd()),
+        allowed_directories=str(Path.cwd()),
         # skill_list={"pdf": "/path/to/skills/pdf"},
+        # mcp_servers=[MCPConnectionConfig(name="remote", type="http", url="http://localhost:8000/mcp")],
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
-    return Agent(agent_config, compile_options, graph)
+    agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)
+
+    react = StrategyFactory.create_as_node(
+        StrategyType.REACT,
+        llm_config=llm_config,
+        tool_registry=agent.tool_registry,
+    )
+    agent.add_node(react)
+    agent.add_edge(START_NODE, react.name)
+    agent.add_edge(react.name, END_NODE)
+    agent.compile()
+    return agent
 
 
 agent = build_agent(LLMConfig(...))

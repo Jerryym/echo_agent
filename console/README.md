@@ -25,17 +25,18 @@ uv run --project .. python app.py
 | Agent（无策略） | 单 LLM 节点 Agent |
 | ReAct（无HITL） | ReAct + business tools，无审批 |
 | ReAct（有HITL） | ReAct + `create_refund` 需审批 |
-| ReAct MCP（无HITL） | ReAct + builtin(Fetch/Filesystem) + stdio + http，异步轨 |
-| ReAct MCP（有HITL） | 同上 + `create_refund` / filesystem 写操作需审批 |
+| ReAct MCP（无HITL） | ReAct + 显式 stdio + http MCP，异步轨 |
+| ReAct MCP（有HITL） | 同上 + `create_refund` / 本地写文件需审批 |
 | HITL Subgraph | 无模型；消息含 `approval` 走审批，否则补参 |
 
 ### MCP Cases
 
 固定同时启用：
 
-- **builtin**：Fetch + Filesystem（`mcp_allowed_directories` 由调用方传入）
 - **stdio**：`@modelcontextprotocol/server-everything`
 - **http**：`http://localhost:8000/mcp`（需另开终端）
+
+无内置 Fetch / Filesystem；需要时自行写入 `mcp_servers`。
 
 ```bash
 # 终端 1：本地 http MCP（含 create_refund 等）

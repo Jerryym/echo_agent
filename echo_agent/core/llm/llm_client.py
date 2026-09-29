@@ -25,7 +25,7 @@ from .exception import (
 )
 from .llm_config import LLMConfig
 from .llm_result import LLMResult
-from ..tool.toolkit import JsonObject, StructuredOutputSchema, create_structured_output_tool
+from ..tool.toolkit import JsonObject, StructuredOutputSchema, create_structured_output_tool, validate_structured_output
 
 logger = get_logger("llm")
 
@@ -46,10 +46,7 @@ class LLMClient:
             self._config = config
             self._model = self._initialize_model()
         except Exception as e:
-            raise LLMInitializeError(
-                message="LLM model initialize failed",
-                detail=str(e)
-            )
+            raise LLMInitializeError(message="LLM model initialize failed", detail=str(e))
 
     def invoke(
         self, 
@@ -179,11 +176,11 @@ class LLMClient:
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         before_model: BeforeModelHook | None = None
-    ):
+    ) -> LLMResult:
         """
         结构化输出调用模型
 
-        使用内置结构化输出工具约束模型返回结果
+        先使用 LangChain 原生结构化输出；失败时回退到结构化输出工具。
 
         参数:
             schema: 输出 schema
@@ -196,8 +193,6 @@ class LLMClient:
             config: 配置
         """
         try:
-            # 创建结构化输出工具
-            structured_output_tool = create_structured_output_tool(schema)
             # 构建 Messages
             messages = self._build_messages(
                 prompt=prompt,
@@ -214,26 +209,21 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 tool_informations=tool_informations,
-                tool_list=[structured_output_tool],
+                tool_list=None,
                 context=context,
                 agent_resources=agent_resources,
             )
-            # 绑定工具
-            # model = self._model.bind_tools([structured_output_tool], tool_choice=structured_output_tool.name)
-            model = self._model.bind_tools([structured_output_tool], tool_choice="required")
-            # 调用模型
-            response = model.invoke(messages, config=config)
-            if not isinstance(response, AIMessage):
-                raise LLMResponseDecodeError(message="structured response must be an AIMessage")
-            # 解析响应
-            return self._parse_structured_response(response, structured_output_tool)
+            
+            structured_messages = self._with_structured_output_instruction(messages)
+            try: # 使用 LangChain 原生结构化输出
+                return self._with_structured_output(schema, structured_messages, config)
+            except Exception as native_error: # 回退到结构化输出工具
+                logger.warning("native structured output failed, fallback to tool: %s", native_error)
+                return self._invoke_with_structured_tool(schema, structured_messages, config)
         except LLMException:
             raise
         except Exception as e:
-            raise LLMInvokeError(
-                message="LLM structured invoke failed",
-                detail=str(e),
-            )
+            raise LLMInvokeError(message="LLM structured invoke failed", detail=str(e))
 
     async def ainvoke_structured(
         self,
@@ -246,11 +236,11 @@ class LLMClient:
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         abefore_model: AsyncBeforeModelHook | None = None
-    ):
+    ) -> LLMResult:
         """
         结构化输出调用模型（异步）
 
-        使用内置结构化输出工具约束模型返回结果
+        先使用 LangChain 原生结构化输出；失败时回退到结构化输出工具。
 
         参数:
             schema: 输出 schema
@@ -263,8 +253,6 @@ class LLMClient:
             config: 配置
         """
         try:
-            # 创建结构化输出工具
-            structured_output_tool = create_structured_output_tool(schema)
             # 构建 Messages
             messages = self._build_messages(
                 prompt=prompt,
@@ -280,27 +268,22 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 tool_informations=tool_informations,
-                tool_list=[structured_output_tool],
+                tool_list=None,
                 context=context,
                 agent_resources=agent_resources,
                 abefore_model=abefore_model,
             )
-            # 绑定工具
-            # model = self._model.bind_tools([structured_output_tool], tool_choice=structured_output_tool.name)
-            model = self._model.bind_tools([structured_output_tool], tool_choice="required")
-            # 调用模型
-            response = await model.ainvoke(messages, config=config)
-            if not isinstance(response, AIMessage):
-                raise LLMResponseDecodeError(message="structured response must be an AIMessage")
-            # 解析响应
-            return self._parse_structured_response(response, structured_output_tool)
+
+            structured_messages = self._with_structured_output_instruction(messages)
+            try: # 使用 LangChain 原生结构化输出
+                return await self._awith_structured_output(schema, structured_messages, config)
+            except Exception as native_error: # 回退到结构化输出工具
+                logger.warning("native structured output failed, fallback to tool: %s", native_error)
+                return await self._ainvoke_with_structured_tool(schema, structured_messages, config)
         except LLMException:
             raise
         except Exception as e:
-            raise LLMInvokeError(
-                message="LLM async structured invoke failed",
-                detail=str(e),
-            )
+            raise LLMInvokeError(message="LLM stream invoke failed", detail=str(e))
 
     def stream(
         self, prompt: str, 
@@ -355,10 +338,7 @@ class LLMClient:
         except LLMException:
             raise
         except Exception as e:
-            raise LLMInvokeError(
-                message="LLM stream invoke failed",
-                detail=str(e)
-            )
+            raise LLMInvokeError(message="LLM stream invoke failed", detail=str(e))
 
     async def astream(
         self,
@@ -462,6 +442,9 @@ class LLMClient:
             # output_version
             if self._config.output_version:
                 model_kwargs["output_version"] = self._config.output_version
+            # reasoning
+            if self._config.reasoning:
+                model_kwargs["reasoning"] = self._config.reasoning.model_dump(exclude_none=True)
             # extra_body
             if self._config.extra_body:
                 model_kwargs["extra_body"] = self._config.extra_body
@@ -536,9 +519,7 @@ class LLMClient:
             )
             
     def _configure_model(self, tool_list: list[dict[str, Any]] | None = None):
-        """
-        配置模型
-        """
+        """配置模型"""
         model = self._model
         # 绑定工具
         if tool_list:
@@ -624,9 +605,7 @@ class LLMClient:
 # endregion
 
     def _parse_response(self, response: AIMessage):
-        """
-        解析 LLM 响应
-        """
+        """解析 LLM 响应"""
         try:
             text, reasoning = self._normalize_content(response)
             usage_metadata = getattr(response, "usage_metadata", None) or {}
@@ -647,9 +626,193 @@ class LLMClient:
                     )
                 )
         except Exception as e:
+            raise LLMResponseDecodeError(message="parse llm response failed", detail=str(e))
+
+    def _with_structured_output(self, schema: StructuredOutputSchema, messages: list[BaseMessage], config: RunnableConfig | None = None) -> LLMResult:
+        """使用 LangChain 原生结构化输出（json_schema）"""
+        model_with_structured = self._model.with_structured_output(
+            schema,
+            method="json_schema",
+            include_raw=True,
+            strict=True
+        )
+
+        try:
+            result = model_with_structured.invoke(messages, config=config)
+            return self._require_structured_output(schema, result)
+        except LLMResponseDecodeError as error:
+            logger.warning("native structured output parsing failed, retry generation: %s", error)
+
+        # 解析失败重试
+        retry_messages = [
+            *messages,
+            HumanMessage(
+                content=(
+                    "The structured result was invalid. Regenerate the result "
+                    "and strictly follow the provided schema."
+                )
+            ),
+        ]
+        result = model_with_structured.invoke(retry_messages, config=config)
+        return self._require_structured_output(schema, result)
+
+    async def _awith_structured_output(self, schema: StructuredOutputSchema, messages: list[BaseMessage], config: RunnableConfig | None = None) -> LLMResult:
+        """使用 LangChain 原生结构化输出（json_schema，异步）"""
+        model_with_structured = self._model.with_structured_output(
+            schema,
+            method="json_schema",
+            include_raw=True,
+            strict=True
+        )
+
+        try:
+            result = await model_with_structured.ainvoke(messages, config=config)
+            return self._require_structured_output(schema, result)
+        except LLMResponseDecodeError as error:
+            logger.warning("native structured output parsing failed, retry generation: %s", error)
+
+        # 解析失败重试
+        retry_messages = [
+            *messages,
+            HumanMessage(
+                content=(
+                    "The structured result was invalid. Regenerate the result "
+                    "and strictly follow the provided schema."
+                )
+            ),
+        ]
+        result = await model_with_structured.ainvoke(retry_messages, config=config)
+        return self._require_structured_output(schema, result)
+
+    def _require_structured_output(self, schema: StructuredOutputSchema, result: Any) -> LLMResult:
+        """校验原生结构化输出并解析为 LLMResult"""
+        if not isinstance(result, dict):
+            raise LLMResponseDecodeError(message="native structured output failed", detail=str(result))
+        if result.get("parsing_error"):
+            try:
+                return self._parse_structured_output(schema, result)
+            except LLMResponseDecodeError:
+                raise LLMResponseDecodeError(
+                    message="native structured output failed",
+                    detail=str(result.get("parsing_error")),
+                ) from None
+        return self._parse_structured_output(schema, result)
+
+    def _invoke_with_structured_tool(self, schema: StructuredOutputSchema, messages: list[BaseMessage], config: RunnableConfig | None = None) -> LLMResult:
+        """使用结构化输出工具构建结构化输出"""
+        # 绑定结构化输出工具(不禁用思考模式)
+        structured_output_tool, model = self._bind_structured_tool(schema)
+        try:
+            response = model.invoke(messages, config=config)
+            return self._require_structured_tool_response(response, structured_output_tool)
+        except LLMResponseDecodeError as error:
+            logger.warning("structured output tool failed, retry with thinking disabled: %s", error)
+
+        # 失败则重新绑定结构化输出工具(禁用思考模式)
+        structured_output_tool, model = self._bind_structured_tool(schema, disable_thinking=True)
+        response = model.invoke(messages, config=config)
+        return self._require_structured_tool_response(response, structured_output_tool)
+
+    async def _ainvoke_with_structured_tool(self, schema: StructuredOutputSchema, messages: list[BaseMessage], config: RunnableConfig | None = None) -> LLMResult:
+        """使用结构化输出工具构建结构化输出（异步）"""
+        # 绑定结构化输出工具(不禁用思考模式)
+        structured_output_tool, model = self._bind_structured_tool(schema)
+        try:
+            response = await model.ainvoke(messages, config=config)
+            return self._require_structured_tool_response(response, structured_output_tool)
+        except LLMResponseDecodeError as error:
+            logger.warning("structured output tool failed, retry with thinking disabled: %s", error)
+
+        # 失败则重新绑定结构化输出工具(禁用思考模式)
+        structured_output_tool, model = self._bind_structured_tool(schema, disable_thinking=True)
+        response = await model.ainvoke(messages, config=config)
+        return self._require_structured_tool_response(response, structured_output_tool)
+
+    def _bind_structured_tool(self, schema: StructuredOutputSchema, disable_thinking: bool = False) -> tuple[BaseTool, Any]:
+        """
+        按 Responses API 或 Chat Completions 绑定结构化输出工具
+
+        参数：
+            schema: 结构化输出接哦古
+            disable_thinking: 是否禁用思考模式
+        """
+        structured_output_tool = create_structured_output_tool(schema)
+        model = self._model
+
+        # 禁用思考模式
+        if disable_thinking:
+            model = self._disable_thinking(model)
+
+        if self._config.use_responses_api:
+            tool_choice: str | dict[str, Any] = "required"
+        else:
+            tool_choice = {
+                "type": "function",
+                "function": {
+                    "name": structured_output_tool.name,
+                },
+            }
+
+        return (
+            structured_output_tool, 
+            model.bind_tools(
+                [structured_output_tool], 
+                tool_choice=tool_choice
+                )
+            )
+
+    def _require_structured_tool_response(self, response: Any, structured_output_tool: BaseTool) -> LLMResult:
+        """校验工具调用响应并解析为 LLMResult"""
+        if not isinstance(response, AIMessage):
+            raise LLMResponseDecodeError(message="structured response must be an AIMessage")
+        return self._parse_structured_response(response, structured_output_tool)
+
+    def _parse_structured_output(self, schema: StructuredOutputSchema, result: dict[str, Any]) -> LLMResult:
+        """解析 LangChain 原生结构化输出"""
+        try:
+            raw = result.get("raw")
+            if not isinstance(raw, AIMessage):
+                raise LLMResponseDecodeError(message="structured response must be an AIMessage")
+
+            parsed = result.get("parsed")
+            if isinstance(parsed, dict):
+                payload = parsed
+            elif hasattr(parsed, "model_dump"):
+                dumped = parsed.model_dump(mode="json")
+                if not isinstance(dumped, dict):
+                    raise LLMResponseDecodeError(message="native structured output must be a JSON object")
+                payload = dumped
+            elif isinstance(parsed, str):
+                payload = self._load_json_object(parsed)
+            else:
+                text, _ = self._normalize_content(raw)
+                payload = self._load_json_object(text)
+
+            structured = validate_structured_output(schema, payload)
+            text, reasoning = self._normalize_content(raw)
+            usage_metadata = raw.usage_metadata or {}
+            input_token_details = usage_metadata.get("input_token_details", None) or {}
+            output_token_details = usage_metadata.get("output_token_details", None) or {}
+            return LLMResult(
+                text=text,
+                reasoning=reasoning,
+                raw=raw,
+                structured=structured,
+                response_metadata=raw.response_metadata,
+                token_usage=TokenUsage(
+                    input_tokens=usage_metadata.get("input_tokens", 0),
+                    output_tokens=usage_metadata.get("output_tokens", 0),
+                    cache_creation=input_token_details.get("cache_creation", 0) if input_token_details else 0,
+                    cache_hit=input_token_details.get("cache_read", 0) if input_token_details else 0,
+                    reasoning_tokens=output_token_details.get("reasoning", 0) if output_token_details else 0,
+                ),
+            )
+        except LLMResponseDecodeError:
+            raise
+        except Exception as e:
             raise LLMResponseDecodeError(
-                message="parse llm response failed",
-                detail=str(e)
+                message="parse structured output failed",
+                detail=str(e),
             )
 
     def _parse_structured_response(self, response: AIMessage, structured_tool: BaseTool) -> LLMResult:
@@ -704,12 +867,19 @@ class LLMClient:
                 detail=str(e),
             )
 
+    def _load_json_object(self, text: str) -> dict[str, Any]:
+        """将归一化后的 JSON 文本解析为对象"""
+        loaded = json.loads(self._normalize_json_text(text))
+        if not isinstance(loaded, dict):
+            raise LLMResponseDecodeError(message="native structured output must be a JSON object")
+        return loaded
+
     def _normalize_content(self, response: AIMessage | Any) -> tuple[str, str | None]:
         """
-        规范化内容为 text / reasoning（对齐 LangChain ContentBlock）。
+        规范化内容为 text / reasoning（对齐 LangChain ContentBlock）
 
-        优先使用 AIMessage.content_blocks；否则回退解析 content。
-        reasoning 为空时返回 None。
+        优先使用 AIMessage.content_blocks；否则回退解析 content
+        reasoning 为空时返回 None
         """
         blocks = getattr(response, "content_blocks", None)
         if blocks:
@@ -725,6 +895,17 @@ class LLMClient:
             text, reasoning = self._split_content_blocks(content)
             return text, reasoning or None
         return str(content), None
+
+    def _normalize_json_text(self, text: str) -> str:
+        """归一化json文本"""
+        text = text.strip()
+        if text.startswith("```json"):
+            text = text[len("```json"):].lstrip()
+        elif text.startswith("```"):
+            text = text[3:].lstrip()
+        if text.endswith("```"):
+            text = text[:-3].rstrip()
+        return text
 
     def _split_content_blocks(self, blocks: Any) -> tuple[str, str]:
         """
@@ -769,7 +950,7 @@ class LLMClient:
 
     @staticmethod
     def _extract_reasoning_text(block: Any) -> str:
-        """从 reasoning / thinking block 提取文本。"""
+        """从 reasoning / thinking block 提取文本"""
         if isinstance(block, dict):
             reasoning = block.get("reasoning") or block.get("thinking") or ""
             if reasoning:
@@ -791,9 +972,7 @@ class LLMClient:
         )
 
     def _normalize_tool_calls(self, raw_tool_calls) -> list[ToolCall]:
-        """
-        规范化工具调用
-        """
+        """规范化工具调用"""
         if not raw_tool_calls:
             return []
 
@@ -814,3 +993,28 @@ class LLMClient:
                     detail=f"invalid tool call: {tc}",
                 )
         return tool_calls
+
+    def _disable_thinking(self, model: Any) -> Any:
+        """禁用思考模式"""
+        if self._config.use_responses_api:
+            return model.bind(
+                reasoning={"effort": "none"},
+            )
+
+        extra_body = {
+            **(self._config.extra_body or {}),
+            "enable_thinking": False,
+        }
+        return model.bind(extra_body=extra_body)
+
+    def _with_structured_output_instruction(self, messages: list[BaseMessage]) -> list[BaseMessage]:
+        return [
+            *messages,
+            HumanMessage(
+                content=(
+                    "Generate the result strictly according to the provided "
+                    "structured output schema. Do not return a normal "
+                    "conversational response."
+                ),
+            ),
+        ]

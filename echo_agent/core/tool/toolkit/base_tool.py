@@ -25,9 +25,23 @@ def create_structured_output_tool(schema: StructuredOutputSchema) -> BaseTool:
         Returns:
             Structured output as a JSON object.
         """
-        return _validate_structured_output(schema, kwargs)
+        return validate_structured_output(schema, kwargs)
 
     return structured_output_tool
+
+def validate_structured_output(schema: StructuredOutputSchema, value: dict[str, Any]) -> JsonObject:
+    """验证结构化输出"""
+    if isinstance(schema, dict):
+        return _to_json_object(value)
+
+    adapter = TypeAdapter(schema)
+    validated = adapter.validate_python(value)
+    json_value = adapter.dump_python(
+        validated,
+        mode="json",
+    )
+
+    return _to_json_object(json_value)
 
 def _build_json_schema(schema: StructuredOutputSchema) -> dict[str, Any]:
     """将结构化输出Schema转换成JSON Schema"""
@@ -48,20 +62,6 @@ def _build_json_schema(schema: StructuredOutputSchema) -> dict[str, Any]:
     if json_schema.get("type") != "object":
         raise ValueError("Structured output schema must describe a JSON object.")
     return json_schema
-
-def _validate_structured_output(schema: StructuredOutputSchema, value: dict[str, Any]) -> JsonObject:
-    """验证结构化输出"""
-    if isinstance(schema, dict):
-        return _to_json_object(value)
-
-    adapter = TypeAdapter(schema)
-    validated = adapter.validate_python(value)
-    json_value = adapter.dump_python(
-        validated,
-        mode="json",
-    )
-
-    return _to_json_object(json_value)
 
 def _is_pydantic_model(schema: object) -> bool:
     """判断是否为pydantic模型"""

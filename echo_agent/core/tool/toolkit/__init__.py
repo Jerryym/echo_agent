@@ -1,4 +1,4 @@
-from .base_tool import JsonObject, StructuredOutputSchema, create_structured_output_tool
+from .base_tool import JsonObject, StructuredOutputSchema, create_structured_output_tool, validate_structured_output
 from .file_tool import (
     create_directory_tool,
     create_edit_file_tool,
@@ -15,6 +15,7 @@ from .xlsx_tool import create_read_xlsx_tool, create_write_xlsx_tool
 
 __all__ = [
     "create_structured_output_tool",
+    "validate_structured_output",
     "create_load_skill_tool",
     "create_read_skill_resource_tool",
     "create_knowledge_base_query_tool",

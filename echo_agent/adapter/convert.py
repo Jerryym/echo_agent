@@ -199,9 +199,9 @@ def agent_config_from_fields(
         "system_prompt": system_prompt or None,
         "kb_list": list(kb_list or []),
         "skill_list": dict(skill_list or {}),
-        "mcp_allowed_directories": mcp_allowed_directories,
+        # proto 字段名仍为 mcp_allowed_directories，映射到 AgentConfig.allowed_directories
+        "allowed_directories": mcp_allowed_directories,
         "mcp_servers": list(mcp_servers or []),
-        # 内置 Fetch / Filesystem 默认关闭；需启用时在 Python AgentConfig 显式打开
     }
     parsed_mode = parse_agent_modes(mode)
     if parsed_mode is not None:

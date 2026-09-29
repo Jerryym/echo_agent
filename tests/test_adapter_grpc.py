@@ -70,7 +70,7 @@ def test_agent_config_from_proto_basic():
     assert remote.url == "http://localhost:8000/mcp"
 
 
-def test_agent_config_builtin_mcp_off_by_default():
+def test_agent_config_mcp_empty_by_default():
     msg = pb.AgentConfig(
         name="demo",
         llm_config=pb.LLMConfig(
@@ -80,8 +80,6 @@ def test_agent_config_builtin_mcp_off_by_default():
         ),
     )
     config = agent_config_from_proto(msg)
-    assert config.enable_builtin_fetch is False
-    assert config.enable_builtin_filesystem is False
     assert config.mcp_servers == []
     assert config.allowed_directories is None
     assert math.isclose(config.llm_config.temperature, 0.2, rel_tol=1e-9)

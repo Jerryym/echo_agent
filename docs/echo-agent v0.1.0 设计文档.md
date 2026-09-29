@@ -171,7 +171,7 @@ v0.1.0 交付 **Harness Runtime 雏形 + ReAct 默认策略**，接受已知限�
 | Agent / Graph / LLM / Tool | 统一入口、Workflow、模型与工具执行                                                                       |
 | Strategy                   | **ReAct**（默认验证载体）                                                                           |
 | HITL                       | 审批 / 补参中断与恢复                                                                                |
-| MCP                        | Client 接入；内置 Fetch / Filesystem                                                             |
+| MCP                        | Client 接入；`mcp_servers` 显式配置（无内置 Fetch / Filesystem）                                     |
 | Skill                      | 本地包解析；`load_skill` 激活 Runtime Context（详情不进 messages）；会话隔离；手动 discard；**连续 3 轮未触达自动 expire** |
 | Prompt                     | PromptAssembler：Agent / Tool Policy / Skill Policy / Loaded Skills                          |
 | State / Context            | State 存执行事实；Context 存 active_skills、trace、agent_state                                       |

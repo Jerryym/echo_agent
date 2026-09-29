@@ -92,8 +92,6 @@ async def build_react_agent(
         description=name,
         llm_config=llm_config,
         mcp_servers=MCP_SERVERS,
-        enable_builtin_fetch=False,
-        enable_builtin_filesystem=False,
     )
     compile_options = GraphCompileOptions(checkpointer=InMemorySaver())
     agent = Agent(agent_config, GraphSchema(state_schema=State), compile_options)

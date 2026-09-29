@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from .tool import ToolCall
+from .tool import ToolArtifact, ToolCall
 
 
 class Role(Enum):
@@ -25,11 +25,13 @@ class Message(BaseModel):
         content: 消息内容
         tool_call_id: 工具调用ID
         tool_calls: 工具调用列表
+        artifacts: 工具调用结果
     """
     role: Role
     content: str | list[str | dict[str, Any]] = Field(default="")
     tool_call_id: str | None = None
     tool_calls: list[ToolCall] = Field(default_factory=list)
+    artifact: ToolArtifact | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_message(self):

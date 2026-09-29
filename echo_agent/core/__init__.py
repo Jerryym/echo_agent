@@ -6,6 +6,7 @@ from .llm import (
     LLMInvokeError,
     LLMResponseDecodeError,
     LLMResult,
+    ReasoningConfig
 )
 from .model.input import Attachment, UserInput
 from .model.message import Message, Role
@@ -20,6 +21,7 @@ __all__ = [
     "LLMInitializeError",
     "LLMInvokeError",
     "LLMResponseDecodeError",
+    "ReasoningConfig",
     "Attachment",
     "UserInput",
     "Role",

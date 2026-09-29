@@ -76,7 +76,7 @@ message AgentConfig {
   repeated string kb_list = 5;
   // name → path 或 url（对齐 Python dict[str, Any] 当前语义）
   map<string, string> skill_list = 6;
-  // 对应 Python str | list[str]；单元素即等价单个 str
+  // 对应 Python allowed_directories（str | list[str]）；单元素即等价单个 str。不驱动 MCP。
   repeated string mcp_allowed_directories = 7;
   repeated MCPConnectionConfig mcp_servers = 8;
   // "ask" | "agent"；空则使用服务端默认 [agent]

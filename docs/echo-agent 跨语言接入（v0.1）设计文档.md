@@ -28,7 +28,7 @@ echo-agent Runtime 基于 Python（LangChain / LangGraph）实现。跨语言场
 ### 2.1 核心目标
 
 1. **客户端传递 `AgentConfig`**  
-   非 Python 宿主通过 `CreateAgent` 下发配置（含 `mcp_allowed_directories` 等与本机相关的字段）。
+   非 Python 宿主通过 `CreateAgent` 下发配置（含 `allowed_directories` 等与本机相关的字段；proto 侧对应 `mcp_allowed_directories`）。
 
 2. **集成方自定义图构建 Agent**  
    启动时注入 `factory`；`CreateAgent` 调用工厂消费 `AgentConfig` 并返回 `Agent`。图逻辑不在客户端、不在协议里序列化。
@@ -155,7 +155,7 @@ uv run python -m echo_agent.adapter.grpc.server \
 
 ### 5.3 客户端 CreateAgent
 
-宿主下发 `AgentConfig`（含本机 `mcp_allowed_directories`）与可选 `runtime_options`；服务端校验后调用工厂，返回 `agent_id`。
+宿主下发 `AgentConfig`（含本机 `allowed_directories`）与可选 `runtime_options`；服务端校验后调用工厂，返回 `agent_id`。
 
 ---
 
@@ -184,7 +184,7 @@ service EchoAgentService {
 
 - 宿主可自启集成方入口或带 `--factory` 的 server 模块。  
 - 打包时打进本库 + 集成方工厂；CreateAgent 仍由客户端传本机配置。  
-- 注意内置 MCP 对 `npx`/`uvx` 的外部依赖。
+- 若 `mcp_servers` 含 stdio，宿主环境需自行提供对应 `command`（如 `npx`）；库不再内置 Fetch / Filesystem。
 
 ---
 

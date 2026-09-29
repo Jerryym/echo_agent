@@ -5,7 +5,7 @@ from .exception import (
     LLMResponseDecodeError,
 )
 from .llm_client import LLMClient
-from .llm_config import LLMConfig
+from .llm_config import LLMConfig, ReasoningConfig
 from .llm_result import LLMResult
 
 __all__ = [
@@ -16,4 +16,5 @@ __all__ = [
     "LLMInitializeError",
     "LLMInvokeError",
     "LLMResponseDecodeError",
+    "ReasoningConfig",
 ]

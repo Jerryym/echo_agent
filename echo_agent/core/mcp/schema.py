@@ -17,7 +17,7 @@ class MCPConnectionConfig(BaseModel):
         headers: HTTP 请求头(仅在 type 为 http 时有效)
         auth: HTTP 身份认证(仅在 type 为 http 时有效)
     """
-    name: str = Field(default="")
+    name: str
     type: Literal["stdio", "http"] = Field(default="stdio")
     command: str | None = None
     args: list[str] | None = None
@@ -29,19 +29,13 @@ class MCPConnectionConfig(BaseModel):
         """转换为 MCP 适配器配置"""
         if self.type == "stdio":
             config = {
-                "transport": "stdio",
                 "command": self.command,
-                "args": self.args,
+                "args": self.args or [],
             }
         elif self.type == "http":
             config = {
-                "transport": "http",
                 "url": self.url,
             }
-            if self.headers:
-                config["headers"] = self.headers
-            if self.auth:
-                config["auth"] = self.auth
         else:
             raise ValueError(f"Unsupported MCP type: {self.type}")
         return config
@@ -65,11 +59,13 @@ class MCPConfigLoader:
         """加载 MCP 配置"""
         if isinstance(config, str):
             config = json.loads(config)
-
         if not isinstance(config, dict):
             raise ValueError("Invalid MCP config")
 
         servers = config.get("mcpServers", {})
+        if not isinstance(servers, dict):
+            raise ValueError("Invalid MCP config")
+        
         return [
             MCPConnectionConfig(
                 name=name,
