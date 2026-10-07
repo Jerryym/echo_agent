@@ -25,7 +25,12 @@ from .exception import (
 )
 from .llm_config import LLMConfig
 from .llm_result import LLMResult
-from ..tool.toolkit import JsonObject, StructuredOutputSchema, create_structured_output_tool, validate_structured_output
+from .structured_output import (
+    JsonObject,
+    StructuredOutputSchema,
+    create_structured_output_tool,
+    validate_structured_output,
+)
 
 logger = get_logger("llm")
 

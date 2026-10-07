@@ -9,6 +9,7 @@ class ToolType(str, Enum):
     工具类型
     """
     FUNCTION = "function"
+    INTERNAL = "internal"
     HTTP = "http"
     MCP = "mcp"
 

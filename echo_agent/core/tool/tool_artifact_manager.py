@@ -12,7 +12,7 @@ class ToolArtifactManager:
     def __init__(self):
         pass
 
-    def store(self, content: str) -> ToolArtifact:
+    def store(self, tool_call_id: str, content: str) -> ToolArtifact:
         """保存工具输出结果为临时文件"""
         fd, raw_path = tempfile.mkstemp(prefix="tool_result_", suffix=".txt")
         path = Path(raw_path)
@@ -28,6 +28,7 @@ class ToolArtifactManager:
             raise
 
         return ToolArtifact(
+            tool_call_id=tool_call_id,
             path=path,
             size=path.stat().st_size,
             media_type="text/plain",

@@ -45,9 +45,7 @@ class ToolGateWay(BaseGateWay):
             self._authorize_ask_mode(tool)
             return
 
-        raise ToolAuthorizationError(
-            f"unsupported agent mode: {mode}"
-        )
+        raise ToolAuthorizationError(f"unsupported agent mode: {mode}" )
 
     def filter(self, tools: list[ToolDefinition], mode: AgentMode) -> list[ToolDefinition]:
         """

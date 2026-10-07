@@ -100,7 +100,7 @@ class ReasonNode(Node):
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
 
         # 构建Observation
-        observation_list = self._build_observations(state)
+        observation_list = self._build_observations(state, runtime.context)
 
         # 如果任务状态为取消、失败或阻塞，则直接返回
         if state.task_status in ("cancelled", "failed", "blocked"):
@@ -151,7 +151,7 @@ class ReasonNode(Node):
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
 
         # 构建Observation
-        observation_list = self._build_observations(state)
+        observation_list = self._build_observations(state, runtime.context)
         
        # 如果任务状态为取消、失败或阻塞，则直接返回
         if state.task_status in ("cancelled", "failed", "blocked"):
@@ -195,7 +195,7 @@ class ReasonNode(Node):
         # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
 
-    def _build_observations(self, state: ReActState) -> list[Observation]:
+    def _build_observations(self, state: ReActState, context: ReActContext) -> list[Observation]:
         """
         构建Observation
         """
@@ -203,7 +203,7 @@ class ReasonNode(Node):
 
         if state.task_status == "in_progress":
             for tool_result in state.tool_state.tool_results:
-                observation = ObservationBuilder.build(tool_result)
+                observation = ObservationBuilder.build(tool_result, context.tool_artifacts.get(tool_result.tool_call_id))
                 observations.append(observation)
         elif state.task_status == "invalid_tools": # 非法工具
             invalid_tools = [tool.name for tool in state.tool_state.tool_calls]

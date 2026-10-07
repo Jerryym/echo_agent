@@ -10,6 +10,7 @@ from langgraph.types import Command
 from ...common import get_logger
 from ...common.network import HttpRequest
 from ..capability.skill import SkillManager
+from ..capability.workflow.tool_artifact import create_tool_artifact_analyse_workflow
 from ..graph import (
     BaseContext,
     BaseInput,
@@ -18,13 +19,14 @@ from ..graph import (
     GraphSchema,
     Node,
 )
+from ..llm import LLMClient
 from ..mcp import MCPClient
 from ..model.agent import AgentMode, AgentResources, AgentResult, AgentState
 from ..model.input import UserInput
 from ..model.message import Message, Role, append_messages
 from ..model.skill import SkillRuntimeContext
 from ..runtime import RuntimeConfig
-from ..tool import ToolDefinition, ToolRegistry
+from ..tool import ToolDefinition, ToolRegistry, ToolType
 from ..tool.toolkit import (
     create_directory_tool,
     create_edit_file_tool,
@@ -36,6 +38,7 @@ from ..tool.toolkit import (
     create_read_xls_tool,
     create_read_xlsx_tool,
     create_search_files_tool,
+    create_trigger_tool_artifact_analyse_tool,
     create_write_file_tool,
     create_write_xls_tool,
     create_write_xlsx_tool,
@@ -426,15 +429,26 @@ class Agent:
 
     def _register_builtin_toolkit(self) -> None:
         """注册内部工具"""
-        # 能力工具
+        self._register_capability_tools()
+        self._register_filesystem_tools()
+        self._register_xls_tools()
+
+    def _register_capability_tools(self) -> None:
+        """注册能力工具"""
+        llm_client = LLMClient(self._agent_config.llm_config)
+        workflow = create_tool_artifact_analyse_workflow(llm_client)
+        tool_artifact_analyse = (create_trigger_tool_artifact_analyse_tool(workflow))
+
         load_skill = create_load_skill_tool(self._skill_manager)
         read_skill = create_read_skill_resource_tool(self._skill_manager)
         # knowledge_base_query = create_knowledge_base_query_tool()
+        self._tool_registry.register(to_tool_definition(tool_artifact_analyse, tool_type=ToolType.INTERNAL), tool_artifact_analyse)
         self._tool_registry.register(to_tool_definition(load_skill), load_skill)
         self._tool_registry.register(to_tool_definition(read_skill), read_skill)
         # self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)
 
-        # 读写文件
+    def _register_filesystem_tools(self) -> None:
+        """注册文件系统工具"""
         read_file = create_read_file_tool()
         write_file = create_write_file_tool()
         edit_file = create_edit_file_tool()
@@ -448,7 +462,8 @@ class Agent:
         self._tool_registry.register(to_tool_definition(list_directory), list_directory)
         self._tool_registry.register(to_tool_definition(create_directory), create_directory)
 
-        # 读写 XLS / XLSX
+    def _register_xls_tools(self) -> None:
+        """注册 XLS / XLSX 工具"""
         read_xls = create_read_xls_tool()
         write_xls = create_write_xls_tool()
         read_xlsx = create_read_xlsx_tool()
@@ -505,6 +520,9 @@ class Agent:
         # 获取当前会话活动SKill
         active_skills = session.active_skills
 
+        # 获取当前会话工具结果
+        tool_artifacts = session.tool_artifacts
+
         # 复用未完成的本轮 AgentResult
         if resume:
             turn = session.current_turn
@@ -525,6 +543,7 @@ class Agent:
                 kb_list=self._agent_config.kb_list,
             ),
             active_skills=active_skills,
+            tool_artifacts=tool_artifacts,
             agent_result=turn.result,
         )
 

@@ -2,6 +2,8 @@ from typing import Any
 
 from langchain_core.tools import tool
 
+from tool_artifact_scenario_data import build_order_artifact_scenario
+
 
 def _tool_extras(
     *,
@@ -88,6 +90,9 @@ _WEATHER = {
 _PURCHASE_REQUESTS: list[dict[str, Any]] = []
 
 
+_ORDER_ARTIFACT_SCENARIO = build_order_artifact_scenario()
+
+
 # =========================
 # User
 # =========================
@@ -167,6 +172,18 @@ def query_salary(
 # =========================
 # Order
 # =========================
+@tool(extras=_tool_extras(read_only_hint=True))
+def query_order_artifact_scenario() -> str:
+    """
+    查询完整的订单场景数据。
+
+    返回超过 128 KB 的 CSV 文本，用于验证 Tool Artifact 的落盘、
+    分块读取和跨轮分析流程。
+    """
+
+    return _ORDER_ARTIFACT_SCENARIO.content
+
+
 @tool(extras=_tool_extras(read_only_hint=True))
 def get_order_detail(
     order_id: str,
@@ -473,6 +490,7 @@ def submit_purchase_request(
 # =========================
 BUSINESS_TOOLS = [
     get_user_profile,
+    query_order_artifact_scenario,
     get_order_detail,
     query_inventory,
     query_product_price,

@@ -11,6 +11,7 @@ from ..model.agent import AgentResult, AgentState
 from ..model.input import UserInput
 from ..model.message import Message, Role
 from ..model.skill import SkillRuntimeContext
+from ..model.tool import ToolArtifact
 from ..runtime.algorithm import ConversationCompressor
 from .agent_turn import AgentTurn
 
@@ -24,8 +25,11 @@ class AgentSession:
         self._state: AgentState = AgentState(session_id=session_id)
         self._results: list[AgentResult] = []
         self._current_turn: AgentTurn | None = None
+
         # 当前会话中活动的SKill
         self._active_skills: dict[str, SkillRuntimeContext] = {}
+        # 当前会话中工具调用结果
+        self._tool_artifacts: dict[str, ToolArtifact] = {}
 
         # 会话最大上下文长度
         self._max_context_tokens: int = max_context_tokens
@@ -49,6 +53,11 @@ class AgentSession:
     def active_skills(self) -> dict[str, SkillRuntimeContext]:
         """获取当前已加载的Skill"""
         return self._active_skills
+
+    @property
+    def tool_artifacts(self) -> dict[str, ToolArtifact]:
+        """获取当前工具调用结果"""
+        return self._tool_artifacts
 
     @property
     def results(self) -> list[AgentResult]:

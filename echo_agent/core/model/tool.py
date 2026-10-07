@@ -43,10 +43,12 @@ class ToolArtifact(BaseModel):
     Tool artifact.
 
     Args:
-        path: 文件路径.
-        size: 文件大小.
-        media_type: 文件类型.
+        tool_call_id: 工具调用ID, 同对应ToolCall的tool_call_id
+        path: 文件路径
+        size: 文件大小
+        media_type: 文件类型
     """
+    tool_call_id: str
     path: Path
     size: int
     media_type: str

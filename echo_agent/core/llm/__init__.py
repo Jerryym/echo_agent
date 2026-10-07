@@ -7,6 +7,12 @@ from .exception import (
 from .llm_client import LLMClient
 from .llm_config import LLMConfig, ReasoningConfig
 from .llm_result import LLMResult
+from .structured_output import (
+    JsonObject,
+    StructuredOutputSchema,
+    create_structured_output_tool,
+    validate_structured_output,
+)
 
 __all__ = [
     "LLMClient",
@@ -17,4 +23,8 @@ __all__ = [
     "LLMInvokeError",
     "LLMResponseDecodeError",
     "ReasoningConfig",
+    "JsonObject",
+    "StructuredOutputSchema",
+    "create_structured_output_tool",
+    "validate_structured_output",
 ]

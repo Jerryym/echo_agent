@@ -8,7 +8,7 @@ from ...common import format_value, get_logger
 from ..graph import BaseContext, BaseState, Node
 from ..model.message import Message, Role
 from ..model.tool import ToolArtifact, ToolResult, ToolState
-from .tool_artifact import ToolArtifactManager
+from .tool_artifact_manager import ToolArtifactManager
 from .tool_executor import ToolExecutor
 from .utils import format_tool_content
 
@@ -44,14 +44,9 @@ class ToolNode(Node):
         for tool_call in state.tool_state.tool_calls:
             logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
             result = self._tool_executor.execute(tool_call)
-            logger.info(
-                "result name=%s success=%s result=%s",
-                result.name,
-                result.success,
-                format_value(result.result),
-            )
+            logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
             tool_results.append(result)
-        return self._build_result(tool_results)
+        return self._build_result(tool_results, runtime.context)
 
     async def arun(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
         """
@@ -62,17 +57,12 @@ class ToolNode(Node):
         for tool_call in state.tool_state.tool_calls:
             logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
             result = await self._tool_executor.aexecute(tool_call)
-            logger.info(
-                "result name=%s success=%s result=%s",
-                result.name,
-                result.success,
-                format_value(result.result),
-            )
+            logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
             tool_results.append(result)
-        return self._build_result(tool_results)
+        return self._build_result(tool_results, runtime.context)
 
-    def _build_result(self, tool_results: list[ToolResult]) -> dict:
-        tool_messages = self._build_tool_messages(tool_results)
+    def _build_result(self, tool_results: list[ToolResult], context: BaseContext) -> dict:
+        tool_messages = self._build_tool_messages(tool_results, context)
         logger.debug("appended %s ToolMessage(s) to messages", len(tool_messages))
         result = {
             "tool_state": ToolState(tool_calls=[], tool_results=tool_results),
@@ -82,7 +72,7 @@ class ToolNode(Node):
             result[self._message_field] = tool_messages
         return result
 
-    def _build_tool_messages(self, tool_results: list[ToolResult]) -> list[Message]:
+    def _build_tool_messages(self, tool_results: list[ToolResult], context: BaseContext) -> list[Message]:
         tool_messages: list[Message] = []
 
         for tool_result in tool_results:
@@ -107,7 +97,7 @@ class ToolNode(Node):
                     )
                 )
             else:
-                artifact = self._artifact_manager.store(content)
+                artifact = self._artifact_manager.store(tool_result.tool_call_id, content)
                 tool_messages.append(
                     Message(
                         role=Role.TOOL,
@@ -116,6 +106,7 @@ class ToolNode(Node):
                         tool_call_id=tool_result.tool_call_id,
                     )
                 )
+                context.tool_artifacts[tool_result.tool_call_id] = artifact
 
         return tool_messages
 
@@ -128,5 +119,8 @@ class ToolNode(Node):
             "The tool completed successfully, but the result is too large "
             "to include directly in the conversation context. "
             "The complete result has been stored as an artifact.\n"
-            f"Artifact size: {artifact.size} bytes."
+            f"Artifact tool_call_id: {artifact.tool_call_id}\n"
+            f"Artifact size: {artifact.size} bytes.\n"
+            "Use trigger_tool_artifact_analyse with the artifact "
+            "tool_call_id to analyse the result."
         )

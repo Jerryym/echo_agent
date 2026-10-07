@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from ...model.tool import ToolResult
+from ...model.tool import ToolArtifact, ToolResult
 from ...tool.utils import format_tool_content
 
 
@@ -13,10 +13,12 @@ class Observation(BaseModel):
     参数：
         source：来源
         content：内容
+        artifact：工具结果
         metadata：元数据
     """
     source: str
     content: str
+    artifact: ToolArtifact | None = None
     metadata: dict[str, Any]
 
 
@@ -25,24 +27,35 @@ class ObservationBuilder:
     ObservationBuilder 是用于构建 Observation 的类
     """
     @staticmethod
-    def build(tool_result: ToolResult) -> Observation:
-        if tool_result.success:
+    def build(tool_result: ToolResult, artifact: ToolArtifact | None = None) -> Observation:
+        if not tool_result.success:
             content = (
-                f"Tool {tool_result.name} succeeded."
+                f"Tool {tool_result.name} failed: "
+                f"{tool_result.error or 'unknown error'}"
+            )
+            artifact = None
+        elif artifact is not None:
+            if artifact.tool_call_id != tool_result.tool_call_id:
+                raise ValueError("Artifact tool_call_id does not match ToolResult")
+            
+            content = (
+                f"Tool {tool_result.name} succeeded. "
+                "The result was stored as a tool artifact. "
+                f"Use tool_call_id '{artifact.tool_call_id}' "
+                "to access or analyse it."
             )
         else:
-            content = (
-                f"Tool {tool_result.name} failed: {tool_result.error or 'unknown error'}"
-            )
-        observation = Observation(
+            content = f"Tool {tool_result.name} succeeded."
+
+        return Observation(
             source=tool_result.name,
             content=content,
+            artifact=artifact,
             metadata={
                 "tool_call_id": tool_result.tool_call_id,
                 "success": tool_result.success,
             },
         )
-        return observation
 
     @staticmethod
     def build_from_task_status(task_status: Literal["no_tool_calls", "invalid_tools", "failed", "cancelled", "blocked"], details: str | list[str] | None = None) -> Observation:

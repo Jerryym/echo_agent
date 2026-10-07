@@ -6,7 +6,7 @@ from ..model.agent import AgentResources, AgentResult, AgentState
 from ..model.hitl import HITLInteraction
 from ..model.input import UserInput
 from ..model.skill import SkillRuntimeContext
-from ..model.tool import ToolState
+from ..model.tool import ToolArtifact, ToolState
 
 
 def _preserve_active_skills_dict(value: Any) -> dict[str, SkillRuntimeContext]:
@@ -21,6 +21,15 @@ def _preserve_active_skills_dict(value: Any) -> dict[str, SkillRuntimeContext]:
         return {}
     if not isinstance(value, dict):
         raise TypeError(f"active_skills must be a dict, got {type(value)!r}")
+    return value
+
+
+def _preserve_tool_artifacts_dict(value: Any) -> dict[str, ToolArtifact]:
+    """Keep the same tool_artifacts dict instance across Context construction."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise TypeError(f"tool_artifacts must be a dict, got {type(value)!r}")
     return value
 
 
@@ -39,6 +48,12 @@ def _preserve_agent_result(value: Any) -> AgentResult | None:
 ActiveSkillsMap = Annotated[
     dict[str, SkillRuntimeContext],
     PlainValidator(_preserve_active_skills_dict),
+]
+
+# Session-scoped mutable tool artifacts; must retain object identity across Parent/Strategy Context.
+ToolArtifactsMap = Annotated[
+    dict[str, ToolArtifact],
+    PlainValidator(_preserve_tool_artifacts_dict),
 ]
 
 # Turn-scoped mutable result; must retain object identity across Parent/Strategy Context.
@@ -88,8 +103,10 @@ class BaseContext(BaseModel):
         resources: 静态资源目录（system_prompt / skill_list / kb_list）
         active_skills: 已加载 Skill（会话级可变 dict，构造时保持同一引用）
         agent_result: 本轮交互的顶层输出（运行中由节点增量写入）
+        tool_artifacts: 工具输出 artifacts
     """
     agent_state: AgentState
     resources: AgentResources = Field(default_factory=AgentResources)
     active_skills: ActiveSkillsMap = Field(default_factory=dict)
+    tool_artifacts: ToolArtifactsMap = Field(default_factory=dict)
     agent_result: AgentResultRef = None

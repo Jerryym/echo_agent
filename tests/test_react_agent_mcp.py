@@ -35,6 +35,18 @@ from echo_agent.core.mcp import MCPConnectionConfig
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.tool import ToolRegistry
 from env_config import build_config
+from tool_artifact_scenario_data import (
+    build_order_artifact_scenario,
+)
+
+
+scenario = build_order_artifact_scenario()
+
+assert scenario.size > 128 * 1024
+assert scenario.split_order_id == "ORD-SPLIT"
+
+content = scenario.content
+expected_ids = scenario.expected_order_ids
 
 warnings.filterwarnings(
     "ignore",
@@ -157,6 +169,11 @@ async def main() -> None:
         "Using MCP: builtin + stdio(everything) + http(remote); "
         f"{len(tool_registry.list_definitions())} tools; "
         f"agent.mcp_client is set={agent.mcp_client is not None}"
+    )
+    print(
+        "Tool Artifact scenario: "
+        f"{len(content.encode('utf-8'))} bytes; "
+        f"expected order ids={sorted(expected_ids)}"
     )
 
     if mode == "1":

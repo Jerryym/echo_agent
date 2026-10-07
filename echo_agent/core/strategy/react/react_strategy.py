@@ -120,17 +120,21 @@ class ReActStrategy(BaseStrategy):
         """
         if context is None:
             raise ValueError("BaseContext is required for ReAct strategy")
+        
         active_skills = context.active_skills
         react_context = ReActContext(
             agent_state=context.agent_state,
             resources=context.resources,
             active_skills=active_skills,
+            tool_artifacts=context.tool_artifacts,
             agent_result=context.agent_result,
             max_steps=self._max_steps,
             retry_max_count=self._retry_max_count,
         )
+
         if react_context.active_skills is not active_skills:
             object.__setattr__(react_context, "active_skills", active_skills)
+
         return react_context
 
     def to_parent_state(self, output: ReActOutput) -> dict:

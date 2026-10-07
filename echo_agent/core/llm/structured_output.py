@@ -1,4 +1,4 @@
-# 基础工具
+# 结构化输出
 
 from dataclasses import is_dataclass
 from typing import Any, TypeAlias, cast, is_typeddict
@@ -6,7 +6,7 @@ from typing import Any, TypeAlias, cast, is_typeddict
 from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, TypeAdapter
 
- 
+
 JsonValue: TypeAlias = (None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"])
 JsonObject: TypeAlias = dict[str, JsonValue]
 StructuredOutputSchema: TypeAlias = type[Any] | JsonObject
