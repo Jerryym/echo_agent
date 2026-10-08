@@ -2,7 +2,7 @@ from ...common import get_logger
 from ..model.agent import AgentMode
 from ..runtime.gateway import BaseGateWay
 from .exception import ToolAuthorizationError
-from .schema import ToolDefinition
+from .schema import ToolDefinition, ToolType
 
 logger = get_logger("tool")
 
@@ -14,7 +14,7 @@ class ToolGateWay(BaseGateWay):
     def __init__(self) -> None:
         super().__init__()
 
-    def authorize(self, tool: ToolDefinition, mode: AgentMode) -> None:
+    def authorize(self, tool: ToolDefinition, mode: AgentMode, tool_types: set[ToolType] | None = None) -> None:
         """
         授权检查
 
@@ -38,6 +38,10 @@ class ToolGateWay(BaseGateWay):
                 - False：表示工具不会产生开放世界副作用。
                 - None：未提供开放世界行为提示，由相关策略决定。
         """
+        # 检查工具类型
+        if tool_types is not None and tool.type not in tool_types:
+            raise ToolAuthorizationError(f"tool '{tool.name}' is not allowed: unsupported tool type '{tool.type.value}'")
+
         if mode == AgentMode.AGENT:
             return
 
@@ -47,20 +51,20 @@ class ToolGateWay(BaseGateWay):
 
         raise ToolAuthorizationError(f"unsupported agent mode: {mode}" )
 
-    def filter(self, tools: list[ToolDefinition], mode: AgentMode) -> list[ToolDefinition]:
+    def filter(self, tools: list[ToolDefinition], mode: AgentMode, tool_types: set[ToolType] | None = None) -> list[ToolDefinition]:
         """
         过滤工具
         """
         available_tools: list[ToolDefinition] = []
         for tool in tools:
             try:
-                self.authorize(tool, mode)
+                self.authorize(tool, mode, tool_types)
             except ToolAuthorizationError:
                 logger.debug("filter tool | blocked=%s mode=%s", tool.name, mode)
                 continue
+            
             available_tools.append(tool)
         return available_tools
-
     
     def _authorize_ask_mode(self, tool: ToolDefinition) -> None:
         """

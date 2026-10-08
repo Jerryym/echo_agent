@@ -1,79 +1,31 @@
-from typing import Literal
+import json
+from typing import Any, Literal
 
+from langchain.tools import BaseTool
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.runtime import Runtime
 from langgraph.types import Command
-from pydantic import BaseModel, Field
+from pydantic import ValidationError
 
 from .....common import get_logger
-from ....app import Application
 from .....prompt import PromptLoader
-from .....utils import update_agent_result
+from .....utils import MessageAdapter, update_agent_result
+from ....app import Application
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model.message import Message
+from ....model.message import Message, Role
 from ....model.tool import ToolState
 from ....runtime.runtime_config import RuntimeConfig
+from ....tool import ToolGateWay, ToolType
 from ..observation import Observation, ObservationBuilder
-from ..schema import ReActContext, ReActState
+from ..schema import (
+    ReActContext,
+    ReActState,
+    ReasonStructuredOutput,
+    submit_reason_result,
+)
 
 logger = get_logger("react.reason")
-
-
-class ReasonStructuredOutput(BaseModel):
-    """
-    Reason节点结构化输出
-
-    参数:
-        thought: 思考结果，面向调试和可观测性的思考过程
-        reasoning: 执行推理结果，用于指导下一步执行
-        tool_list: 下一步执行所需的工具名称列表
-        task_status: 任务状态，用于驱动 ReAct 流程
-    """
-    thought: str = Field(
-        description=(
-            "A concise description of the reasoning process used to analyze "
-            "the current task. This field is intended for tracing, debugging, "
-            "and runtime visualization only. It is not used for tool selection "
-            "or execution."
-        )
-    )
-    reasoning: str = Field(
-        description=(
-            "A structured execution-oriented reasoning result describing the "
-            "operation or capability that should be performed next. This output "
-            "will be consumed by the Action node to generate tool calls. "
-            "Do not include tool names, tool parameters, or tool call arguments."
-        )
-    )
-    tool_list: list[str] = Field(
-        default_factory=list,
-        description=(
-            "A list of tool names required for the next execution step. "
-            "Only select names from the available tool name list. "
-            "This field represents required capabilities, not final tool calls. "
-            "Do not include parameters."
-        )
-    )
-    task_status: Literal["in_progress", "completed"] = Field(
-        description=(
-            "Reason-owned lifecycle signal only. "
-            "Allowed values: 'in_progress' | 'completed'. "
-            "Do NOT output human_in_the_loop, no_tool_calls, invalid_tools, "
-            "cancelled, or failed (those are set by Action/runtime). "
-            "'in_progress': the user objective is not yet achieved; further "
-            "execution is required. Put the next required operation in "
-            "'reasoning' and identify the required tools in 'tool_list'. "
-            "'completed': the user objective has been achieved AND confirmed "
-            "by the current-step observations and/or by tool messages already "
-            "present in conversation history. Do not require observations to "
-            "repeat tool-message payloads. "
-            "If neither channel confirms the objective, you MUST use "
-            "'in_progress' even when a conversational reply seems sufficient—"
-            "Final, not Reason, produces the user-facing answer. "
-            "Never mark 'completed' because Action produced no tool calls; "
-            "that signal is handled by runtime status, not by this field."
-        )
-    )
 
 
 class ReasonNode(Node):
@@ -92,6 +44,9 @@ class ReasonNode(Node):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
+        self._tool_gateway = ToolGateWay()
+        self.MAX_ROUNDS: int = 6
+        self.MAX_TOOL_MESSAGE_CHARS = 12000
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
@@ -113,35 +68,16 @@ class ReasonNode(Node):
         if self._has_tool_error(state):
             return self._handle_tool_error(state, runtime.context, observation_list)
 
-        # 获取运行时信息
-        runtime_config = RuntimeConfig.get_runtime_config()
-        # 获取tool registry
-        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
-        # 获取指定会话
-        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        # 构建输入
-        input = self._build_input(state, observation_list)
-        # 构建历史记录
-        history = self._build_history(state, runtime.context)
-        # 调用llm-结构化输出
-        response = self._llm_client.invoke_structured(
-            schema=ReasonStructuredOutput,
-            prompt=self._prompt,
-            user_input=input,
-            history=history,
-            tool_informations=tool_registry.get_tool_infomations(),
-            context=runtime.context,
-            agent_resources=runtime.context.resources,
-            config=runtime_config.to_llm_runnable_config(),
-            before_model=session.before_model
-        )
-        result = ReasonStructuredOutput.model_validate(response.structured)
+        try:
+            result = self._invoke_loop(state, runtime, observation_list)
+        except RuntimeError as exc:
+            logger.warning("reason loop failed: %s", exc)
+            return self._router(state, runtime.context, {
+                "task_status": "failed", 
+                "observations": observation_list, 
+                "tool_list": [],
+            })
         logger.info("result=%r", result)
-        
-        # 更新AgentResult
-        update_agent_result(runtime.context, result.reasoning, response.token_usage)
-
-        # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
@@ -153,7 +89,7 @@ class ReasonNode(Node):
         # 构建Observation
         observation_list = self._build_observations(state, runtime.context)
         
-       # 如果任务状态为取消、失败或阻塞，则直接返回
+        # 如果任务状态为取消、失败或阻塞，则直接返回
         if state.task_status in ("cancelled", "failed", "blocked"):
             return self._router(state, runtime.context, {
                 "task_status": state.task_status,
@@ -164,36 +100,130 @@ class ReasonNode(Node):
         if self._has_tool_error(state):
             return self._handle_tool_error(state, runtime.context, observation_list)
 
-        # 获取运行时信息
-        runtime_config = RuntimeConfig.get_runtime_config()
-        # 获取tool registry
-        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
-        # 获取指定会话
-        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        # 构建输入
-        input = self._build_input(state, observation_list)
-        # 构建历史记录
-        history = self._build_history(state, runtime.context)
-        # 调用llm-结构化输出
-        response = await self._llm_client.ainvoke_structured(
-            schema=ReasonStructuredOutput,
-            prompt=self._prompt,
-            user_input=input,
-            history=history,
-            tool_informations=tool_registry.get_tool_infomations(),
-            context=runtime.context,
-            agent_resources=runtime.context.resources,
-            config=runtime_config.to_llm_runnable_config(),
-            abefore_model=session.abefore_model
-        )
-        result = ReasonStructuredOutput.model_validate(response.structured)
+        try:
+            result = await self._ainvoke_loop(state, runtime, observation_list)
+        except RuntimeError as exc:
+            logger.warning("reason loop failed: %s", exc)
+            return self._router(state, runtime.context, {
+                "task_status": "failed", 
+                "observations": observation_list, 
+                "tool_list": [],
+            })
         logger.info("result=%r", result)
-
-        # 更新AgentResult
-        update_agent_result(runtime.context, result.reasoning, response.token_usage)
-
-        # 处理Reason结果
         return self._handle_result(result, state, runtime.context, observation_list)
+
+    def _invoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
+        # 准备调用参数
+        kwargs = self._prepare_invoke(state, runtime, observation_list)
+        tools = self._resolve_tools()
+        kwargs["tool_list"] = tools
+        history: list[Message] = list(kwargs["history"])
+        runtime_config = RuntimeConfig.get_runtime_config()
+        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
+        for _ in range(self.MAX_ROUNDS):
+            kwargs["history"] = history
+            response = self._llm_client.invoke(**kwargs, before_model=session.before_model)
+            update_agent_result(runtime.context, response.text, response.token_usage)
+            message = response.raw
+            if not isinstance(message, AIMessage):
+                raise RuntimeError("Reason LLM response must be AIMessage")
+            history.append(MessageAdapter.to_message(message))
+
+            # 无效工具调用
+            if message.invalid_tool_calls:
+                raise RuntimeError("Reason LLM returned malformed tool calls")
+            
+            try:
+                result = self._parse_result_tool_call(message)
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
+            
+            if result is not None:
+                return result
+            
+            if message.tool_calls:
+                feedback = self._execute_internal_tools(message, tools)
+                history.extend(MessageAdapter.to_message(item) for item in feedback)
+            else:
+                history.append(Message(role=Role.USER, content="Call an internal tool or submit_reason_result. Do not answer in plain text."))
+        raise RuntimeError("Reason internal model round budget exceeded")
+
+    async def _ainvoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
+        kwargs = self._prepare_invoke(state, runtime, observation_list)
+        tools = self._resolve_tools()
+        kwargs["tool_list"] = tools
+        history: list[Message] = list(kwargs["history"])
+        runtime_config = RuntimeConfig.get_runtime_config()
+        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
+        for _ in range(self.MAX_ROUNDS):
+            kwargs["history"] = history
+            response = await self._llm_client.ainvoke(**kwargs, abefore_model=session.abefore_model)
+            update_agent_result(runtime.context, response.text, response.token_usage)
+            message = response.raw
+            if not isinstance(message, AIMessage):
+                raise RuntimeError("Reason LLM response must be AIMessage")
+            history.append(MessageAdapter.to_message(message))
+
+            # 无效工具调用
+            if message.invalid_tool_calls:
+                raise RuntimeError("Reason LLM returned malformed tool calls")
+            try:
+                result = self._parse_result_tool_call(message)
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
+            
+            if result is not None:
+                return result
+            
+            if message.tool_calls:
+                feedback = await self._aexecute_internal_tools(message, tools)
+                history.extend(MessageAdapter.to_message(item) for item in feedback)
+            else:
+                history.append(Message(role=Role.USER, content="Call an internal tool or submit_reason_result. Do not answer in plain text."))
+        raise RuntimeError("Reason internal model round budget exceeded")
+
+    def _execute_internal_tools(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
+        available = {tool.name: tool for tool in tools if tool.name != submit_reason_result.name}
+        feedback: list[ToolMessage] = []
+        for call in message.tool_calls:
+            name, call_id = call["name"], call["id"]
+            selected = available.get(name)
+            if selected is None:
+                content = f"Unknown or unauthorized internal tool: {name}"
+            else:
+                try:
+                    output = selected.invoke(call["args"])
+                    content = self._format_internal_output(output)
+                except (Exception,) as exc:
+                    content = f"Internal tool error ({name}): {type(exc).__name__}: {exc}"
+            feedback.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
+        return feedback
+
+    async def _aexecute_internal_tools(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
+        available = {tool.name: tool for tool in tools if tool.name != submit_reason_result.name}
+        feedback: list[ToolMessage] = []
+        for call in message.tool_calls:
+            name, call_id = call["name"], call["id"]
+            selected = available.get(name)
+            if selected is None:
+                content = f"Unknown or unauthorized internal tool: {name}"
+            else:
+                try:
+                    output = await selected.ainvoke(call["args"])
+                    content = self._format_internal_output(output)
+                except (Exception,) as exc:
+                    content = f"Internal tool error ({name}): {type(exc).__name__}: {exc}"
+            feedback.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
+        return feedback
+
+    def _format_internal_output(self, output: Any) -> str:
+        if isinstance(output, str):
+            content = output
+        else:
+            content = json.dumps(output, ensure_ascii=False, default=str)
+        if len(content) > self.MAX_TOOL_MESSAGE_CHARS:
+            return content[:self.MAX_TOOL_MESSAGE_CHARS] + "\n[Output truncated; use artifact workflow for large results.]"
+        return content
 
     def _build_observations(self, state: ReActState, context: ReActContext) -> list[Observation]:
         """
@@ -223,6 +253,31 @@ class ReasonNode(Node):
             observations.append(observation)
 
         return observations
+
+    def _prepare_invoke(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> dict[str, Any]:
+        # 获取运行时信息
+        runtime_config = RuntimeConfig.get_runtime_config()
+        # 获取tool registry
+        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
+
+        # 获取外部工具信息
+        tool_informations = tool_registry.get_tool_infomations(
+            tool_types={
+                ToolType.FUNCTION,
+                ToolType.HTTP,
+                ToolType.MCP,
+            }
+        )
+
+        return {
+            "prompt": self._prompt,
+            "user_input": self._build_input(state, observation_list), # 用户输入
+            "history": self._build_history(state, runtime.context), # 历史记录
+            "tool_informations": tool_informations,
+            "context": runtime.context,
+            "agent_resources": runtime.context.resources,
+            "config": runtime_config.to_llm_runnable_config(),
+        }
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """
@@ -306,3 +361,52 @@ class ReasonNode(Node):
         if retry_count >= retry_max:
             return "final"
         return "action"
+
+    def _resolve_tools(self) -> list[BaseTool]:
+        internal_tools = self._resolve_internal_tools()
+        if any(tool.name == submit_reason_result.name for tool in internal_tools):
+            raise ValueError(f"Reserved tool name: {submit_reason_result.name}")
+
+        return [
+            *internal_tools,
+            submit_reason_result,
+        ]
+
+    def _resolve_internal_tools(self) -> list[BaseTool]:
+        runtime_config = RuntimeConfig.get_runtime_config()
+        tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
+
+        # 获取所有内部工具定义
+        definitions = tool_registry.list_definitions(tool_types={ToolType.INTERNAL})
+        # 根据当前 AgentMode 和 Tool Annotations 过滤授权工具
+        authorized_tools = self._tool_gateway.filter(
+            definitions,
+            runtime_config.agent_mode,
+            tool_types={ToolType.INTERNAL},
+        )
+
+        handlers: list[BaseTool] = []
+        for tool in authorized_tools:
+            handler = tool_registry.get_handler(tool.name)
+            if isinstance(handler, BaseTool):
+                handlers.append(handler)
+        return handlers
+
+    def _parse_result_tool_call(self, message: AIMessage) -> ReasonStructuredOutput | None:
+        result_calls = [
+            call
+            for call in message.tool_calls
+            if call["name"] == submit_reason_result.name
+        ]
+
+        if not result_calls:
+            return None
+
+        # Ensure the result submission is the only tool call.
+        if len(message.tool_calls) != 1:
+            raise ValueError("Reason result submission must be the only tool call.")
+
+        try:
+            return ReasonStructuredOutput.model_validate(result_calls[0]["args"])
+        except ValidationError as exc:
+            raise ValueError("Invalid structured reason result.") from exc

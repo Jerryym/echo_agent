@@ -15,7 +15,7 @@ class PromptAssembler:
         system_prompt: str | None = None,
         agent_mode: AgentMode = AgentMode.AGENT,
         tool_informations: list[dict[str, str]] | None = None,
-        tool_list: list[dict[str, Any]] | None = None,
+        tool_list: list[Any] | None = None,
         skill_frontmatter_list: dict[str, SkillFrontmatter] | None = None,
         active_skills: dict[str, SkillRuntimeContext] | None = None,
     ) -> str:

@@ -59,7 +59,7 @@ class LLMClient:
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
         tool_informations: Optional[list[dict[str, str]]] = None,
-        tool_list: Optional[list[dict[str, Any]]] = None,
+        tool_list: list[BaseTool | dict[str, Any]] | None = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
@@ -117,7 +117,7 @@ class LLMClient:
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
         tool_informations: Optional[list[dict[str, str]]] = None,
-        tool_list: Optional[list[dict[str, Any]]] = None,
+        tool_list: list[BaseTool | dict[str, Any]] | None = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
@@ -295,7 +295,7 @@ class LLMClient:
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
         tool_informations: Optional[list[dict[str, str]]] = None,
-        tool_list: Optional[list[dict[str, Any]]] = None,
+        tool_list: list[BaseTool | dict[str, Any]] | None = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
@@ -351,7 +351,7 @@ class LLMClient:
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
         tool_informations: Optional[list[dict[str, str]]] = None,
-        tool_list: Optional[list[dict[str, Any]]] = None,
+        tool_list: list[BaseTool | dict[str, Any]] | None = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
@@ -471,7 +471,7 @@ class LLMClient:
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
         tool_informations: Optional[list[dict[str, str]]] = None,
-        tool_list: Optional[list[dict[str, Any]]] = None,
+        tool_list: list[BaseTool | dict[str, Any]] | None = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
     ):
@@ -505,7 +505,7 @@ class LLMClient:
         self,
         prompt: str,
         tool_informations: list[dict[str, str]] | None = None,
-        tool_list: list[dict[str, Any]] | None = None,
+        tool_list: list[BaseTool | dict[str, Any]] | None = None,
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
     ):
@@ -523,12 +523,12 @@ class LLMClient:
                 active_skills=context.active_skills if context else None,
             )
             
-    def _configure_model(self, tool_list: list[dict[str, Any]] | None = None):
+    def _configure_model(self, tool_list: list[BaseTool | dict[str, Any]] | None = None):
         """配置模型"""
         model = self._model
         # 绑定工具
         if tool_list:
-            return model.bind(tools=tool_list, parallel_tool_calls=self._config.parallel_tool_calls)
+            return model.bind_tools(tools=tool_list, parallel_tool_calls=self._config.parallel_tool_calls)
         return model
 
 # region Hooks
@@ -538,7 +538,7 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         tool_informations: list[dict[str, str]] | None,
-        tool_list: list[dict[str, Any]] | None,
+        tool_list: list[BaseTool | dict[str, Any]] | None,
         context: BaseContext | None,
         agent_resources: AgentResources | None,
         before_model: BeforeModelHook | None,
@@ -577,7 +577,7 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         tool_informations: list[dict[str, str]] | None,
-        tool_list: list[dict[str, Any]] | None,
+        tool_list: list[BaseTool | dict[str, Any]] | None,
         context: BaseContext | None,
         agent_resources: AgentResources | None,
     ) -> list[Message]:

@@ -1,6 +1,6 @@
 from typing import Any
 
-from .schema import ToolDefinition
+from .schema import ToolDefinition, ToolType
 from .utils import to_openai_tool_json_schema
 
 
@@ -33,14 +33,14 @@ class ToolRegistry:
         """获取所有工具名称"""
         return list(self._tools.keys())
 
-    def get_tool_infomations(self) -> list[dict[str, str]]:
-        """获取所有工具信息"""
+    def get_tool_infomations(self, tool_types: set[ToolType] | None = None) -> list[dict[str, str]]:
+        """获取工具信息"""
         return [
 			{
 				"name": tool.name,
 				"description": tool.description,
 			}
-			for tool in self.list_definitions()
+			for tool in self.list_definitions(tool_types)
 		]
     
     def get(self, name: str) -> ToolDefinition | None:
@@ -49,8 +49,17 @@ class ToolRegistry:
     def get_handler(self, name: str) -> Any | None:
         return self._handlers.get(name)
 
-    def list_definitions(self) -> list[ToolDefinition]:
-        return list(self._tools.values())
+    def list_definitions(self, tool_types: set[ToolType] | None = None) -> list[ToolDefinition]:
+        definitions = list(self._tools.values())
+
+        if tool_types is None:
+            return definitions
+
+        return [
+            tool
+            for tool in definitions
+            if tool.type in tool_types
+        ]
 
     def default_tools(self) -> list[ToolDefinition]:
         return [
