@@ -7,6 +7,12 @@ from .skill import SkillFrontmatter, SkillSource
 from .token_usage import TokenUsage
 
 
+class AgentMode(Enum):
+    """Agent 运行模式"""
+    ASK = "ask" # 问答模式：仅允许只读查询，不执行写入、修改、删除等操作
+    AGENT = "agent" # 智能体模式：允许执行读写、创建、修改、删除等操作
+
+
 class AgentResources(BaseModel):
     """
     智能体静态资源
@@ -21,14 +27,6 @@ class AgentResources(BaseModel):
     skill_list: list[SkillSource] | None = Field(default_factory=list)
     skill_frontmatter_list: dict[str, SkillFrontmatter] | None = Field(default_factory=dict)
     kb_list: list[str] = Field(default_factory=list)
-
-
-class AgentMode(Enum):
-    """
-    Agent 运行模式
-    """
-    ASK = "ask" # 问答模式：仅允许只读查询，不执行写入、修改、删除等操作
-    AGENT = "agent" # 智能体模式：允许执行读写、创建、修改、删除等操作
 
 
 class AgentState(BaseModel):

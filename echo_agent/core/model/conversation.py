@@ -1,3 +1,6 @@
+from enum import Enum
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from .message import Message
@@ -81,6 +84,28 @@ class ConversationSummary(BaseModel):
         )
 
 
+class ConversationContextType(str, Enum):
+    """会话上下文信息类型"""
+    TOOL_RESULT = "tool_result"
+    ARTIFACT = "artifact"
+    FACT = "fact"
+    ATTACHMENT = "attachment"
+
+
+class ConversationContextItem(BaseModel):
+    """
+    会话上下文信息项
+
+    参数:
+        id: 对象ID
+        type: 对象类型
+        content: 对象内容
+    """
+    id: str
+    type: ConversationContextType
+    content: Any
+
+
 class ConversationState(BaseModel):
     """
     对话状态
@@ -88,9 +113,22 @@ class ConversationState(BaseModel):
     参数:
         messages: 消息列表, 即历史记录
         summary: 对话摘要
-
-    追加消息请使用 ``append_messages`` 写回 ``messages``，与 trajectory
-    等 LangGraph reducer 语义保持一致。
+        context_items: 会话上下文信息项列表
     """
     messages: list[Message] = Field(default_factory=list)
     summary: ConversationSummary | None = None
+    context_items: list[ConversationContextItem] = Field(default_factory=list)
+
+
+def merge_context_items(items: list[ConversationContextItem], new_items: list[ConversationContextItem]) -> list[ConversationContextItem]:
+    """
+    合并会话上下文信息
+
+    合并原则: 相同 ID 更新，不同 ID 追加
+    """
+    merged = {item.id: item for item in items}
+
+    for item in new_items:
+        merged[item.id] = item
+
+    return list(merged.values())

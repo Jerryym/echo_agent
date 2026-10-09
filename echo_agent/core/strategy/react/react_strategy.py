@@ -143,6 +143,7 @@ class ReActStrategy(BaseStrategy):
         """
         return {
             "response": output.response,
+            "context_items": output.context_items,
         }
 
 

@@ -1,11 +1,8 @@
-import os
-from pathlib import Path
-import tempfile
-
 from langgraph.runtime import Runtime
 
 from ...common import format_value, get_logger
 from ..graph import BaseContext, BaseState, Node
+from ..model.conversation import ConversationContextItem, ConversationContextType
 from ..model.message import Message, Role
 from ..model.tool import ToolArtifact, ToolResult, ToolState
 from .tool_artifact_manager import ToolArtifactManager
@@ -25,7 +22,6 @@ class ToolNode(Node):
         message_field: 消息字段名称
         artifact_threshold: 工具结果写入 Message 的最大字节数
     """
-
     DEFAULT_ARTIFACT_THRESHOLD: int = 128 * 1024
 
     def __init__(self, name: str, tool_executor: ToolExecutor, message_field: str | None = None):
@@ -44,7 +40,7 @@ class ToolNode(Node):
         for tool_call in state.tool_state.tool_calls:
             logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
             result = self._tool_executor.execute(tool_call)
-            logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
+            # logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
             tool_results.append(result)
         return self._build_result(tool_results, runtime.context)
 
@@ -57,16 +53,20 @@ class ToolNode(Node):
         for tool_call in state.tool_state.tool_calls:
             logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
             result = await self._tool_executor.aexecute(tool_call)
-            logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
+            # logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
             tool_results.append(result)
         return self._build_result(tool_results, runtime.context)
 
     def _build_result(self, tool_results: list[ToolResult], context: BaseContext) -> dict:
         tool_messages = self._build_tool_messages(tool_results, context)
         logger.debug("appended %s ToolMessage(s) to messages", len(tool_messages))
+
+        context_items = self._build_context_items(tool_results, context)
         result = {
             "tool_state": ToolState(tool_calls=[], tool_results=tool_results),
+            "context_items": context_items,
         }
+
         # 如果消息字段名称不为空, 则将工具调用消息添加到消息字段中
         if self._message_field is not None:
             result[self._message_field] = tool_messages
@@ -112,9 +112,7 @@ class ToolNode(Node):
 
     @staticmethod
     def _format_artifact_content(artifact: ToolArtifact) -> str:
-        """
-        Build the ToolMessage content for an externalized tool result.
-        """
+        """Build the ToolMessage content for an externalized tool result"""
         return (
             "The tool completed successfully, but the result is too large "
             "to include directly in the conversation context. "
@@ -124,3 +122,40 @@ class ToolNode(Node):
             "Use trigger_tool_artifact_analyse with the artifact "
             "tool_call_id to analyse the result."
         )
+
+    @staticmethod
+    def _build_context_items(tool_results: list[ToolResult], context: BaseContext) -> list[ConversationContextItem]:
+        items: list[ConversationContextItem] = []
+
+        for tool_result in tool_results:
+            tool_call_id = tool_result.tool_call_id
+            artifact = context.tool_artifacts.get(tool_call_id)
+
+            # 工具附件
+            if artifact is not None and tool_result.success:
+                items.append(
+                    ConversationContextItem(
+                        id=f"artifact:{tool_call_id}",
+                        type=ConversationContextType.ARTIFACT,
+                        content=str(artifact.path),
+                    )
+                )
+                continue
+
+            # 工具结果
+            items.append(
+                ConversationContextItem(
+                    id=f"tool_result:{tool_call_id}",
+                    type=ConversationContextType.TOOL_RESULT,
+                    content={
+                        "result": (
+                            tool_result.result
+                            if tool_result.success
+                            else tool_result.error
+                        ),
+                        "success": tool_result.success,
+                    },
+                )
+            )
+
+        return items

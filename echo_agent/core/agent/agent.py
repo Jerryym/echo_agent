@@ -6,6 +6,7 @@ from uuid import uuid4
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
+from pydantic import TypeAdapter
 
 from ...common import get_logger
 from ...common.network import HttpRequest
@@ -22,6 +23,7 @@ from ..graph import (
 from ..llm import LLMClient
 from ..mcp import MCPClient
 from ..model.agent import AgentMode, AgentResources, AgentResult, AgentState
+from ..model.conversation import ConversationContextItem, merge_context_items
 from ..model.input import UserInput
 from ..model.message import Message, Role, append_messages
 from ..model.skill import SkillRuntimeContext
@@ -719,6 +721,7 @@ class Agent:
             raise ValueError("AgentState session_id does not match RunnableConfig thread_id")
 
         conversation = agent_state.conversation
+        # 追加本轮用户输入和智能体回复
         conversation.messages = append_messages(
             conversation.messages,
             [
@@ -732,6 +735,15 @@ class Agent:
                 ),
             ],
         )
+
+        # 合并本轮 Graph 产生的上下文信息
+        values = snapshot.values
+        if isinstance(values, dict):
+            raw_items = values.get("context_items", [])
+            if isinstance(raw_items, list):
+                adapter = TypeAdapter(list[ConversationContextItem])
+                new_items = adapter.validate_python(raw_items)
+                conversation.context_items = merge_context_items(conversation.context_items, new_items)
 
     def _input_text(self,input: UserInput | type[BaseInput]) -> str:
         """将 Agent 输入转换为会话消息文本。"""

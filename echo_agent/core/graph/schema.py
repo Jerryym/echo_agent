@@ -3,6 +3,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, Field, PlainValidator
 
 from ..model.agent import AgentResources, AgentResult, AgentState
+from ..model.conversation import ConversationContextItem, merge_context_items
 from ..model.hitl import HITLInteraction
 from ..model.input import UserInput
 from ..model.skill import SkillRuntimeContext
@@ -73,8 +74,11 @@ class BaseInput(BaseModel):
 class BaseOutput(BaseModel):
     """
     Graph 输出模型
+
+    参数:
+        context_items: 当前 Graph 产生的上下文信息项
     """
-    pass
+    context_items: list[ConversationContextItem] = Field(default_factory=list)
 
 
 class BaseState(BaseModel):
@@ -86,12 +90,14 @@ class BaseState(BaseModel):
         response: 响应
         tool: 工具状态
         hitl: HITL状态
+        context_items: 会话上下文信息项列表
     """
     input: UserInput | dict[str, Any] | str | None = None
     response: str | None = None
 
     tool_state: ToolState = Field(default_factory=ToolState)
     hitl_state: HITLInteraction = Field(default_factory=HITLInteraction)
+    context_items: Annotated[list[ConversationContextItem], merge_context_items] = Field(default_factory=list)
 
 
 class BaseContext(BaseModel):
