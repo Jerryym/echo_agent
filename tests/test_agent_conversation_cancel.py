@@ -46,7 +46,7 @@ def _agent(response: str) -> Agent:
 
 
 def _messages(agent: Agent, session_id: str):
-    return agent._get_agent_state(session_id).conversation.messages
+    return agent._get_session_state(session_id).conversation.messages
 
 
 def test_completed_turn_appends_user_and_assistant():
@@ -81,13 +81,13 @@ def test_restore_without_checkpoint_keeps_conversation():
     sid = "s1"
     agent.invoke(sid, UserInput(text="first"))
     assert len(_messages(agent, sid)) == 2
-    usage_before = agent._get_agent_state(sid).token_usage.total_tokens
+    usage_before = agent._get_session_state(sid).token_usage.total_tokens
 
     agent.restore_checkpoint(sid, None)
     msgs = _messages(agent, sid)
     assert len(msgs) == 2
     assert msgs[1].content == "kept"
-    assert agent._get_agent_state(sid).token_usage.total_tokens == usage_before
+    assert agent._get_session_state(sid).token_usage.total_tokens == usage_before
 
 
 def test_restore_to_baseline_clears_turn_only():
@@ -99,6 +99,9 @@ def test_restore_to_baseline_clears_turn_only():
     assert checkpoint_id
 
     agent._get_session(sid).start_turn(UserInput(text="in-flight"))
+    assert len(_messages(agent, sid)) == 3
     agent.restore_checkpoint(sid, str(checkpoint_id))
-    assert agent._get_session(sid).current_turn is None
-    assert len(_messages(agent, sid)) == 2
+    assert agent._get_session(sid).current_turn is not None
+    msgs = _messages(agent, sid)
+    assert len(msgs) == 3
+    assert msgs[-1].role == Role.USER and msgs[-1].content == "in-flight"

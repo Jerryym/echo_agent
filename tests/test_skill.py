@@ -18,7 +18,7 @@ import warnings
 from echo_agent.core.capability.skill import SkillLoader, SkillManager, SkillParser
 from echo_agent.core.graph.schema import BaseContext
 from echo_agent.core.llm.llm_client import LLMClient
-from echo_agent.core.model.agent import AgentState
+from echo_agent.core.model.session import SessionState
 from echo_agent.core.model.skill import (
     SkillFrontmatter,
     SkillSource,
@@ -101,7 +101,7 @@ def test_skill_loader_and_manager() -> None:
     assert runtime.instruction is not None
     assert "PDF" in runtime.instruction or len(runtime.instruction) > 0
 
-    context = BaseContext(agent_state=AgentState(session_id="test"))
+    context = BaseContext(session_state=SessionState())
     loaded = manager.load_skill(package.name, context)
     assert "pdf" in context.active_skills
     assert manager.has_skill(context, "pdf")
@@ -129,7 +129,7 @@ def test_active_skills_dict_identity_survives_context_rebuild() -> None:
     package = manager.load_skill_package("pdf")
 
     context = BaseContext(
-        agent_state=AgentState(session_id="hitl-session"),
+        session_state=SessionState(),
         active_skills=session_skills,
     )
     assert context.active_skills is session_skills
@@ -140,7 +140,7 @@ def test_active_skills_dict_identity_survives_context_rebuild() -> None:
 
     # Simulate Agent.resume -> _build_context with the same session map
     resumed = BaseContext(
-        agent_state=AgentState(session_id="hitl-session"),
+        session_state=SessionState(),
         active_skills=session_skills,
     )
     assert resumed.active_skills is session_skills
@@ -149,7 +149,7 @@ def test_active_skills_dict_identity_survives_context_rebuild() -> None:
 
     # Simulate ReActStrategy.to_strategy_context
     react = ReActContext(
-        agent_state=resumed.agent_state,
+        session_state=resumed.session_state,
         active_skills=resumed.active_skills,
         max_steps=10,
         retry_max_count=3,
@@ -171,7 +171,7 @@ async def test_load_and_read_tools() -> None:
     no_ctx = await load_skill.ainvoke({"name": "pdf"})
     assert "Skill runtime context is not available" in no_ctx
 
-    context = BaseContext(agent_state=AgentState(session_id="test"))
+    context = BaseContext(session_state=SessionState())
     token = set_skill_runtime_context(context)
     try:
         body = await load_skill.ainvoke({"name": "pdf"})

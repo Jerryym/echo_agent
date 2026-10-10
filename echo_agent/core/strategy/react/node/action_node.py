@@ -18,7 +18,7 @@ from ....runtime.runtime_config import RuntimeConfig
 from ....tool import ToolDefinition, ToolGateWay, ToolRegistry
 from ....tool.exception import ToolAuthorizationError
 from ....tool.utils import get_tool_definition, to_openai_tool_json_schema
-from ..schema import ReActContext, ReActState
+from ..schema import ReActContext, ReActState, build_react_history
 
 logger = get_logger("react.action")
 
@@ -67,7 +67,8 @@ class ActionNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
-            before_model=session.before_model
+            before_model=session.before_model,
+            conversation=state.conversation,
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
@@ -101,7 +102,8 @@ class ActionNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
-            abefore_model=session.abefore_model
+            abefore_model=session.abefore_model,
+            conversation=state.conversation,
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
@@ -149,10 +151,7 @@ class ActionNode(Node):
         """
         if context is None:
             raise ValueError("ReActContext is required for ActionNode")
-        return [
-            *state.conversation,
-            *state.trajectory,
-        ]
+        return build_react_history(state.conversation, state.trajectory)
 
     def _authorize_tool(self, tool_definitions: list[ToolDefinition], tool_call: ToolCall, mode: AgentMode) -> bool:
         """
@@ -352,6 +351,7 @@ class ActionNode(Node):
     def _router(self, state: ReActState, update_state: dict) -> Command:
         next_node = self._select_node(state, update_state)
         logger.info("route action -> %s | status=%s", next_node, update_state.get("task_status", state.task_status))
+        update_state["conversation"] = state.conversation
         return Command(update=update_state, goto=next_node)
 
     def _select_node(self, state: ReActState, update_state: dict) -> Literal["HITL", "tool", "reason"]:

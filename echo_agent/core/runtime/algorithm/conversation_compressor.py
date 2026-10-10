@@ -45,9 +45,7 @@ class ConversationCompressor:
         # 生成会话摘要
         summary = self._summarize_conversation(compressed_messages, conversation.summary)
 
-        conversation.summary = summary
-        conversation.messages = retained_messages
-
+        conversation.summary, conversation.messages = summary, retained_messages
         logger.info(f"Conversation compressed. {conversation.summary.render()}")
 
         return True
@@ -70,9 +68,7 @@ class ConversationCompressor:
         # 生成会话摘要
         summary = await self._asummarize_conversation(compressed_messages, conversation.summary)
 
-        conversation.summary = summary
-        conversation.messages = retained_messages
-
+        conversation.summary, conversation.messages = summary, retained_messages
         logger.info(f"Conversation compressed. {conversation.summary.render()}")
 
         return True
@@ -118,7 +114,6 @@ class ConversationCompressor:
             return [], list(messages)
 
         split_index = max(1, len(messages) // 2)
-
         while (split_index < len(messages) and messages[split_index].role == Role.TOOL):
             split_index += 1
 

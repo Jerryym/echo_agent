@@ -123,7 +123,7 @@ def chat_invoke(agent: Agent, session_id: str) -> None:
         if archived:
             _print_agent_result(archived[-1], title="archived last")
 
-        session_usage = agent._get_agent_state(session_id).token_usage
+        session_usage = agent._get_session_state(session_id).token_usage
         print(
             f"session token_usage total={session_usage.total_tokens} "
             f"(input={session_usage.input_tokens} output={session_usage.output_tokens})"

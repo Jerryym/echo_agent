@@ -12,6 +12,7 @@ from ...prompt import PromptAssembler
 from ...utils import ContextUsageCalculator, MessageAdapter
 from ..graph.schema import BaseContext
 from ..model.agent import AgentResources
+from ..model.conversation import ConversationState
 from ..model.input import UserInput
 from ..model.message import Message
 from ..model.token_usage import TokenUsage
@@ -34,8 +35,8 @@ from .structured_output import (
 
 logger = get_logger("llm")
 
-BeforeModelHook: TypeAlias = Callable[[], Sequence[Message] | None]
-AsyncBeforeModelHook: TypeAlias = Callable[[], Awaitable[Sequence[Message] | None]]
+BeforeModelHook: TypeAlias = Callable[..., Sequence[Message] | None]
+AsyncBeforeModelHook: TypeAlias = Callable[..., Awaitable[Sequence[Message] | None]]
 
 
 class LLMClient:
@@ -63,7 +64,8 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
-        before_model: BeforeModelHook | None = None
+        before_model: BeforeModelHook | None = None,
+        conversation: ConversationState | None = None,
     ):
         """
         调用模型
@@ -93,6 +95,7 @@ class LLMClient:
             messages = self._before_model(
                 messages=messages,
                 before_model=before_model,
+                conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
                 tool_informations=tool_informations,
@@ -122,6 +125,7 @@ class LLMClient:
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         abefore_model: AsyncBeforeModelHook | None = None,
+        conversation: ConversationState | None = None,
     ):
         """
         调用模型（异步）
@@ -150,6 +154,7 @@ class LLMClient:
             messages = await self._abefore_model(
                 messages=messages,
                 abefore_model=abefore_model,
+                conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
                 tool_informations=tool_informations,
@@ -180,7 +185,8 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
-        before_model: BeforeModelHook | None = None
+        before_model: BeforeModelHook | None = None,
+        conversation: ConversationState | None = None,
     ) -> LLMResult:
         """
         结构化输出调用模型
@@ -211,6 +217,7 @@ class LLMClient:
             messages = self._before_model(
                 messages=messages,
                 before_model=before_model,
+                conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
                 tool_informations=tool_informations,
@@ -240,7 +247,8 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
-        abefore_model: AsyncBeforeModelHook | None = None
+        abefore_model: AsyncBeforeModelHook | None = None,
+        conversation: ConversationState | None = None,
     ) -> LLMResult:
         """
         结构化输出调用模型（异步）
@@ -277,6 +285,7 @@ class LLMClient:
                 context=context,
                 agent_resources=agent_resources,
                 abefore_model=abefore_model,
+                conversation=conversation,
             )
 
             structured_messages = self._with_structured_output_instruction(messages)
@@ -299,7 +308,8 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
-        before_model: BeforeModelHook | None = None
+        before_model: BeforeModelHook | None = None,
+        conversation: ConversationState | None = None,
     ):
         """
         流式调用模型
@@ -328,6 +338,7 @@ class LLMClient:
             messages = self._before_model(
                 messages=messages,
                 before_model=before_model,
+                conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
                 tool_informations=tool_informations,
@@ -355,7 +366,8 @@ class LLMClient:
         context: BaseContext | None = None,
         agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
-        abefore_model: AsyncBeforeModelHook | None = None
+        abefore_model: AsyncBeforeModelHook | None = None,
+        conversation: ConversationState | None = None,
     ):
         """
         流式调用模型（异步）
@@ -385,6 +397,7 @@ class LLMClient:
             messages = await self._abefore_model(
                 messages=messages,
                 abefore_model=abefore_model,
+                conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
                 tool_informations=tool_informations,
@@ -542,17 +555,18 @@ class LLMClient:
         context: BaseContext | None,
         agent_resources: AgentResources | None,
         before_model: BeforeModelHook | None,
+        conversation: ConversationState | None = None,
     ) -> list[BaseMessage]:
         """Hook: before model"""
         # 获取当前上下文用量
         context_usage = ContextUsageCalculator.calculate(messages, tools=tool_list)
         logger.info("context usage = %s", context_usage)
 
-        if before_model is None:
+        if before_model is None or conversation is None:
             return messages
 
         # 获取压缩上下文后的历史记录
-        updated_history = before_model(messages, tools=tool_list)
+        updated_history = before_model(conversation, messages, tools=tool_list)
         if updated_history is None:
             return messages
 
@@ -580,17 +594,18 @@ class LLMClient:
         tool_list: list[BaseTool | dict[str, Any]] | None,
         context: BaseContext | None,
         agent_resources: AgentResources | None,
+        conversation: ConversationState | None = None,
     ) -> list[Message]:
         """Hook: async before model"""
         # 获取当前上下文用量
         context_usage = ContextUsageCalculator.calculate(messages, tools=tool_list)
         logger.info("context usage = %s", context_usage)
 
-        if abefore_model is None:
+        if abefore_model is None or conversation is None:
             return messages
 
         # 获取压缩上下文后的历史记录
-        updated_history = await abefore_model(messages, tools=tool_list)
+        updated_history = await abefore_model(conversation, messages, tools=tool_list)
         if updated_history is None:
             return messages
 

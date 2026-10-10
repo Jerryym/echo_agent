@@ -22,6 +22,7 @@ from ..schema import (
     ReActContext,
     ReActState,
     ReasonStructuredOutput,
+    build_react_history,
     submit_reason_result,
 )
 
@@ -273,6 +274,7 @@ class ReasonNode(Node):
             "prompt": self._prompt,
             "user_input": self._build_input(state, observation_list), # 用户输入
             "history": self._build_history(state, runtime.context), # 历史记录
+            "conversation": state.conversation,
             "tool_informations": tool_informations,
             "context": runtime.context,
             "agent_resources": runtime.context.resources,
@@ -285,10 +287,7 @@ class ReasonNode(Node):
         """
         if context is None:
             raise ValueError("ReActContext is required for ReasonNode")
-        return [
-            *state.conversation,
-            *state.trajectory,
-        ]
+        return build_react_history(state.conversation, state.trajectory)
 
     def _build_input(self, state: ReActState, observation_list: list[Observation]) -> dict:
         """
@@ -345,6 +344,7 @@ class ReasonNode(Node):
     def _router(self, state: ReActState, context: ReActContext | None, update_state: dict) -> Command:
         next_node = self._select_node(state, context, update_state)
         logger.info("route reason -> %s", next_node)
+        update_state["conversation"] = state.conversation
         return Command(update=update_state, goto=next_node)
 
     def _select_node(self, state: ReActState, context: ReActContext | None, update_state: dict) -> Literal["action", "final"]:

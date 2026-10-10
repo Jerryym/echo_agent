@@ -4,9 +4,20 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field
 
 from ...graph import BaseContext, BaseInput, BaseOutput, BaseState
-from ...model.message import Message, append_messages
+from ...model.conversation import ConversationState
+from ...model.message import Message, Role, append_messages
 from ..strategy_task import StrategyTask
 from .observation import Observation, append_observations
+
+
+def build_react_history(conversation: ConversationState, trajectory: list[Message]) -> list[Message]:
+    """读取会话摘要和消息，再追加本轮轨迹"""
+    history: list[Message] = []
+    if conversation.summary is not None:
+        history.append(Message(role=Role.SYSTEM, content=conversation.summary.render()))
+    history.extend(conversation.messages)
+    history.extend(trajectory)
+    return history
 
 
 class ReActInput(BaseInput):
@@ -15,10 +26,8 @@ class ReActInput(BaseInput):
     
     参数：
         task：任务
-        conversation：当前任务的对话上下文
     """
     task: StrategyTask = Field(description="任务")
-    conversation: list[Message] = Field(description="当前任务的对话上下文")
 
 
 class ReActState(BaseState):
@@ -27,7 +36,6 @@ class ReActState(BaseState):
 
     参数:
         task: 任务
-        conversation: 对话上下文
         reasoning: 推理结果
         tool_list: 工具列表, 用于指导ActionNode节点绑定工具
         task_status: 任务状态
@@ -45,7 +53,6 @@ class ReActState(BaseState):
         retry_count: 当前 ReAct 执行过程中，因异常（no_tool_calls、invalid_tools）导致重新尝试的次数。
     """
     task: StrategyTask = Field(default_factory=StrategyTask)
-    conversation: list[Message] = Field(default_factory=list)
     reasoning: str = ""
     tool_list: list[str] = Field(default_factory=list)
     task_status: Literal[
@@ -147,7 +154,7 @@ class ReasonStructuredOutput(BaseModel):
     )
 
 
-@tool("submit_reason_result", args_schema=ReasonStructuredOutput,)
+@tool("submit_reason_result", args_schema=ReasonStructuredOutput)
 def submit_reason_result(**kwargs: Any) -> str:
     """
     Submit the final structured reasoning result.

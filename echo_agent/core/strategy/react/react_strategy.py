@@ -5,7 +5,6 @@ from ....utils import MessageAdapter
 from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE, GraphSchema
 from ...llm import LLMConfig
 from ...model.input import UserInput
-from ...model.message import Message, Role
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
@@ -94,21 +93,12 @@ class ReActStrategy(BaseStrategy):
         )
         logger.info("to_strategy_input | task=%s, user_content=%s", task, user_content)
 
-        # 构建Conversation
-        conversation = context.agent_state.conversation if context else None
-        view: list[Message] = []
-        if conversation is not None:
-            if conversation.summary is not None:
-                view.append(Message(role=Role.SYSTEM, content=conversation.summary.render()))
-            view.extend(conversation.messages)
-        logger.info("to_strategy_input | task=%s, messages=%s", task, len(view))
+        conversation = state.conversation.model_copy(deep=True)
+        logger.info("to_strategy_input | task=%s, messages=%s", task, len(conversation.messages))
 
-        # 增加User Input
-        view.append(Message(role=Role.USER, content=user_content))
-        
         return ReActInput(
             task=task,
-            conversation=view,
+            conversation=conversation,
         )
 
     def to_strategy_context(self, context: BaseContext | None = None) -> ReActContext | None:
@@ -123,7 +113,7 @@ class ReActStrategy(BaseStrategy):
         
         active_skills = context.active_skills
         react_context = ReActContext(
-            agent_state=context.agent_state,
+            session_state=context.session_state,
             resources=context.resources,
             active_skills=active_skills,
             tool_artifacts=context.tool_artifacts,
@@ -132,6 +122,8 @@ class ReActStrategy(BaseStrategy):
             retry_max_count=self._retry_max_count,
         )
 
+        if react_context.session_state is not context.session_state:
+            object.__setattr__(react_context, "session_state", context.session_state)
         if react_context.active_skills is not active_skills:
             object.__setattr__(react_context, "active_skills", active_skills)
 
@@ -143,7 +135,7 @@ class ReActStrategy(BaseStrategy):
         """
         return {
             "response": output.response,
-            "context_items": output.context_items,
+            "conversation": output.conversation,
         }
 
 

@@ -113,11 +113,9 @@ class ConversationState(BaseModel):
     参数:
         messages: 消息列表, 即历史记录
         summary: 对话摘要
-        context_items: 会话上下文信息项列表
     """
     messages: list[Message] = Field(default_factory=list)
     summary: ConversationSummary | None = None
-    context_items: list[ConversationContextItem] = Field(default_factory=list)
 
 
 def merge_context_items(items: list[ConversationContextItem], new_items: list[ConversationContextItem]) -> list[ConversationContextItem]:

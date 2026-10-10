@@ -80,9 +80,9 @@ def test_invoke_preempts_in_flight_same_session():
 
             return _State()
 
-        def restore_checkpoint(self, session_id, checkpoint_id):
+        def cancel_current_turn(self, session_id):
             del session_id
-            restore_ids.append(checkpoint_id)
+            restore_ids.append("cancelled")
 
     async def _factory(config, runtime_options=None):
         del config, runtime_options

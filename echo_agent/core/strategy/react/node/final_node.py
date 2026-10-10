@@ -8,7 +8,7 @@ from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.message import Message, Role
 from ....runtime.runtime_config import RuntimeConfig
-from ..schema import ReActContext, ReActState
+from ..schema import ReActContext, ReActState, build_react_history
 
 logger = get_logger("react.final")
 
@@ -46,11 +46,13 @@ class FinalNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
-            before_model=session.before_model
+            before_model=session.before_model,
+            conversation=state.conversation,
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return {
             "response": response.text,
+            "conversation": state.conversation,
             "trajectory": [Message(role=Role.ASSISTANT, content=response.text)],
         }
 
@@ -77,11 +79,13 @@ class FinalNode(Node):
             context=runtime.context,
             agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
-            abefore_model=session.abefore_model
+            abefore_model=session.abefore_model,
+            conversation=state.conversation,
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
         return {
             "response": response.text,
+            "conversation": state.conversation,
             "trajectory": [Message(role=Role.ASSISTANT, content=response.text)],
         }
 
@@ -102,8 +106,5 @@ class FinalNode(Node):
         """
         if context is None:
             raise ValueError("ReActContext is required for FinalNode")
-        return [
-            *state.conversation,
-            *state.trajectory,
-        ]
+        return build_react_history(state.conversation, state.trajectory)
 # endregion

@@ -1,6 +1,7 @@
 from langgraph.runtime import Runtime
 
 from ...common import format_value, get_logger
+from ...utils import update_agent_tool
 from ..graph import BaseContext, BaseState, Node
 from ..model.conversation import ConversationContextItem, ConversationContextType
 from ..model.message import Message, Role
@@ -39,6 +40,7 @@ class ToolNode(Node):
         tool_results: list[ToolResult] = []
         for tool_call in state.tool_state.tool_calls:
             logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
+            update_agent_tool(runtime.context, tool_call.name) # 记录调用的工具名
             result = self._tool_executor.execute(tool_call)
             # logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
             tool_results.append(result)
@@ -52,6 +54,7 @@ class ToolNode(Node):
         tool_results: list[ToolResult] = []
         for tool_call in state.tool_state.tool_calls:
             logger.info("executing %s args=%s", tool_call.name, format_value(tool_call.args))
+            update_agent_tool(runtime.context, tool_call.name) # 记录调用的工具名
             result = await self._tool_executor.aexecute(tool_call)
             # logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
             tool_results.append(result)
@@ -62,9 +65,10 @@ class ToolNode(Node):
         logger.debug("appended %s ToolMessage(s) to messages", len(tool_messages))
 
         context_items = self._build_context_items(tool_results, context)
+        if context is not None and context_items:
+            context.session_state.merge_context_items(context_items)
         result = {
             "tool_state": ToolState(tool_calls=[], tool_results=tool_results),
-            "context_items": context_items,
         }
 
         # 如果消息字段名称不为空, 则将工具调用消息添加到消息字段中

@@ -163,7 +163,7 @@ class AgentRuntime:
         if current is run:
             self._active_runs.pop(key, None)
 
-        await self._call_restore_checkpoint(agent, session_id, run.pre_checkpoint_id)
+        agent.cancel_current_turn(session_id)
         return True
 
     async def invoke(
@@ -349,22 +349,7 @@ class AgentRuntime:
         if run is None:
             return
         if restore_if_cancelled and task.cancelled():
-            await self._call_restore_checkpoint(
-                agent, session_id, run.pre_checkpoint_id
-            )
-
-    @staticmethod
-    async def _call_restore_checkpoint(
-        agent: Agent,
-        session_id: str,
-        pre_checkpoint_id: str | None,
-    ) -> None:
-        restore = getattr(agent, "restore_checkpoint", None)
-        if not callable(restore):
-            return
-        result = restore(session_id, pre_checkpoint_id)
-        if inspect.isawaitable(result):
-            await result
+            agent.cancel_current_turn(session_id)
 
     def _begin_run(
         self,

@@ -28,7 +28,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from echo_agent import Agent, AgentConfig, BaseState, LLMConfig, UserInput
 from echo_agent.core.app import Application
 from echo_agent.core.graph import END_NODE, START_NODE, GraphCompileOptions, GraphSchema
-from echo_agent.core.model.agent import AgentResources, AgentState
+from echo_agent.core.model.agent import AgentResources
+from echo_agent.core.model.session import SessionState
 from echo_agent.core.model.skill import SkillSource
 from echo_agent.core.strategy import StrategyFactory, StrategyType
 from echo_agent.core.strategy.react.node import ActionNode
@@ -168,7 +169,7 @@ def test_action_tools_follow_skill_metadata() -> None:
     )
     # 有 skill_list 且未 load → 仅 meta（渐进披露）
     context = ReActContext(
-        agent_state=AgentState(session_id="test"),
+        session_state=SessionState(),
         resources=AgentResources(
             skill_list=DEFAULT_SKILL_LIST,
             skill_frontmatter_list=manager.build_skill_frontmatter_list(),

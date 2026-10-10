@@ -1,74 +1,23 @@
-from typing import Annotated, Any
+from typing import Any
 
-from pydantic import BaseModel, Field, PlainValidator
+from pydantic import BaseModel, Field
 
-from ..model.agent import AgentResources, AgentResult, AgentState
-from ..model.conversation import ConversationContextItem, merge_context_items
+from ..model.agent import AgentResources
+from ..model.conversation import ConversationState
 from ..model.hitl import HITLInteraction
 from ..model.input import UserInput
-from ..model.skill import SkillRuntimeContext
-from ..model.tool import ToolArtifact, ToolState
-
-
-def _preserve_active_skills_dict(value: Any) -> dict[str, SkillRuntimeContext]:
-    """
-    Keep the same dict instance across Context construction.
-
-    Default Pydantic dict[str, Model] validation rebuilds a new dict, which
-    breaks session-level active_skills persistence across HITL interrupt/resume
-    (load_skill writes to a copy that is discarded when the invoke ends).
-    """
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise TypeError(f"active_skills must be a dict, got {type(value)!r}")
-    return value
-
-
-def _preserve_tool_artifacts_dict(value: Any) -> dict[str, ToolArtifact]:
-    """Keep the same tool_artifacts dict instance across Context construction."""
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise TypeError(f"tool_artifacts must be a dict, got {type(value)!r}")
-    return value
-
-
-def _preserve_agent_result(value: Any) -> AgentResult | None:
-    """Keep the same AgentResult instance across Context construction."""
-    if value is None:
-        return None
-    if isinstance(value, AgentResult):
-        return value
-    if isinstance(value, dict):
-        return AgentResult.model_validate(value)
-    raise TypeError(f"agent_result must be AgentResult | None, got {type(value)!r}")
-
-
-# Session-scoped mutable map; must retain object identity.
-ActiveSkillsMap = Annotated[
-    dict[str, SkillRuntimeContext],
-    PlainValidator(_preserve_active_skills_dict),
-]
-
-# Session-scoped mutable tool artifacts; must retain object identity across Parent/Strategy Context.
-ToolArtifactsMap = Annotated[
-    dict[str, ToolArtifact],
-    PlainValidator(_preserve_tool_artifacts_dict),
-]
-
-# Turn-scoped mutable result; must retain object identity across Parent/Strategy Context.
-AgentResultRef = Annotated[
-    AgentResult | None,
-    PlainValidator(_preserve_agent_result),
-]
+from ..model.tool import ToolState
+from .context_ref import ActiveSkillsMap, AgentResultRef, SessionStateRef, ToolArtifactsMap
 
 
 class BaseInput(BaseModel):
     """
     Graph 输入模型
+
+    参数:
+        conversation: 会话状态
     """
-    pass
+    conversation: ConversationState = Field(default_factory=ConversationState)
 
 
 class BaseOutput(BaseModel):
@@ -76,9 +25,9 @@ class BaseOutput(BaseModel):
     Graph 输出模型
 
     参数:
-        context_items: 当前 Graph 产生的上下文信息项
+        conversation: 会话状态
     """
-    context_items: list[ConversationContextItem] = Field(default_factory=list)
+    conversation: ConversationState = Field(default_factory=ConversationState)
 
 
 class BaseState(BaseModel):
@@ -88,16 +37,16 @@ class BaseState(BaseModel):
     参数:
         input: 输入
         response: 响应
+        conversation: 会话状态
         tool: 工具状态
         hitl: HITL状态
-        context_items: 会话上下文信息项列表
     """
     input: UserInput | dict[str, Any] | str | None = None
     response: str | None = None
+    conversation: ConversationState = Field(default_factory=ConversationState)
 
     tool_state: ToolState = Field(default_factory=ToolState)
     hitl_state: HITLInteraction = Field(default_factory=HITLInteraction)
-    context_items: Annotated[list[ConversationContextItem], merge_context_items] = Field(default_factory=list)
 
 
 class BaseContext(BaseModel):
@@ -105,13 +54,13 @@ class BaseContext(BaseModel):
     Graph 上下文模型
 
     参数:
-        agent_state: 智能体状态
+        session_state: 会话运行时状态
         resources: 静态资源目录（system_prompt / skill_list / kb_list）
         active_skills: 已加载 Skill（会话级可变 dict，构造时保持同一引用）
         agent_result: 本轮交互的顶层输出（运行中由节点增量写入）
         tool_artifacts: 工具输出 artifacts
     """
-    agent_state: AgentState
+    session_state: SessionStateRef
     resources: AgentResources = Field(default_factory=AgentResources)
     active_skills: ActiveSkillsMap = Field(default_factory=dict)
     tool_artifacts: ToolArtifactsMap = Field(default_factory=dict)
