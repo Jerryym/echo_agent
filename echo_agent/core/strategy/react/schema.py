@@ -106,6 +106,7 @@ class ReasonStructuredOutput(BaseModel):
         reasoning: 执行推理结果，用于指导下一步执行
         tool_list: 下一步执行所需的工具名称列表
         task_status: 任务状态，用于驱动 ReAct 流程
+        continue_reasoning: 是否继续推理
     """
     thought: str = Field(
         description=(
@@ -152,14 +153,12 @@ class ReasonStructuredOutput(BaseModel):
             "that signal is handled by runtime status, not by this field."
         )
     )
-
-
-@tool("submit_reason_result", args_schema=ReasonStructuredOutput)
-def submit_reason_result(**kwargs: Any) -> str:
-    """
-    Submit the final structured reasoning result.
-
-    Use this tool when the Reason node has completed its analysis
-    and determined the current task status and next execution step.
-    """
-    return "Reason result submitted."
+    continue_reasoning: bool = Field(
+        description=(
+            "Whether ReasonNode requires additional internal Workflow execution. "
+            "When true, task_status must be 'in_progress', tool_list must be empty, "
+            "and reasoning must describe the additional internal analysis required. "
+            "ReasonNode will select and execute the Workflow in a separate model "
+            "call. Set false when the result can be returned to the outer ReAct graph."
+        )
+    )

@@ -23,7 +23,6 @@ from ..schema import (
     ReActState,
     ReasonStructuredOutput,
     build_react_history,
-    submit_reason_result,
 )
 
 logger = get_logger("react.reason")
@@ -47,6 +46,7 @@ class ReasonNode(Node):
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
         self._tool_gateway = ToolGateWay()
         self.MAX_ROUNDS: int = 6
+        self.MAX_OUTPUT_REPAIRS: int = 2
         self.MAX_TOOL_MESSAGE_CHARS = 12000
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
@@ -65,10 +65,6 @@ class ReasonNode(Node):
                 "observations": observation_list,
                 "tool_list": [],
             })
-        # 检查工具执行失败
-        if self._has_tool_error(state):
-            return self._handle_tool_error(state, runtime.context, observation_list)
-
         try:
             result = self._invoke_loop(state, runtime, observation_list)
         except RuntimeError as exc:
@@ -97,10 +93,6 @@ class ReasonNode(Node):
                 "observations": observation_list,
                 "tool_list": [],
             })
-        # 检查工具执行失败
-        if self._has_tool_error(state):
-            return self._handle_tool_error(state, runtime.context, observation_list)
-
         try:
             result = await self._ainvoke_loop(state, runtime, observation_list)
         except RuntimeError as exc:
@@ -114,77 +106,208 @@ class ReasonNode(Node):
         return self._handle_result(result, state, runtime.context, observation_list)
 
     def _invoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
-        # 准备调用参数
         kwargs = self._prepare_invoke(state, runtime, observation_list)
-        tools = self._resolve_tools()
-        kwargs["tool_list"] = tools
+        workflows = self._resolve_workflow()
+        self._append_workflow_information(kwargs, workflows)
         history: list[Message] = list(kwargs["history"])
         runtime_config = RuntimeConfig.get_runtime_config()
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        for _ in range(self.MAX_ROUNDS):
-            kwargs["history"] = history
-            response = self._llm_client.invoke(**kwargs, before_model=session.before_model)
-            update_agent_result(runtime.context, response.text, response.token_usage)
-            message = response.raw
-            if not isinstance(message, AIMessage):
-                raise RuntimeError("Reason LLM response must be AIMessage")
-            history.append(MessageAdapter.to_message(message))
 
-            # 无效工具调用
-            if message.invalid_tool_calls:
-                raise RuntimeError("Reason LLM returned malformed tool calls")
-            
+        for round_index in range(self.MAX_ROUNDS):
+            kwargs["history"] = history
             try:
-                result = self._parse_result_tool_call(message)
+                result = self._invoke_reason_result(
+                    kwargs,
+                    runtime,
+                    session.before_model,
+                )
+                self._validate_reason_result(result, workflows)
             except ValueError as exc:
-                raise RuntimeError(str(exc)) from exc
-            
-            if result is not None:
+                logger.warning("invalid reason result | round=%s error=%s", round_index + 1, exc)
+                self._append_reason_feedback(history, str(exc))
+                continue
+
+            if not result.continue_reasoning:
                 return result
-            
-            if message.tool_calls:
-                feedback = self._execute_workflow(message, tools)
-                history.extend(MessageAdapter.to_message(item) for item in feedback)
-            else:
-                history.append(Message(role=Role.USER, content="Call a workflow or submit_reason_result. Do not answer in plain text."))
-        raise RuntimeError("Reason workflow round budget exceeded")
+
+            # 保存当前结构化结果，作为内部Workflow选择与下一轮推理的依据。
+            history.append(self._to_reason_message(result))
+            self._invoke_workflow(
+                result,
+                workflows,
+                kwargs,
+                history,
+                runtime,
+                session.before_model,
+            )
+
+        # 正常循环预算耗尽后只生成结构化结果，不再执行内部Workflow。
+        return self._finalize_result(kwargs, history, runtime, session.before_model)
 
     async def _ainvoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
         kwargs = self._prepare_invoke(state, runtime, observation_list)
-        tools = self._resolve_tools()
-        kwargs["tool_list"] = tools
+        workflows = self._resolve_workflow()
+        self._append_workflow_information(kwargs, workflows)
         history: list[Message] = list(kwargs["history"])
         runtime_config = RuntimeConfig.get_runtime_config()
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        for _ in range(self.MAX_ROUNDS):
-            kwargs["history"] = history
-            response = await self._llm_client.ainvoke(**kwargs, abefore_model=session.abefore_model)
-            update_agent_result(runtime.context, response.text, response.token_usage)
-            message = response.raw
-            if not isinstance(message, AIMessage):
-                raise RuntimeError("Reason LLM response must be AIMessage")
-            history.append(MessageAdapter.to_message(message))
 
-            # 无效工具调用
-            if message.invalid_tool_calls:
-                raise RuntimeError("Reason LLM returned malformed tool calls")
+        for round_index in range(self.MAX_ROUNDS):
+            kwargs["history"] = history
             try:
-                result = self._parse_result_tool_call(message)
+                result = await self._ainvoke_reason_result(
+                    kwargs,
+                    runtime,
+                    session.abefore_model,
+                )
+                self._validate_reason_result(result, workflows)
             except ValueError as exc:
-                raise RuntimeError(str(exc)) from exc
-            
-            if result is not None:
+                logger.warning("invalid async reason result | round=%s error=%s", round_index + 1, exc)
+                self._append_reason_feedback(history, str(exc))
+                continue
+
+            if not result.continue_reasoning:
                 return result
-            
-            if message.tool_calls:
-                feedback = await self._aexecute_workflow(message, tools)
-                history.extend(MessageAdapter.to_message(item) for item in feedback)
-            else:
-                history.append(Message(role=Role.USER, content="Call a workflow or submit_reason_result. Do not answer in plain text."))
-        raise RuntimeError("Reason workflow round budget exceeded")
+
+            # 保存当前结构化结果，作为内部Workflow选择与下一轮推理的依据。
+            history.append(self._to_reason_message(result))
+            await self._ainvoke_workflow(
+                result,
+                workflows,
+                kwargs,
+                history,
+                runtime,
+                session.abefore_model,
+            )
+
+        # 正常循环预算耗尽后只生成结构化结果，不再执行内部Workflow。
+        return await self._afinalize_result(kwargs, history, runtime, session.abefore_model)
+
+    def _invoke_reason_result(
+        self,
+        kwargs: dict[str, Any],
+        runtime: Runtime[ReActContext],
+        before_model: Any,
+    ) -> ReasonStructuredOutput:
+        """生成并校验一轮结构化推理结果。"""
+        response = self._llm_client.invoke_structured(
+            schema=ReasonStructuredOutput,
+            **kwargs,
+            before_model=before_model,
+        )
+        update_agent_result(runtime.context, response.text, response.token_usage)
+        try:
+            return ReasonStructuredOutput.model_validate(response.structured)
+        except ValidationError as exc:
+            raise ValueError("Invalid structured reason result.") from exc
+
+    async def _ainvoke_reason_result(self, kwargs: dict[str, Any], runtime: Runtime[ReActContext], abefore_model: Any) -> ReasonStructuredOutput:
+        """异步生成并校验一轮结构化推理结果"""
+        response = await self._llm_client.ainvoke_structured(
+            schema=ReasonStructuredOutput,
+            **kwargs,
+            abefore_model=abefore_model,
+        )
+        update_agent_result(runtime.context, response.text, response.token_usage)
+        try:
+            return ReasonStructuredOutput.model_validate(response.structured)
+        except ValidationError as exc:
+            raise ValueError("Invalid structured reason result.") from exc
+
+    def _invoke_workflow(
+        self,
+        result: ReasonStructuredOutput,
+        workflows: list[BaseTool],
+        kwargs: dict[str, Any],
+        history: list[Message],
+        runtime: Runtime[ReActContext],
+        before_model: Any,
+    ) -> None:
+        """根据结构化推理结果选择并执行内部Workflow"""
+        response = self._llm_client.invoke(
+            prompt=self._build_workflow_prompt(),
+            user_input={"reasoning": result.reasoning},
+            history=history,
+            tool_list=workflows,
+            context=kwargs["context"],
+            agent_resources=kwargs["agent_resources"],
+            config=kwargs["config"],
+            before_model=before_model,
+            conversation=kwargs["conversation"],
+        )
+        update_agent_result(runtime.context, response.text, response.token_usage)
+        self._handle_workflow_response(response.raw, workflows, history)
+
+    async def _ainvoke_workflow(
+        self,
+        result: ReasonStructuredOutput,
+        workflows: list[BaseTool],
+        kwargs: dict[str, Any],
+        history: list[Message],
+        runtime: Runtime[ReActContext],
+        abefore_model: Any,
+    ) -> None:
+        """异步选择并执行内部Workflow"""
+        response = await self._llm_client.ainvoke(
+            prompt=self._build_workflow_prompt(),
+            user_input={"reasoning": result.reasoning},
+            history=history,
+            tool_list=workflows,
+            context=kwargs["context"],
+            agent_resources=kwargs["agent_resources"],
+            config=kwargs["config"],
+            abefore_model=abefore_model,
+            conversation=kwargs["conversation"],
+        )
+        update_agent_result(runtime.context, response.text, response.token_usage)
+        await self._ahandle_workflow_response(response.raw, workflows, history)
+
+    def _handle_workflow_response(self, message: Any, workflows: list[BaseTool], history: list[Message]) -> None:
+        """处理Workflow选择结果"""
+        if not isinstance(message, AIMessage):
+            self._append_reason_feedback(history, "Workflow selection must return an AIMessage.")
+            return
+
+        history.append(MessageAdapter.to_message(message))
+        if message.invalid_tool_calls:
+            self._reject_tool_calls(message, history, "Workflow selection contains malformed tool calls.")
+            return
+        if not message.tool_calls:
+            self._append_reason_feedback(history, "continue_reasoning=true requires at least one Workflow call.")
+            return
+
+        feedback = self._execute_workflow(message, workflows)
+        history.extend(MessageAdapter.to_message(item) for item in feedback)
+
+    async def _ahandle_workflow_response(self, message: Any, workflows: list[BaseTool], history: list[Message]) -> None:
+        """异步处理Workflow选择结果"""
+        if not isinstance(message, AIMessage):
+            self._append_reason_feedback(history, "Workflow selection must return an AIMessage.")
+            return
+
+        history.append(MessageAdapter.to_message(message))
+        if message.invalid_tool_calls:
+            self._reject_tool_calls(message, history, "Workflow selection contains malformed tool calls.")
+            return
+        if not message.tool_calls:
+            self._append_reason_feedback(history, "continue_reasoning=true requires at least one Workflow call.")
+            return
+
+        feedback = await self._aexecute_workflow(message, workflows)
+        history.extend(MessageAdapter.to_message(item) for item in feedback)
+
+    def _reject_tool_calls(self, message: AIMessage, history: list[Message], error: str) -> None:
+        """拒绝本轮合法工具调用，并补齐对应的ToolMessage"""
+        for call in message.tool_calls:
+            history.append(MessageAdapter.to_message(ToolMessage(
+                content=f"Workflow call was not executed: {error}",
+                tool_call_id=call["id"],
+                name=call["name"],
+            )))
+        self._append_reason_feedback(history, error)
 
     def _execute_workflow(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
-        available = {tool.name: tool for tool in tools if tool.name != submit_reason_result.name}
+        available = {tool.name: tool for tool in tools}
         feedback: list[ToolMessage] = []
         for call in message.tool_calls:
             name, call_id = call["name"], call["id"]
@@ -201,7 +324,7 @@ class ReasonNode(Node):
         return feedback
 
     async def _aexecute_workflow(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
-        available = {tool.name: tool for tool in tools if tool.name != submit_reason_result.name}
+        available = {tool.name: tool for tool in tools}
         feedback: list[ToolMessage] = []
         for call in message.tool_calls:
             name, call_id = call["name"], call["id"]
@@ -216,6 +339,132 @@ class ReasonNode(Node):
                     content = f"Workflow error ({name}): {type(exc).__name__}: {exc}"
             feedback.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
         return feedback
+
+    def _validate_reason_result(self, result: ReasonStructuredOutput, workflows: list[BaseTool]) -> None:
+        """校验结构化结果与ReasonNode内部状态是否一致"""
+        if not result.reasoning.strip():
+            raise ValueError("Reason result reasoning must not be empty.")
+
+        if result.continue_reasoning:
+            if result.task_status != "in_progress":
+                raise ValueError("continue_reasoning=true requires task_status='in_progress'.")
+            if result.tool_list:
+                raise ValueError("tool_list must be empty while continue_reasoning=true.")
+            if not workflows:
+                raise ValueError("continue_reasoning=true requires an available Workflow.")
+            return
+
+        if result.task_status == "completed" and result.tool_list:
+            raise ValueError("task_status='completed' requires an empty tool_list.")
+        if result.task_status == "in_progress" and not result.tool_list:
+            raise ValueError("A final in_progress result requires at least one external tool.")
+
+    def _finalize_result(
+        self,
+        kwargs: dict[str, Any],
+        history: list[Message],
+        runtime: Runtime[ReActContext],
+        before_model: Any,
+    ) -> ReasonStructuredOutput:
+        final_kwargs = dict(kwargs)
+        final_kwargs["user_input"] = self._build_final_input(kwargs["user_input"])
+        last_error = "No final reason result was produced."
+
+        for repair_index in range(self.MAX_OUTPUT_REPAIRS):
+            final_kwargs["history"] = history
+            try:
+                result = self._invoke_reason_result(final_kwargs, runtime, before_model)
+                if result.continue_reasoning:
+                    raise ValueError("Final reason result must set continue_reasoning=false.")
+                self._validate_reason_result(result, [])
+                return result
+            except ValueError as exc:
+                last_error = str(exc)
+                logger.warning("invalid final reason result | repair=%s error=%s", repair_index + 1, exc)
+                self._append_reason_feedback(history, last_error)
+
+        raise RuntimeError(f"Reason result finalization failed: {last_error}")
+
+    async def _afinalize_result(
+        self,
+        kwargs: dict[str, Any],
+        history: list[Message],
+        runtime: Runtime[ReActContext],
+        abefore_model: Any,
+    ) -> ReasonStructuredOutput:
+        final_kwargs = dict(kwargs)
+        final_kwargs["user_input"] = self._build_final_input(kwargs["user_input"])
+        last_error = "No final reason result was produced."
+
+        for repair_index in range(self.MAX_OUTPUT_REPAIRS):
+            final_kwargs["history"] = history
+            try:
+                result = await self._ainvoke_reason_result(final_kwargs, runtime, abefore_model)
+                if result.continue_reasoning:
+                    raise ValueError("Final reason result must set continue_reasoning=false.")
+                self._validate_reason_result(result, [])
+                return result
+            except ValueError as exc:
+                last_error = str(exc)
+                logger.warning("invalid async final reason result | repair=%s error=%s", repair_index + 1, exc)
+                self._append_reason_feedback(history, last_error)
+
+        raise RuntimeError(f"Reason result finalization failed: {last_error}")
+
+    def _append_workflow_information(self, kwargs: dict[str, Any], workflows: list[BaseTool]) -> None:
+        """向结构化推理输入注入可用的内部Workflow信息。"""
+        user_input = kwargs.get("user_input")
+        if not isinstance(user_input, dict):
+            return
+        # 结构化推理和Workflow执行使用两次独立的模型调用。
+        user_input["reason_contract"] = {
+            "continue_reasoning": (
+                "Set true when an internal Workflow is required. ReasonNode will "
+                "select and execute the Workflow after this structured response."
+            ),
+            "tool_list": (
+                "Keep empty while continue_reasoning is true. When false, include "
+                "only external tools required by ActionNode."
+            ),
+        }
+        user_input["workflows"] = [
+            {"name": workflow.name, "description": workflow.description}
+            for workflow in workflows
+        ]
+
+    def _append_reason_feedback(self, history: list[Message], error: str) -> None:
+        """追加节点内部纠错信息，不增加外层retry_count。"""
+        history.append(Message(
+            role=Role.USER,
+            content=(
+                f"The previous ReasonNode round was invalid: {error} "
+                "Generate a complete ReasonStructuredOutput again."
+            ),
+        ))
+
+    def _to_reason_message(self, result: ReasonStructuredOutput) -> Message:
+        """将结构化推理结果保存为无工具调用的内部历史消息。"""
+        return Message(
+            role=Role.ASSISTANT,
+            content=json.dumps({"reason_result": result.model_dump(mode="json")}, ensure_ascii=False),
+        )
+
+    def _build_final_input(self, user_input: Any) -> dict[str, Any]:
+        """构建禁止继续调用Workflow的收尾输入。"""
+        final_input = dict(user_input) if isinstance(user_input, dict) else {"input": user_input}
+        final_input["reason_instruction"] = (
+            "The internal Workflow budget is exhausted. Generate the best deliverable "
+            "ReasonStructuredOutput now. Set continue_reasoning=false."
+        )
+        return final_input
+
+    def _build_workflow_prompt(self) -> str:
+        """构建ReasonNode内部Workflow选择提示。"""
+        return (
+            "You are the internal Workflow execution stage of ReasonNode. "
+            "Use the supplied reasoning to call one or more available Workflows. "
+            "Do not produce the final user-facing response."
+        )
 
     def _format_internal_output(self, output: Any) -> str:
         if isinstance(output, str):
@@ -298,27 +547,6 @@ class ReasonNode(Node):
             "observations": observation_list, # 本次ReAct Loop完整的观察结果
         }
 
-    def _has_tool_error(self, state: ReActState) -> bool:
-        """
-        判断是否存在工具执行失败错误
-        """
-        return any(not result.success for result in state.tool_state.tool_results)
-
-    def _handle_tool_error(self, state: ReActState, context: ReActContext | None, observation_list: list[Observation]) -> Command:
-        """
-        处理工具错误
-        """
-        failed_tools = [r.name for r in state.tool_state.tool_results if r.error]
-        logger.warning("tool error detected: %s", failed_tools)
-
-        result = {
-            "step_count": state.step_count + 1,
-            "tool_state": ToolState(tool_calls=[], tool_results=[]), # 清空工具调用和执行结果
-            "observations": observation_list, # 包含工具执行失败的结果
-            "tool_list": [],
-        }
-        return self._router(state, context, result)
-
     def _handle_result(self, response: ReasonStructuredOutput, state: ReActState, context: ReActContext | None, observation_list: list[Observation]) -> Command:
         """
         处理Reason结果
@@ -362,16 +590,6 @@ class ReasonNode(Node):
             return "final"
         return "action"
 
-    def _resolve_tools(self) -> list[BaseTool]:
-        workflows = self._resolve_workflow()
-        if any(tool.name == submit_reason_result.name for tool in workflows):
-            raise ValueError(f"Reserved tool name: {submit_reason_result.name}")
-
-        return [
-            *workflows,
-            submit_reason_result,
-        ]
-
     def _resolve_workflow(self) -> list[BaseTool]:
         runtime_config = RuntimeConfig.get_runtime_config()
         tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
@@ -392,21 +610,3 @@ class ReasonNode(Node):
                 handlers.append(handler)
         return handlers
 
-    def _parse_result_tool_call(self, message: AIMessage) -> ReasonStructuredOutput | None:
-        result_calls = [
-            call
-            for call in message.tool_calls
-            if call["name"] == submit_reason_result.name
-        ]
-
-        if not result_calls:
-            return None
-
-        # Ensure the result submission is the only tool call.
-        if len(message.tool_calls) != 1:
-            raise ValueError("Reason result submission must be the only tool call.")
-
-        try:
-            return ReasonStructuredOutput.model_validate(result_calls[0]["args"])
-        except ValidationError as exc:
-            raise ValueError("Invalid structured reason result.") from exc
