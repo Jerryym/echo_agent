@@ -68,7 +68,7 @@ class AgentConfig(_message.Message):
     def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., llm_config: _Optional[_Union[LLMConfig, _Mapping]] = ..., system_prompt: _Optional[str] = ..., kb_list: _Optional[_Iterable[str]] = ..., skill_list: _Optional[_Mapping[str, str]] = ..., mcp_allowed_directories: _Optional[_Iterable[str]] = ..., mcp_servers: _Optional[_Iterable[_Union[MCPConnectionConfig, _Mapping]]] = ..., mode: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class LLMConfig(_message.Message):
-    __slots__ = ("base_url", "api_key", "model_name", "model_provider", "temperature", "max_tokens", "timeout", "max_retries", "use_responses_api", "output_version", "extra_json")
+    __slots__ = ("base_url", "api_key", "model_name", "model_provider", "temperature", "max_tokens", "timeout", "max_retries", "use_responses_api", "output_version", "extra_json", "reasoning")
     BASE_URL_FIELD_NUMBER: _ClassVar[int]
     API_KEY_FIELD_NUMBER: _ClassVar[int]
     MODEL_NAME_FIELD_NUMBER: _ClassVar[int]
@@ -80,6 +80,7 @@ class LLMConfig(_message.Message):
     USE_RESPONSES_API_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_VERSION_FIELD_NUMBER: _ClassVar[int]
     EXTRA_JSON_FIELD_NUMBER: _ClassVar[int]
+    REASONING_FIELD_NUMBER: _ClassVar[int]
     base_url: str
     api_key: str
     model_name: str
@@ -91,7 +92,14 @@ class LLMConfig(_message.Message):
     use_responses_api: bool
     output_version: str
     extra_json: str
-    def __init__(self, base_url: _Optional[str] = ..., api_key: _Optional[str] = ..., model_name: _Optional[str] = ..., model_provider: _Optional[str] = ..., temperature: _Optional[float] = ..., max_tokens: _Optional[int] = ..., timeout: _Optional[int] = ..., max_retries: _Optional[int] = ..., use_responses_api: _Optional[bool] = ..., output_version: _Optional[str] = ..., extra_json: _Optional[str] = ...) -> None: ...
+    reasoning: ReasoningConfig
+    def __init__(self, base_url: _Optional[str] = ..., api_key: _Optional[str] = ..., model_name: _Optional[str] = ..., model_provider: _Optional[str] = ..., temperature: _Optional[float] = ..., max_tokens: _Optional[int] = ..., timeout: _Optional[int] = ..., max_retries: _Optional[int] = ..., use_responses_api: _Optional[bool] = ..., output_version: _Optional[str] = ..., extra_json: _Optional[str] = ..., reasoning: _Optional[_Union[ReasoningConfig, _Mapping]] = ...) -> None: ...
+
+class ReasoningConfig(_message.Message):
+    __slots__ = ("effort",)
+    EFFORT_FIELD_NUMBER: _ClassVar[int]
+    effort: str
+    def __init__(self, effort: _Optional[str] = ...) -> None: ...
 
 class MCPConnectionConfig(_message.Message):
     __slots__ = ("name", "type", "command", "args", "url", "headers")

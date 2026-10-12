@@ -59,6 +59,9 @@ def llm_config_from_proto(msg: pb.LLMConfig) -> LLMConfig:
         use_responses_api=bool(msg.use_responses_api),
         output_version=msg.output_version or "",
         extra_json=msg.extra_json or "",
+        reasoning_effort=(
+            msg.reasoning.effort if msg.HasField("reasoning") else ""
+        ),
     )
 
 

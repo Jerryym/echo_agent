@@ -9,7 +9,7 @@ import json
 from typing import Any
 
 from echo_agent.core.agent.agent_config import AgentConfig
-from echo_agent.core.llm.llm_config import LLMConfig
+from echo_agent.core.llm.llm_config import LLMConfig, ReasoningConfig
 from echo_agent.core.mcp.schema import MCPConnectionConfig
 from echo_agent.core.model.agent import AgentMode
 from echo_agent.core.model.input import Attachment, UserInput
@@ -33,6 +33,7 @@ def runtime_options_from_fields(
 
 
 _LLM_EXTRA_JSON_RESERVED = ("builtin_tools", "extra_body", "default_headers")
+_REASONING_EFFORTS = ("none", "low", "high", "max")
 
 
 def _parse_default_headers(raw: Any) -> dict[str, str]:
@@ -89,6 +90,7 @@ def llm_config_from_fields(
     use_responses_api: bool = False,
     output_version: str = "",
     extra_json: str = "",
+    reasoning_effort: str = "",
 ) -> LLMConfig:
     """
     由普通字段构建 LLMConfig。
@@ -120,6 +122,13 @@ def llm_config_from_fields(
         kwargs["max_retries"] = int(max_retries)
     if output_version:
         kwargs["output_version"] = output_version
+    effort = (reasoning_effort or "").strip()
+    if effort:
+        if effort not in _REASONING_EFFORTS:
+            raise ValueError(
+                "llm_config.reasoning.effort must be one of none, low, high, max"
+            )
+        kwargs["reasoning"] = ReasoningConfig(effort=effort)
 
     return LLMConfig(**kwargs)
 

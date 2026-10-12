@@ -107,6 +107,48 @@ def test_llm_config_temperature_zero_is_honored():
     assert config.llm_config.max_retries == 3
 
 
+def test_llm_config_reasoning_effort():
+    from echo_agent.core.llm.llm_config import ReasoningConfig
+    from echo_agent.adapter.grpc.convert_grpc import llm_config_from_proto
+
+    msg = pb.LLMConfig(
+        base_url="http://x",
+        api_key="k",
+        model_name="m",
+        reasoning=pb.ReasoningConfig(effort="high"),
+    )
+    config = llm_config_from_proto(msg)
+    assert config.reasoning == ReasoningConfig(effort="high")
+
+    unset = llm_config_from_proto(
+        pb.LLMConfig(base_url="http://x", api_key="k", model_name="m")
+    )
+    assert unset.reasoning is None
+
+    blank = llm_config_from_proto(
+        pb.LLMConfig(
+            base_url="http://x",
+            api_key="k",
+            model_name="m",
+            reasoning=pb.ReasoningConfig(effort=""),
+        )
+    )
+    assert blank.reasoning is None
+
+    try:
+        llm_config_from_proto(
+            pb.LLMConfig(
+                base_url="http://x",
+                api_key="k",
+                model_name="m",
+                reasoning=pb.ReasoningConfig(effort="medium"),
+            )
+        )
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "reasoning" in str(exc)
+
+
 def test_llm_config_invalid_extra_json_raises_value_error():
     from echo_agent.adapter.grpc.convert_grpc import llm_config_from_proto
 

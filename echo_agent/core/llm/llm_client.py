@@ -435,6 +435,7 @@ class LLMClient:
             "max_completion_tokens": self._config.max_tokens,
             "timeout": self._config.timeout,
             "max_retries": self._config.max_retries,
+            "reasoning_effort": self._config.reasoning.effort, # 推理思考强度
         }
         # extra_body
         if self._config.extra_body:

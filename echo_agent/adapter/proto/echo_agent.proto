@@ -99,6 +99,12 @@ message LLMConfig {
   string output_version = 10;
   // builtin_tools / extra_body / default_headers 等扩展，JSON 字符串
   string extra_json = 11;
+  ReasoningConfig reasoning = 12;
+}
+
+message ReasoningConfig {
+  // none | low | high | max；空表示未设置
+  string effort = 1;
 }
 
 message MCPConnectionConfig {
