@@ -143,11 +143,11 @@ class ReasonNode(Node):
                 return result
             
             if message.tool_calls:
-                feedback = self._execute_internal_tools(message, tools)
+                feedback = self._execute_workflow(message, tools)
                 history.extend(MessageAdapter.to_message(item) for item in feedback)
             else:
-                history.append(Message(role=Role.USER, content="Call an internal tool or submit_reason_result. Do not answer in plain text."))
-        raise RuntimeError("Reason internal model round budget exceeded")
+                history.append(Message(role=Role.USER, content="Call a workflow or submit_reason_result. Do not answer in plain text."))
+        raise RuntimeError("Reason workflow round budget exceeded")
 
     async def _ainvoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
         kwargs = self._prepare_invoke(state, runtime, observation_list)
@@ -177,43 +177,43 @@ class ReasonNode(Node):
                 return result
             
             if message.tool_calls:
-                feedback = await self._aexecute_internal_tools(message, tools)
+                feedback = await self._aexecute_workflow(message, tools)
                 history.extend(MessageAdapter.to_message(item) for item in feedback)
             else:
-                history.append(Message(role=Role.USER, content="Call an internal tool or submit_reason_result. Do not answer in plain text."))
-        raise RuntimeError("Reason internal model round budget exceeded")
+                history.append(Message(role=Role.USER, content="Call a workflow or submit_reason_result. Do not answer in plain text."))
+        raise RuntimeError("Reason workflow round budget exceeded")
 
-    def _execute_internal_tools(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
+    def _execute_workflow(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
         available = {tool.name: tool for tool in tools if tool.name != submit_reason_result.name}
         feedback: list[ToolMessage] = []
         for call in message.tool_calls:
             name, call_id = call["name"], call["id"]
             selected = available.get(name)
             if selected is None:
-                content = f"Unknown or unauthorized internal tool: {name}"
+                content = f"Unknown or unauthorized workflow: {name}"
             else:
                 try:
                     output = selected.invoke(call["args"])
                     content = self._format_internal_output(output)
                 except (Exception,) as exc:
-                    content = f"Internal tool error ({name}): {type(exc).__name__}: {exc}"
+                    content = f"Workflow error ({name}): {type(exc).__name__}: {exc}"
             feedback.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
         return feedback
 
-    async def _aexecute_internal_tools(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
+    async def _aexecute_workflow(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
         available = {tool.name: tool for tool in tools if tool.name != submit_reason_result.name}
         feedback: list[ToolMessage] = []
         for call in message.tool_calls:
             name, call_id = call["name"], call["id"]
             selected = available.get(name)
             if selected is None:
-                content = f"Unknown or unauthorized internal tool: {name}"
+                content = f"Unknown or unauthorized workflow: {name}"
             else:
                 try:
                     output = await selected.ainvoke(call["args"])
                     content = self._format_internal_output(output)
                 except (Exception,) as exc:
-                    content = f"Internal tool error ({name}): {type(exc).__name__}: {exc}"
+                    content = f"Workflow error ({name}): {type(exc).__name__}: {exc}"
             feedback.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
         return feedback
 
@@ -363,26 +363,26 @@ class ReasonNode(Node):
         return "action"
 
     def _resolve_tools(self) -> list[BaseTool]:
-        internal_tools = self._resolve_internal_tools()
-        if any(tool.name == submit_reason_result.name for tool in internal_tools):
+        workflows = self._resolve_workflow()
+        if any(tool.name == submit_reason_result.name for tool in workflows):
             raise ValueError(f"Reserved tool name: {submit_reason_result.name}")
 
         return [
-            *internal_tools,
+            *workflows,
             submit_reason_result,
         ]
 
-    def _resolve_internal_tools(self) -> list[BaseTool]:
+    def _resolve_workflow(self) -> list[BaseTool]:
         runtime_config = RuntimeConfig.get_runtime_config()
         tool_registry = Application.get_application().get_agent(runtime_config.agent_id).tool_registry
 
-        # 获取所有内部工具定义
-        definitions = tool_registry.list_definitions(tool_types={ToolType.INTERNAL})
+        # 获取所有工作流工具定义
+        definitions = tool_registry.list_definitions(tool_types={ToolType.WORKFLOW})
         # 根据当前 AgentMode 和 Tool Annotations 过滤授权工具
         authorized_tools = self._tool_gateway.filter(
             definitions,
             runtime_config.agent_mode,
-            tool_types={ToolType.INTERNAL},
+            tool_types={ToolType.WORKFLOW},
         )
 
         handlers: list[BaseTool] = []

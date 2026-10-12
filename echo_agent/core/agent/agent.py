@@ -465,7 +465,7 @@ class Agent:
         load_skill = create_load_skill_tool(self._skill_manager)
         read_skill = create_read_skill_resource_tool(self._skill_manager)
         # knowledge_base_query = create_knowledge_base_query_tool()
-        self._tool_registry.register(to_tool_definition(tool_artifact_analyse, tool_type=ToolType.INTERNAL), tool_artifact_analyse)
+        self._tool_registry.register(to_tool_definition(tool_artifact_analyse, tool_type=ToolType.WORKFLOW), tool_artifact_analyse)
         self._tool_registry.register(to_tool_definition(load_skill), load_skill)
         self._tool_registry.register(to_tool_definition(read_skill), read_skill)
         # self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)

@@ -9,7 +9,7 @@ class ToolType(str, Enum):
     工具类型
     """
     FUNCTION = "function"
-    INTERNAL = "internal"
+    WORKFLOW = "workflow"
     HTTP = "http"
     MCP = "mcp"
 
