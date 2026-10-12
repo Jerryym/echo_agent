@@ -189,17 +189,19 @@ class ReasonNode(Node):
         runtime: Runtime[ReActContext],
         before_model: Any,
     ) -> ReasonStructuredOutput:
-        """生成并校验一轮结构化推理结果。"""
+        """生成并校验一轮结构化推理结果"""
         response = self._llm_client.invoke_structured(
             schema=ReasonStructuredOutput,
             **kwargs,
             before_model=before_model,
         )
-        update_agent_result(runtime.context, response.text, response.token_usage)
         try:
-            return ReasonStructuredOutput.model_validate(response.structured)
+            result = ReasonStructuredOutput.model_validate(response.structured)
         except ValidationError as exc:
             raise ValueError("Invalid structured reason result.") from exc
+        # 结构化输出的text可能为空，使用thought记录本轮推理内容。
+        update_agent_result(runtime.context, result.thought, response.token_usage)
+        return result
 
     async def _ainvoke_reason_result(self, kwargs: dict[str, Any], runtime: Runtime[ReActContext], abefore_model: Any) -> ReasonStructuredOutput:
         """异步生成并校验一轮结构化推理结果"""
@@ -208,11 +210,13 @@ class ReasonNode(Node):
             **kwargs,
             abefore_model=abefore_model,
         )
-        update_agent_result(runtime.context, response.text, response.token_usage)
         try:
-            return ReasonStructuredOutput.model_validate(response.structured)
+            result = ReasonStructuredOutput.model_validate(response.structured)
         except ValidationError as exc:
             raise ValueError("Invalid structured reason result.") from exc
+        # 结构化输出的text可能为空，使用thought记录本轮推理内容。
+        update_agent_result(runtime.context, result.thought, response.token_usage)
+        return result
 
     def _invoke_workflow(
         self,
