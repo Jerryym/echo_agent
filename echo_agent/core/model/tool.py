@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from pydantic import BaseModel, Field
-from typing import Any
+from pydantic import BaseModel, Field, model_validator
+from typing import Any, Literal, Self
 
 
 class ToolCall(BaseModel):
@@ -36,22 +36,60 @@ class ToolResult(BaseModel):
     result: Any = None
     error: str | None = None
     tool_call_id: str
+    
 
-
-class ToolArtifact(BaseModel):
+class ToolResultItem(BaseModel):
     """
-    Tool artifact.
+    工具执行结果项
 
     Args:
         tool_call_id: 工具调用ID, 同对应ToolCall的tool_call_id
-        path: 文件路径
-        size: 文件大小
-        media_type: 文件类型
+        name: 工具名称
+        success: 工具执行是否成功
+        error: 工具执行错误信息, 当success为False时有效
+        storage: 工具执行结果存储方式, 可选值为"memory"或"file"
+        result: 工具执行结果, 当storage为"memory"时有效
+        path: 工具执行结果文件路径, 当storage为"file"时有效
     """
     tool_call_id: str
-    path: Path
-    size: int
-    media_type: str
+    name: str
+    success: bool
+    error: str | None = None
+
+    storage: Literal["memory", "file"]
+    result: Any = None
+    path: Path | None = None
+
+    @model_validator(mode="after")
+    def validate_storage(self) -> Self:
+        if self.storage == "memory":
+            if self.path is not None:
+                raise ValueError("Memory storage cannot have a path")
+        else:
+            if self.path is None:
+                raise ValueError("File storage requires a path")
+            if self.result is not None:
+                raise ValueError("File storage cannot contain inline result")
+
+        return self
+
+
+class ToolResultChunk(BaseModel):
+    """工具结果内容块"""
+    content: str = Field(
+        description="Content read from the tool result."
+    )
+    offset: int = Field(
+        ge=0,
+        description="Logical byte offset at which this chunk starts."
+    )
+    next_offset: int = Field(
+        ge=0,
+        description="Logical byte offset immediately after this chunk."
+    )
+    eof: bool = Field(
+        description="Whether this chunk reaches the end of the result."
+    )
 
 
 class ToolState(BaseModel):
@@ -63,4 +101,4 @@ class ToolState(BaseModel):
         tool_results: 工具执行结果列表
     """
     tool_calls: list[ToolCall] = Field(default_factory=list)
-    tool_results: list[ToolResult] = Field(default_factory=list)
+    tool_results: list[ToolResultItem] = Field(default_factory=list)

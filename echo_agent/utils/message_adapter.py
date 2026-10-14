@@ -25,10 +25,14 @@ class MessageAdapter:
         if message.role == Role.ASSISTANT:
             return AIMessage(content=message.content, tool_calls=ToolAdapter.to_langchain_tool_calls(message.tool_calls))
         if message.role == Role.TOOL:
-            if message.tool_call_id:
-                return ToolMessage(content=message.content, tool_call_id=message.tool_call_id)
-            else:
-                raise ValueError(f"Tool message '{message.content}' has no tool call ID.")
+            if message.tool_call_id is None:
+                raise ValueError("Tool message requires tool_call_id")
+            return ToolMessage(
+                content=message.content, 
+                tool_call_id=message.tool_call_id,
+                status=message.status or "success",
+                artifact=message.artifact,
+                )
         raise NotImplementedError(f"Role '{message.role.value}' is not supported yet.")
 
     @staticmethod
@@ -42,9 +46,7 @@ class MessageAdapter:
 
     @staticmethod
     def to_human_message(user_input: UserInput) -> HumanMessage:
-        """
-        转换为HumanMessage
-        """
+        """转换为HumanMessage"""
         # 无附件
         if not user_input.attachments:
             return HumanMessage(content=user_input.text)
@@ -109,12 +111,16 @@ class MessageAdapter:
                 tool_calls=ToolAdapter.to_model_tool_calls(message.tool_calls)
                 )
         if isinstance(message, ToolMessage):
-            return Message(role=Role.TOOL, content=message.content, tool_call_id=message.tool_call_id)
-        raise NotImplementedError(f"Message '{message}' is not supported yet.")
+            return Message(
+                role=Role.TOOL,
+                content=message.content,
+                tool_call_id=message.tool_call_id,
+                status=message.status,
+                artifact=message.artifact,
+            )
+        raise NotImplementedError(f"Message type '{type(message).__name__}' is not supported.")
 
     @staticmethod
     def to_messages(messages: list[BaseMessage]) -> list[Message]:
-        """
-        转换为消息列表
-        """
+        """转换为消息列表"""
         return [MessageAdapter.to_message(message) for message in messages]

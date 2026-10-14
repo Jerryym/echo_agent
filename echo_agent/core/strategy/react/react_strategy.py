@@ -5,6 +5,7 @@ from ....utils import MessageAdapter
 from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE, GraphSchema
 from ...llm import LLMConfig
 from ...model.input import UserInput
+from ...model.message import Role, append_messages
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
@@ -133,9 +134,21 @@ class ReActStrategy(BaseStrategy):
         """
         将 Strategy Output 映射为 Parent State 更新内容
         """
+        # 获取本轮工具调用结果
+        tool_messages = [
+            message
+            for message in output.trajectory
+            if message.role == Role.TOOL or message.tool_calls
+        ]
+
+        # 追加本轮工具调用结果
+        conversation = output.conversation.model_copy(deep=True)
+        if tool_messages:
+            conversation.messages = append_messages(conversation.messages, tool_messages)
+        
         return {
             "response": output.response,
-            "conversation": output.conversation,
+            "conversation": conversation,
         }
 
 

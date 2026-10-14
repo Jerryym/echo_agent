@@ -6,7 +6,8 @@ from .....prompt import PromptLoader
 from .....utils import update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model.message import Message, Role
+from ....model.conversation import ConversationState
+from ....model.message import Message, Role, append_messages
 from ....runtime.runtime_config import RuntimeConfig
 from ..schema import ReActContext, ReActState, build_react_history
 

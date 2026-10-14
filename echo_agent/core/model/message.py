@@ -1,9 +1,9 @@
 from enum import Enum
-from typing import Any
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
-from .tool import ToolArtifact, ToolCall
+from .tool import ToolCall
 
 
 class Role(Enum):
@@ -25,22 +25,34 @@ class Message(BaseModel):
         content: 消息内容
         tool_call_id: 工具调用ID
         tool_calls: 工具调用列表
-        artifacts: 工具调用结果
+        status: 工具消息执行状态
+        artifact: 工具消息附加数据
     """
     role: Role
     content: str | list[str | dict[str, Any]] = Field(default="")
+
     tool_call_id: str | None = None
     tool_calls: list[ToolCall] = Field(default_factory=list)
-    artifact: ToolArtifact | None = Field(default=None, exclude=True)
+
+    status: Literal["success", "error"] | None = None
+    artifact: Any | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
-    def validate_message(self):
-        if self.role == Role.TOOL and not self.tool_call_id:
-            raise ValueError("Tool message requires tool_call_id")
+    def validate_message(self) -> Self:
+        if self.role == Role.TOOL:
+            if not self.tool_call_id:
+                raise ValueError("Tool message requires tool_call_id")
+        else:
+            if self.tool_call_id is not None:
+                raise ValueError("Only tool messages may contain tool_call_id")
+            if self.status is not None:
+                raise ValueError("Only tool messages may contain status")
+            if self.artifact is not None:
+                raise ValueError("Only tool messages may contain artifact")
+
         if self.tool_calls and self.role != Role.ASSISTANT:
             raise ValueError("Only assistant messages may contain tool calls")
-        if self.tool_call_id and self.role != Role.TOOL:
-            raise ValueError("Only tool messages may contain tool_call_id")
+
         return self
 
 

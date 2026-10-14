@@ -2,8 +2,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from ...model.tool import ToolArtifact, ToolResult
-from ...tool.utils import format_tool_content
+from ...model.tool import ToolResultItem
 
 
 class Observation(BaseModel):
@@ -13,47 +12,40 @@ class Observation(BaseModel):
     参数：
         source：来源
         content：内容
-        artifact：工具结果
         metadata：元数据
     """
     source: str
     content: str
-    artifact: ToolArtifact | None = None
     metadata: dict[str, Any]
 
 
 class ObservationBuilder:
     """
-    ObservationBuilder 是用于构建 Observation 的类
+    ObservationBuilder: Observation构建器
     """
     @staticmethod
-    def build(tool_result: ToolResult, artifact: ToolArtifact | None = None) -> Observation:
-        if not tool_result.success:
+    def build(result_item: ToolResultItem) -> Observation:
+        if not result_item.success:
             content = (
-                f"Tool {tool_result.name} failed: "
-                f"{tool_result.error or 'unknown error'}"
+                f"Tool {result_item.name} failed: "
+                f"{result_item.error or 'unknown error'}"
             )
-            artifact = None
-        elif artifact is not None:
-            if artifact.tool_call_id != tool_result.tool_call_id:
-                raise ValueError("Artifact tool_call_id does not match ToolResult")
-            
+        elif result_item.storage == "file":
             content = (
-                f"Tool {tool_result.name} succeeded. "
-                "The result was stored as a tool artifact. "
-                f"Use tool_call_id '{artifact.tool_call_id}' "
+                f"Tool {result_item.name} succeeded. "
+                "The complete result was stored externally. "
+                f"Use tool_call_id '{result_item.tool_call_id}' "
                 "to access or analyse it."
             )
         else:
-            content = f"Tool {tool_result.name} succeeded."
+            content = f"Tool {result_item.name} succeeded."
 
         return Observation(
-            source=tool_result.name,
+            source=result_item.name,
             content=content,
-            artifact=artifact,
             metadata={
-                "tool_call_id": tool_result.tool_call_id,
-                "success": tool_result.success,
+                "tool_call_id": result_item.tool_call_id,
+                "success": result_item.success,
             },
         )
 

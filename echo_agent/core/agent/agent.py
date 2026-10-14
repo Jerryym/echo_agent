@@ -8,7 +8,7 @@ from langgraph.types import Command
 from ...common import get_logger
 from ...common.network import HttpRequest
 from ..capability.skill import SkillManager
-from ..capability.workflow.tool_artifact import create_tool_artifact_analyse_workflow
+from ..capability.workflow.tool_result import create_tool_result_analyse_workflow
 from ..graph import (
     BaseContext,
     BaseInput,
@@ -38,7 +38,7 @@ from ..tool.toolkit import (
     create_read_xls_tool,
     create_read_xlsx_tool,
     create_search_files_tool,
-    create_trigger_tool_artifact_analyse_tool,
+    create_trigger_tool_result_analyse_tool,
     create_write_file_tool,
     create_write_xls_tool,
     create_write_xlsx_tool,
@@ -459,13 +459,13 @@ class Agent:
     def _register_capability_tools(self) -> None:
         """注册能力工具"""
         llm_client = LLMClient(self._agent_config.llm_config)
-        workflow = create_tool_artifact_analyse_workflow(llm_client)
-        tool_artifact_analyse = (create_trigger_tool_artifact_analyse_tool(workflow))
+        workflow = create_tool_result_analyse_workflow(llm_client)
+        tool_result_analyse = (create_trigger_tool_result_analyse_tool(workflow))
 
         load_skill = create_load_skill_tool(self._skill_manager)
         read_skill = create_read_skill_resource_tool(self._skill_manager)
         # knowledge_base_query = create_knowledge_base_query_tool()
-        self._tool_registry.register(to_tool_definition(tool_artifact_analyse, tool_type=ToolType.WORKFLOW), tool_artifact_analyse)
+        self._tool_registry.register(to_tool_definition(tool_result_analyse, tool_type=ToolType.WORKFLOW), tool_result_analyse)
         self._tool_registry.register(to_tool_definition(load_skill), load_skill)
         self._tool_registry.register(to_tool_definition(read_skill), read_skill)
         # self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)

@@ -227,11 +227,7 @@ class LLMClient:
             )
             
             structured_messages = self._with_structured_output_instruction(messages)
-            try: # 使用 LangChain 原生结构化输出
-                return self._with_structured_output(schema, structured_messages, config)
-            except Exception as native_error: # 回退到结构化输出工具
-                logger.warning("native structured output failed, fallback to tool: %s", native_error)
-                return self._invoke_with_structured_tool(schema, structured_messages, config)
+            return self._invoke_structured_with_fallback(schema, structured_messages, config)
         except LLMException:
             raise
         except Exception as e:
@@ -289,15 +285,11 @@ class LLMClient:
             )
 
             structured_messages = self._with_structured_output_instruction(messages)
-            try: # 使用 LangChain 原生结构化输出
-                return await self._awith_structured_output(schema, structured_messages, config)
-            except Exception as native_error: # 回退到结构化输出工具
-                logger.warning("native structured output failed, fallback to tool: %s", native_error)
-                return await self._ainvoke_with_structured_tool(schema, structured_messages, config)
+            return await self._ainvoke_structured_with_fallback(schema, structured_messages, config)
         except LLMException:
             raise
         except Exception as e:
-            raise LLMInvokeError(message="LLM stream invoke failed", detail=str(e))
+            raise LLMInvokeError(message="LLM structured invoke failed", detail=str(e))
 
     def stream(
         self, prompt: str, 
@@ -649,6 +641,50 @@ class LLMClient:
         except Exception as e:
             raise LLMResponseDecodeError(message="parse llm response failed", detail=str(e))
 
+    def _invoke_structured_with_fallback(
+        self,
+        schema: StructuredOutputSchema,
+        messages: list[BaseMessage],
+        config: RunnableConfig | None,
+    ) -> LLMResult:
+        """原生结构化输出（含一次解析重试）失败后，再走工具回退。"""
+        try:
+            return self._with_structured_output(schema, messages, config)
+        except Exception as native_error:
+            logger.warning("native structured output failed, fallback to tool: %s", native_error)
+        try:
+            return self._invoke_with_structured_tool(schema, messages, config)
+        except LLMResponseDecodeError as tool_error:
+            raise LLMInvokeError(message="LLM structured invoke failed", detail=str(tool_error)) from tool_error
+
+    async def _ainvoke_structured_with_fallback(
+        self,
+        schema: StructuredOutputSchema,
+        messages: list[BaseMessage],
+        config: RunnableConfig | None,
+    ) -> LLMResult:
+        """原生结构化输出（含一次解析重试）失败后，再走工具回退。"""
+        try:
+            return await self._awith_structured_output(schema, messages, config)
+        except Exception as native_error:
+            logger.warning("native structured output failed, fallback to tool: %s", native_error)
+        try:
+            return await self._ainvoke_with_structured_tool(schema, messages, config)
+        except LLMResponseDecodeError as tool_error:
+            raise LLMInvokeError(message="LLM structured invoke failed", detail=str(tool_error)) from tool_error
+
+    def _structured_retry_messages(self, messages: list[BaseMessage]) -> list[BaseMessage]:
+        """解析失败后追加的纠错消息。"""
+        return [
+            *messages,
+            HumanMessage(
+                content=(
+                    "The structured result was invalid. Regenerate the result "
+                    "and strictly follow the provided schema."
+                )
+            ),
+        ]
+
     def _with_structured_output(self, schema: StructuredOutputSchema, messages: list[BaseMessage], config: RunnableConfig | None = None) -> LLMResult:
         """使用 LangChain 原生结构化输出（json_schema）"""
         model_with_structured = self._model.with_structured_output(
@@ -664,17 +700,11 @@ class LLMClient:
         except LLMResponseDecodeError as error:
             logger.warning("native structured output parsing failed, retry generation: %s", error)
 
-        # 解析失败重试
-        retry_messages = [
-            *messages,
-            HumanMessage(
-                content=(
-                    "The structured result was invalid. Regenerate the result "
-                    "and strictly follow the provided schema."
-                )
-            ),
-        ]
-        result = model_with_structured.invoke(retry_messages, config=config)
+        # 解析失败重试；仍失败则抛给外层，再回退到结构化输出工具
+        result = model_with_structured.invoke(
+            self._structured_retry_messages(messages),
+            config=config,
+        )
         return self._require_structured_output(schema, result)
 
     async def _awith_structured_output(self, schema: StructuredOutputSchema, messages: list[BaseMessage], config: RunnableConfig | None = None) -> LLMResult:
@@ -692,17 +722,11 @@ class LLMClient:
         except LLMResponseDecodeError as error:
             logger.warning("native structured output parsing failed, retry generation: %s", error)
 
-        # 解析失败重试
-        retry_messages = [
-            *messages,
-            HumanMessage(
-                content=(
-                    "The structured result was invalid. Regenerate the result "
-                    "and strictly follow the provided schema."
-                )
-            ),
-        ]
-        result = await model_with_structured.ainvoke(retry_messages, config=config)
+        # 解析失败重试；仍失败则抛给外层，再回退到结构化输出工具
+        result = await model_with_structured.ainvoke(
+            self._structured_retry_messages(messages),
+            config=config,
+        )
         return self._require_structured_output(schema, result)
 
     def _require_structured_output(self, schema: StructuredOutputSchema, result: Any) -> LLMResult:

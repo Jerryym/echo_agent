@@ -13,6 +13,7 @@ from .....utils import MessageAdapter, update_agent_result
 from ....app import Application
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
+from ....capability.workflow.tool_result.schema import ToolResultAnalyseResult
 from ....model.message import Message, Role
 from ....model.tool import ToolState
 from ....runtime.runtime_config import RuntimeConfig
@@ -66,7 +67,7 @@ class ReasonNode(Node):
                 "tool_list": [],
             })
         try:
-            result = self._invoke_loop(state, runtime, observation_list)
+            result, workflow_messages = self._invoke_loop(state, runtime, observation_list)
         except RuntimeError as exc:
             logger.warning("reason loop failed: %s", exc)
             return self._router(state, runtime.context, {
@@ -75,7 +76,7 @@ class ReasonNode(Node):
                 "tool_list": [],
             })
         logger.info("result=%r", result)
-        return self._handle_result(result, state, runtime.context, observation_list)
+        return self._handle_result(result, state, runtime.context, observation_list, workflow_messages)
 
     async def arun(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
@@ -94,7 +95,7 @@ class ReasonNode(Node):
                 "tool_list": [],
             })
         try:
-            result = await self._ainvoke_loop(state, runtime, observation_list)
+            result, workflow_messages = await self._ainvoke_loop(state, runtime, observation_list)
         except RuntimeError as exc:
             logger.warning("reason loop failed: %s", exc)
             return self._router(state, runtime.context, {
@@ -103,13 +104,14 @@ class ReasonNode(Node):
                 "tool_list": [],
             })
         logger.info("result=%r", result)
-        return self._handle_result(result, state, runtime.context, observation_list)
+        return self._handle_result(result, state, runtime.context, observation_list, workflow_messages)
 
-    def _invoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
+    def _invoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> tuple[ReasonStructuredOutput, list[Message]]:
         kwargs = self._prepare_invoke(state, runtime, observation_list)
         workflows = self._resolve_workflow()
         self._append_workflow_information(kwargs, workflows)
         history: list[Message] = list(kwargs["history"])
+        workflow_messages: list[Message] = []
         runtime_config = RuntimeConfig.get_runtime_config()
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
 
@@ -128,7 +130,7 @@ class ReasonNode(Node):
                 continue
 
             if not result.continue_reasoning:
-                return result
+                return result, workflow_messages
 
             # 保存当前结构化结果，作为内部Workflow选择与下一轮推理的依据。
             history.append(self._to_reason_message(result))
@@ -137,18 +139,20 @@ class ReasonNode(Node):
                 workflows,
                 kwargs,
                 history,
+                workflow_messages,
                 runtime,
                 session.before_model,
             )
 
         # 正常循环预算耗尽后只生成结构化结果，不再执行内部Workflow。
-        return self._finalize_result(kwargs, history, runtime, session.before_model)
+        return self._finalize_result(kwargs, history, runtime, session.before_model), workflow_messages
 
-    async def _ainvoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
+    async def _ainvoke_loop(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> tuple[ReasonStructuredOutput, list[Message]]:
         kwargs = self._prepare_invoke(state, runtime, observation_list)
         workflows = self._resolve_workflow()
         self._append_workflow_information(kwargs, workflows)
         history: list[Message] = list(kwargs["history"])
+        workflow_messages: list[Message] = []
         runtime_config = RuntimeConfig.get_runtime_config()
         session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
 
@@ -167,7 +171,7 @@ class ReasonNode(Node):
                 continue
 
             if not result.continue_reasoning:
-                return result
+                return result, workflow_messages
 
             # 保存当前结构化结果，作为内部Workflow选择与下一轮推理的依据。
             history.append(self._to_reason_message(result))
@@ -176,12 +180,13 @@ class ReasonNode(Node):
                 workflows,
                 kwargs,
                 history,
+                workflow_messages,
                 runtime,
                 session.abefore_model,
             )
 
         # 正常循环预算耗尽后只生成结构化结果，不再执行内部Workflow。
-        return await self._afinalize_result(kwargs, history, runtime, session.abefore_model)
+        return await self._afinalize_result(kwargs, history, runtime, session.abefore_model), workflow_messages
 
     def _invoke_reason_result(
         self,
@@ -224,6 +229,7 @@ class ReasonNode(Node):
         workflows: list[BaseTool],
         kwargs: dict[str, Any],
         history: list[Message],
+        workflow_messages: list[Message],
         runtime: Runtime[ReActContext],
         before_model: Any,
     ) -> None:
@@ -240,7 +246,7 @@ class ReasonNode(Node):
             conversation=kwargs["conversation"],
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
-        self._handle_workflow_response(response.raw, workflows, history)
+        self._handle_workflow_response(response.raw, workflows, history, workflow_messages)
 
     async def _ainvoke_workflow(
         self,
@@ -248,6 +254,7 @@ class ReasonNode(Node):
         workflows: list[BaseTool],
         kwargs: dict[str, Any],
         history: list[Message],
+        workflow_messages: list[Message],
         runtime: Runtime[ReActContext],
         abefore_model: Any,
     ) -> None:
@@ -264,9 +271,9 @@ class ReasonNode(Node):
             conversation=kwargs["conversation"],
         )
         update_agent_result(runtime.context, response.text, response.token_usage)
-        await self._ahandle_workflow_response(response.raw, workflows, history)
+        await self._ahandle_workflow_response(response.raw, workflows, history, workflow_messages)
 
-    def _handle_workflow_response(self, message: Any, workflows: list[BaseTool], history: list[Message]) -> None:
+    def _handle_workflow_response(self, message: Any, workflows: list[BaseTool], history: list[Message], workflow_messages: list[Message]) -> None:
         """处理Workflow选择结果"""
         if not isinstance(message, AIMessage):
             self._append_reason_feedback(history, "Workflow selection must return an AIMessage.")
@@ -280,10 +287,10 @@ class ReasonNode(Node):
             self._append_reason_feedback(history, "continue_reasoning=true requires at least one Workflow call.")
             return
 
-        feedback = self._execute_workflow(message, workflows)
+        feedback = self._execute_workflow(message, workflows, workflow_messages)
         history.extend(MessageAdapter.to_message(item) for item in feedback)
 
-    async def _ahandle_workflow_response(self, message: Any, workflows: list[BaseTool], history: list[Message]) -> None:
+    async def _ahandle_workflow_response(self, message: Any, workflows: list[BaseTool], history: list[Message], workflow_messages: list[Message]) -> None:
         """异步处理Workflow选择结果"""
         if not isinstance(message, AIMessage):
             self._append_reason_feedback(history, "Workflow selection must return an AIMessage.")
@@ -297,7 +304,7 @@ class ReasonNode(Node):
             self._append_reason_feedback(history, "continue_reasoning=true requires at least one Workflow call.")
             return
 
-        feedback = await self._aexecute_workflow(message, workflows)
+        feedback = await self._aexecute_workflow(message, workflows, workflow_messages)
         history.extend(MessageAdapter.to_message(item) for item in feedback)
 
     def _reject_tool_calls(self, message: AIMessage, history: list[Message], error: str) -> None:
@@ -310,7 +317,7 @@ class ReasonNode(Node):
             )))
         self._append_reason_feedback(history, error)
 
-    def _execute_workflow(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
+    def _execute_workflow(self, message: AIMessage, tools: list[BaseTool], workflow_messages: list[Message]) -> list[ToolMessage]:
         available = {tool.name: tool for tool in tools}
         feedback: list[ToolMessage] = []
         for call in message.tool_calls:
@@ -322,12 +329,13 @@ class ReasonNode(Node):
                 try:
                     output = selected.invoke(call["args"])
                     content = self._format_internal_output(output)
+                    self._record_analyse_result(name, call_id, output, workflow_messages)
                 except (Exception,) as exc:
                     content = f"Workflow error ({name}): {type(exc).__name__}: {exc}"
             feedback.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
         return feedback
 
-    async def _aexecute_workflow(self, message: AIMessage, tools: list[BaseTool]) -> list[ToolMessage]:
+    async def _aexecute_workflow(self, message: AIMessage, tools: list[BaseTool], workflow_messages: list[Message]) -> list[ToolMessage]:
         available = {tool.name: tool for tool in tools}
         feedback: list[ToolMessage] = []
         for call in message.tool_calls:
@@ -339,10 +347,30 @@ class ReasonNode(Node):
                 try:
                     output = await selected.ainvoke(call["args"])
                     content = self._format_internal_output(output)
+                    self._record_analyse_result(name, call_id, output, workflow_messages)
                 except (Exception,) as exc:
                     content = f"Workflow error ({name}): {type(exc).__name__}: {exc}"
             feedback.append(ToolMessage(content=content, tool_call_id=call_id, name=name))
         return feedback
+
+    @staticmethod
+    def _record_analyse_result(name: str, tool_call_id: str, output: Any, workflow_messages: list[Message]) -> None:
+        """一次分析结果只保留最终 content，供主图会话使用"""
+        if name != "trigger_tool_result_analyse":
+            return
+        try:
+            result = ToolResultAnalyseResult.model_validate(output)
+        except ValidationError:
+            return
+        content = result.content.strip()
+        if not content:
+            return
+        workflow_messages.append(Message(
+            role=Role.TOOL,
+            content=content,
+            tool_call_id=tool_call_id,
+            status="success",
+        ))
 
     def _validate_reason_result(self, result: ReasonStructuredOutput, workflows: list[BaseTool]) -> None:
         """校验结构化结果与ReasonNode内部状态是否一致"""
@@ -476,18 +504,16 @@ class ReasonNode(Node):
         else:
             content = json.dumps(output, ensure_ascii=False, default=str)
         if len(content) > self.MAX_TOOL_MESSAGE_CHARS:
-            return content[:self.MAX_TOOL_MESSAGE_CHARS] + "\n[Output truncated; use artifact workflow for large results.]"
+            return content[:self.MAX_TOOL_MESSAGE_CHARS] + "\n[Output truncated; use tool result workflow for large results.]"
         return content
 
     def _build_observations(self, state: ReActState, context: ReActContext) -> list[Observation]:
-        """
-        构建Observation
-        """
+        """构建Observation"""
         observations = []
 
         if state.task_status == "in_progress":
-            for tool_result in state.tool_state.tool_results:
-                observation = ObservationBuilder.build(tool_result, context.tool_artifacts.get(tool_result.tool_call_id))
+            for result_item in state.tool_state.tool_results:
+                observation = ObservationBuilder.build(result_item)
                 observations.append(observation)
         elif state.task_status == "invalid_tools": # 非法工具
             invalid_tools = [tool.name for tool in state.tool_state.tool_calls]
@@ -551,7 +577,7 @@ class ReasonNode(Node):
             "observations": observation_list, # 本次ReAct Loop完整的观察结果
         }
 
-    def _handle_result(self, response: ReasonStructuredOutput, state: ReActState, context: ReActContext | None, observation_list: list[Observation]) -> Command:
+    def _handle_result(self, response: ReasonStructuredOutput, state: ReActState, context: ReActContext | None, observation_list: list[Observation], workflow_messages: list[Message]) -> Command:
         """
         处理Reason结果
         """
@@ -561,6 +587,9 @@ class ReasonNode(Node):
             "observations": observation_list, # 更新observations
             "tool_list": response.tool_list,
         }
+        # 添加工作流执行结果
+        if workflow_messages:
+            result["trajectory"] = workflow_messages
 
         # 非法工具时，清空工具状态
         if state.task_status == "invalid_tools":

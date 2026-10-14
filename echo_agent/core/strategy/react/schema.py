@@ -77,8 +77,10 @@ class ReActOutput(BaseOutput):
 
     参数:
         response: 响应
+        trajectory: 轨迹列表
     """
     response: str
+    trajectory: list[Message] = Field(default_factory=list)
 
 
 class ReActContext(BaseContext):
