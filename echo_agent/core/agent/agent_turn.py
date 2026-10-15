@@ -3,6 +3,7 @@ from enum import Enum
 from ..graph import BaseInput
 from ..model.agent import AgentResult
 from ..model.input import UserInput
+from ..model.workflow import WorkflowTask
 
 
 class TurnStatus(str, Enum):
@@ -26,6 +27,8 @@ class AgentTurn:
         self._input = input
         self._result = result
         self._status = TurnStatus.RUNNING
+        self._workflow_tasks: dict[str, WorkflowTask] = {}
+
         self._pre_checkpoint_id: str | None = None
         self._latest_checkpoint_id: str | None = None
         self._error: str | None = None
@@ -49,6 +52,10 @@ class AgentTurn:
     @status.setter
     def status(self, value: TurnStatus) -> None:
         self._status = value
+
+    @property
+    def workflow_tasks(self) -> dict[str, WorkflowTask]:
+        return self._workflow_tasks
 
     @property
     def tool_names(self) -> list[str]:

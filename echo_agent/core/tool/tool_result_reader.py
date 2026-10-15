@@ -7,12 +7,12 @@ from ..model.tool import ToolResult, ToolResultChunk
 
 class ToolResultReader:
     """
-    工具结果内容读取器: 按需生成工具结果内容块，支持大文本或结构化数据的分块读取。
+    工具结果内容读取器: 按需生成工具结果内容块，支持大文本或结构化数据的分块读取
     """
     # 默认字节块大小
     DEFAULT_CHUNK_SIZE = 16 * 1024
 
-    def read(self, result: ToolResult, chunk_size: int = DEFAULT_CHUNK_SIZE) -> Iterator[ToolResultChunk]:
+    def read(self, result: ToolResult, chunk_size: int = DEFAULT_CHUNK_SIZE, offset: int = 0) -> Iterator[ToolResultChunk]:
         """按需生成工具结果内容块"""
         if chunk_size < 4:
             raise ValueError("chunk_size must be at least 4 UTF-8 bytes")
@@ -20,6 +20,8 @@ class ToolResultReader:
         contents = self._iter_chunk_contents(result.result, chunk_size)
         current = next(contents, None)
         if current is None:
+            if offset != 0:
+                raise ValueError(f"Invalid offset {offset}: result is empty")
             yield ToolResultChunk(
                 content="",
                 offset=0,
@@ -28,26 +30,52 @@ class ToolResultReader:
             )
             return
 
-        offset = 0
+        current_offset = 0
         # 预读下一块，以准确确定当前块是否为 EOF
         for following in contents:
-            next_offset = offset + len(current.encode("utf-8"))
-            yield ToolResultChunk(
-                content=current,
-                offset=offset,
-                next_offset=next_offset,
-                eof=False,
-            )
+            next_offset = current_offset + len(current.encode("utf-8"))
 
-            offset = next_offset
+            # offset 必须落在有效的 Chunk 边界上
+            if current_offset < offset < next_offset:
+                raise ValueError(f"Invalid offset {offset}: not on a chunk boundary")
+
+            if current_offset >= offset:
+                yield ToolResultChunk(
+                    content=current,
+                    offset=current_offset,
+                    next_offset=next_offset,
+                    eof=False,
+                )
+            current_offset = next_offset
             current = following
 
-        next_offset = offset + len(current.encode("utf-8"))
-        yield ToolResultChunk(
-            content=current,
-            offset=offset,
-            next_offset=next_offset,
-            eof=True,
+        # 处理最后一个 Chunk
+        next_offset = current_offset + len(current.encode("utf-8"))
+        if current_offset < offset < next_offset:
+            raise ValueError(f"Invalid offset {offset}: not on a chunk boundary")
+
+        if current_offset >= offset:
+            yield ToolResultChunk(
+                content=current,
+                offset=current_offset,
+                next_offset=next_offset,
+                eof=True,
+            )
+            return
+
+        if offset == next_offset:
+            # 已处于 EOF，返回空结束块
+            yield ToolResultChunk(
+                content="",
+                offset=offset,
+                next_offset=offset,
+                eof=True,
+            )
+            return
+
+        raise ValueError(
+            f"Invalid offset {offset}: "
+            f"result ends at {next_offset}"
         )
 
     def _iter_chunk_contents(self, value: Any, chunk_size: int) -> Iterator[str]:

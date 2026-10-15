@@ -537,12 +537,8 @@ class Agent:
         """
         session = self._get_session(session_id)
         session_state = session.state
-
         # 获取当前会话活动SKill
         active_skills = session.active_skills
-
-        # 获取当前会话工具结果
-        tool_artifacts = session.tool_artifacts
 
         # 复用未完成的本轮 AgentResult
         if resume:
@@ -556,6 +552,9 @@ class Agent:
             turn = session.start_turn(input)
             turn.pre_checkpoint_id = self._read_checkpoint_id(session_id)
 
+        # 获取当前Turn的workflow_tasks
+        workflow_tasks = turn.workflow_tasks
+
         # 构建Context
         context = BaseContext(
             session_state=session_state,
@@ -566,7 +565,7 @@ class Agent:
                 kb_list=self._agent_config.kb_list,
             ),
             active_skills=active_skills,
-            tool_artifacts=tool_artifacts,
+            workflow_tasks=workflow_tasks,
             agent_result=turn.result,
         )
 
@@ -574,8 +573,11 @@ class Agent:
             object.__setattr__(context, "session_state", session_state)
         if context.active_skills is not active_skills:
             object.__setattr__(context, "active_skills", active_skills)
+        if context.workflow_tasks is not workflow_tasks:
+            object.__setattr__(context, "workflow_tasks", workflow_tasks)
         if context.agent_result is not turn.result:
             object.__setattr__(context, "agent_result", turn.result)
+
         return context
 
     def _get_session(self, session_id: str) -> AgentSession:

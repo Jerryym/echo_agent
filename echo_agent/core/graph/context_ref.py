@@ -5,7 +5,7 @@ from pydantic import PlainValidator
 from ..model.agent import AgentResult
 from ..model.session import SessionState
 from ..model.skill import SkillRuntimeContext
-from ..model.tool import ToolArtifact
+from ..model.workflow import WorkflowTask
 
 
 def _preserve_active_skills_dict(value: Any) -> dict[str, SkillRuntimeContext]:
@@ -23,12 +23,14 @@ def _preserve_active_skills_dict(value: Any) -> dict[str, SkillRuntimeContext]:
     return value
 
 
-def _preserve_tool_artifacts_dict(value: Any) -> dict[str, ToolArtifact]:
-    """Keep the same tool_artifacts dict instance across Context construction."""
+def _preserve_workflow_tasks_dict(value: Any) -> dict[str, WorkflowTask]:
+    """
+    保留当前 Turn 的工作流任务字典引用
+    """
     if value is None:
         return {}
     if not isinstance(value, dict):
-        raise TypeError(f"tool_artifacts must be a dict, got {type(value)!r}")
+        raise TypeError(f"workflow_tasks must be a dict, got {type(value)!r}")
     return value
 
 
@@ -58,10 +60,10 @@ ActiveSkillsMap = Annotated[
     PlainValidator(_preserve_active_skills_dict),
 ]
 
-# Session-scoped mutable tool artifacts; must retain object identity across Parent/Strategy Context.
-ToolArtifactsMap = Annotated[
-    dict[str, ToolArtifact],
-    PlainValidator(_preserve_tool_artifacts_dict),
+# Turn-scoped mutable workflow tasks; must retain object identity across Parent/Strategy Context.
+WorkflowTasksMap = Annotated[
+    dict[str, WorkflowTask],
+    PlainValidator(_preserve_workflow_tasks_dict),
 ]
 
 # Session-scoped mutable state; must retain object identity across Parent/Strategy Context.

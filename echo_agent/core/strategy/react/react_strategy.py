@@ -117,7 +117,6 @@ class ReActStrategy(BaseStrategy):
             session_state=context.session_state,
             resources=context.resources,
             active_skills=active_skills,
-            tool_artifacts=context.tool_artifacts,
             agent_result=context.agent_result,
             max_steps=self._max_steps,
             retry_max_count=self._retry_max_count,

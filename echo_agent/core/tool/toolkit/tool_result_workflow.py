@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from typing import Any
 
 from langchain_core.tools import BaseTool, tool
@@ -6,9 +5,10 @@ from langgraph.config import get_config
 from langgraph.pregel import Pregel
 from langgraph.runtime import get_runtime
 
+from ...capability.workflow.builder import WorkflowTaskBuilder
 from ...capability.workflow.tool_result.schema import (
-    ToolResultAnalyseInput,
     ToolResultAnalyseResult,
+    ToolResultTaskState,
 )
 from ...model.conversation import ConversationContextItem, ConversationContextType
 from ...model.tool import ToolResultItem
@@ -18,43 +18,89 @@ def create_trigger_tool_result_analyse_tool(workflow: Pregel) -> BaseTool:
     """创建 Tool Result 分析工作流触发工具"""
 
     @tool
-    async def trigger_tool_result_analyse(tool_call_id: str, requirement: str) -> dict[str, Any]:
+    async def trigger_tool_result_analyse(tool_call_id: str, requirement: str, task_id: str | None = None) -> dict[str, Any]:
         """
         Analyse a previously executed tool result.
 
-        Use this tool when information from a previous tool
-        execution is needed but its complete result is not
-        available in the conversation context.
+        Use this tool to extract information from a stored tool result.
 
-        The workflow reads the stored result incrementally,
-        extracts relevant information, and stops when the
-        requirement is satisfied or all content is processed.
+        For a new analysis, provide tool_call_id and requirement.
+        To continue an existing analysis, provide task_id.
+
+        The workflow reads the stored result incrementally and
+        maintains progress across invocations.
 
         Args:
-            tool_call_id: ID of the previous tool execution.
-            requirement: Information to extract from its result.
+            tool_call_id: Previous tool execution ID for a new task.
+            requirement: Information to extract for a new task.
+            task_id: Existing workflow task ID to continue.
 
         Returns:
-            Extracted information and whether the entire
-            tool result has been processed.
+            Workflow task ID, extracted content, reading progress,
+            and task status.
         """
         runtime = get_runtime()
-        if runtime.context is None:
+        context = runtime.context
+        if context is None:
             raise RuntimeError("Tool result runtime context is not available")
 
-        result_item = _resolve_tool_result_item(tool_call_id, runtime.context.session_state.context_items)
-        result = await workflow.ainvoke(
-            ToolResultAnalyseInput(
+        # 首次调用：创建工作流任务
+        if task_id is None:
+            if not tool_call_id or not requirement:
+                raise ValueError("tool_call_id and requirement are required when creating a workflow task")
+
+            # 解析工具结果
+            result_item = _resolve_tool_result_item(tool_call_id, context.session_state.context_items)
+            # 创建工作流任务
+            state = ToolResultTaskState(
                 result_item=result_item,
                 requirement=requirement,
-            ),
+            )
+            task = WorkflowTaskBuilder.build(state)
+            # 注册工作流任务
+            context.workflow_tasks[task.task_id] = task
+        else:
+            # 获取工作流任务
+            task = context.workflow_tasks.get(task_id)
+            if task is None:
+                raise LookupError(f"Workflow task not found: {task_id}")
+            if task.status != "active":
+                raise RuntimeError(f"Workflow task is not active: {task_id} (status={task.status})")
+            state = ToolResultTaskState.model_validate(task.state)
+
+        # 执行 Tool Result Analyse Workflow
+        result = await workflow.ainvoke(
+            state.model_copy(deep=True),
             config=get_config(),
-            context=runtime.context,
+            context=context,
         )
-
         validated = ToolResultAnalyseResult.model_validate(result)
-        return validated.model_dump(mode="json")
 
+        # 更新工作流任务进度
+        if validated.next_offset < state.offset:
+            raise ValueError("Workflow next_offset cannot be smaller than the current task offset")
+        state.offset = validated.next_offset
+        if validated.content:
+            if state.accumulated_content:
+                state.accumulated_content += "\n" + validated.content
+            else:
+                state.accumulated_content = validated.content
+        task.update(state)
+
+        # 工具结果完整遍历后，结束任务
+        if validated.completed:
+            task.finish()
+
+        return {
+            "task_id": task.task_id,
+            "content": validated.content,
+            "accumulated_content": state.accumulated_content,
+            "next_offset": state.offset,
+            "completed": validated.completed,
+            "next_action": validated.next_action,
+            "status": task.status,
+        }
+    
     trigger_tool_result_analyse.metadata = {
         "annotations": {
             "readOnlyHint": True,
