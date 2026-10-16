@@ -8,7 +8,7 @@ from .file_tool import (
 )
 from .kownledge_base import create_knowledge_base_query_tool
 from .skill import create_load_skill_tool, create_read_skill_resource_tool
-from .tool_result_workflow import create_trigger_tool_result_analyse_tool
+from .tool_result_workflow import create_read_tool_result_tool
 from .xls_tool import create_read_xls_tool, create_write_xls_tool
 from .xlsx_tool import create_read_xlsx_tool, create_write_xlsx_tool
 
@@ -27,5 +27,5 @@ __all__ = [
     "create_write_xls_tool",
     "create_read_xlsx_tool",
     "create_write_xlsx_tool",
-    "create_trigger_tool_result_analyse_tool",
+    "create_read_tool_result_tool",
 ]

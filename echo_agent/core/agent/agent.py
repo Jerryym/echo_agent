@@ -8,7 +8,7 @@ from langgraph.types import Command
 from ...common import get_logger
 from ...common.network import HttpRequest
 from ..capability.skill import SkillManager
-from ..capability.workflow.tool_result import create_tool_result_analyse_workflow
+from ..capability.workflow.tool_result import create_tool_result_read_workflow
 from ..graph import (
     BaseContext,
     BaseInput,
@@ -38,10 +38,10 @@ from ..tool.toolkit import (
     create_read_xls_tool,
     create_read_xlsx_tool,
     create_search_files_tool,
-    create_trigger_tool_result_analyse_tool,
     create_write_file_tool,
     create_write_xls_tool,
     create_write_xlsx_tool,
+    create_read_tool_result_tool,
 )
 from ..tool.utils import to_tool_definition
 from .agent_config import AgentConfig
@@ -458,16 +458,15 @@ class Agent:
 
     def _register_capability_tools(self) -> None:
         """注册能力工具"""
-        llm_client = LLMClient(self._agent_config.llm_config)
-        workflow = create_tool_result_analyse_workflow(llm_client)
-        tool_result_analyse = (create_trigger_tool_result_analyse_tool(workflow))
-
         load_skill = create_load_skill_tool(self._skill_manager)
         read_skill = create_read_skill_resource_tool(self._skill_manager)
+        workflow = create_tool_result_read_workflow()
+        tool_result_analyse = (create_read_tool_result_tool(workflow))
         # knowledge_base_query = create_knowledge_base_query_tool()
-        self._tool_registry.register(to_tool_definition(tool_result_analyse, tool_type=ToolType.WORKFLOW), tool_result_analyse)
+
         self._tool_registry.register(to_tool_definition(load_skill), load_skill)
         self._tool_registry.register(to_tool_definition(read_skill), read_skill)
+        self._tool_registry.register(to_tool_definition(tool_result_analyse, tool_type=ToolType.WORKFLOW), tool_result_analyse)
         # self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)
 
     def _register_filesystem_tools(self) -> None:
@@ -478,6 +477,7 @@ class Agent:
         search_files = create_search_files_tool()
         list_directory = create_list_directory_tool()
         create_directory = create_directory_tool()
+
         self._tool_registry.register(to_tool_definition(read_file), read_file)
         self._tool_registry.register(to_tool_definition(write_file), write_file)
         self._tool_registry.register(to_tool_definition(edit_file), edit_file)
@@ -491,6 +491,7 @@ class Agent:
         write_xls = create_write_xls_tool()
         read_xlsx = create_read_xlsx_tool()
         write_xlsx = create_write_xlsx_tool()
+        
         self._tool_registry.register(to_tool_definition(read_xls), read_xls)
         self._tool_registry.register(to_tool_definition(write_xls), write_xls)
         self._tool_registry.register(to_tool_definition(read_xlsx), read_xlsx)

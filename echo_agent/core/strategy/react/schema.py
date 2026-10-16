@@ -108,7 +108,6 @@ class ReasonStructuredOutput(BaseModel):
         reasoning: 执行推理结果，用于指导下一步执行
         tool_list: 下一步执行所需的工具名称列表
         task_status: 任务状态，用于驱动 ReAct 流程
-        continue_reasoning: 是否继续推理
     """
     thought: str = Field(
         description=(
@@ -153,14 +152,5 @@ class ReasonStructuredOutput(BaseModel):
             "Final, not Reason, produces the user-facing answer. "
             "Never mark 'completed' because Action produced no tool calls; "
             "that signal is handled by runtime status, not by this field."
-        )
-    )
-    continue_reasoning: bool = Field(
-        description=(
-            "Whether ReasonNode requires additional internal Workflow execution. "
-            "When true, task_status must be 'in_progress', tool_list must be empty, "
-            "and reasoning must describe the additional internal analysis required. "
-            "ReasonNode will select and execute the Workflow in a separate model "
-            "call. Set false when the result can be returned to the outer ReAct graph."
         )
     )

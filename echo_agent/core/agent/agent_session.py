@@ -17,7 +17,7 @@ from ..model.skill import SkillRuntimeContext
 from ..runtime.algorithm import ConversationCompressor
 from .agent_turn import AgentTurn, TurnStatus
 
-logger = get_logger("agetnt_session")
+logger = get_logger("agent_session")
 
 
 class AgentSession:

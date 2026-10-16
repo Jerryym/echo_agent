@@ -750,7 +750,9 @@ class LLMClient:
         try:
             response = model.invoke(messages, config=config)
             return self._require_structured_tool_response(response, structured_output_tool)
-        except LLMResponseDecodeError as error:
+        except Exception as error:
+            if not self._should_retry_structured_tool(error):
+                raise
             logger.warning("structured output tool failed, retry with thinking disabled: %s", error)
 
         # 失败则重新绑定结构化输出工具(禁用思考模式)
@@ -765,7 +767,9 @@ class LLMClient:
         try:
             response = await model.ainvoke(messages, config=config)
             return self._require_structured_tool_response(response, structured_output_tool)
-        except LLMResponseDecodeError as error:
+        except Exception as error:
+            if not self._should_retry_structured_tool(error):
+                raise
             logger.warning("structured output tool failed, retry with thinking disabled: %s", error)
 
         # 失败则重新绑定结构化输出工具(禁用思考模式)
@@ -782,11 +786,6 @@ class LLMClient:
             disable_thinking: 是否禁用思考模式
         """
         structured_output_tool = create_structured_output_tool(schema)
-        model = self._model
-
-        # 禁用思考模式
-        if disable_thinking:
-            model = self._disable_thinking(model)
 
         if self._config.use_responses_api:
             tool_choice: str | dict[str, Any] = "required"
@@ -798,13 +797,16 @@ class LLMClient:
                 },
             }
 
+        # 与 bind_tools 同一次绑定，避免 RunnableBinding 丢掉先前的 kwargs
+        thinking_kwargs = self._disabled_thinking_kwargs() if disable_thinking else {}
         return (
-            structured_output_tool, 
-            model.bind_tools(
-                [structured_output_tool], 
-                tool_choice=tool_choice
-                )
-            )
+            structured_output_tool,
+            self._model.bind_tools(
+                [structured_output_tool],
+                tool_choice=tool_choice,
+                **thinking_kwargs,
+            ),
+        )
 
     def _require_structured_tool_response(self, response: Any, structured_output_tool: BaseTool) -> LLMResult:
         """校验工具调用响应并解析为 LLMResult"""
@@ -880,11 +882,15 @@ class LLMClient:
                 structured_result = cast(JsonObject, result)
                 break
 
-            if structured_result is None:
-                raise LLMResponseDecodeError(message="structured output tool was not called")
-
-            # 解析原始消息
             text, reasoning = self._normalize_content(response)
+            if structured_result is None:
+                if not text.strip():
+                    raise LLMResponseDecodeError(message="structured output tool was not called")
+                payload = self._load_json_object(text)
+                result = structured_tool.invoke(payload)
+                if not isinstance(result, dict):
+                    raise LLMResponseDecodeError(message="structured output tool result must be a JSON object")
+                structured_result = cast(JsonObject, result)
             # 解析 Token Usage
             usage_metadata = response.usage_metadata or {}
             input_token_details = (usage_metadata.get("input_token_details", None) or {})
@@ -1039,18 +1045,29 @@ class LLMClient:
                 )
         return tool_calls
 
-    def _disable_thinking(self, model: Any) -> Any:
-        """禁用思考模式"""
-        if self._config.use_responses_api:
-            return model.bind(
-                reasoning={"effort": "none"},
-            )
+    def _should_retry_structured_tool(self, error: Exception) -> bool:
+        """解析失败，或 invalid_request_error 时，关思考重试一次。"""
+        if isinstance(error, LLMResponseDecodeError):
+            return True
+        return self._is_invalid_request_error(error) or self._is_invalid_request_error(error.__cause__)
 
-        extra_body = {
-            **(self._config.extra_body or {}),
-            "enable_thinking": False,
-        }
-        return model.bind(extra_body=extra_body)
+    def _is_invalid_request_error(self, error: BaseException | None) -> bool:
+        """识别 OpenAI invalid_request_error。"""
+        if error is None:
+            return False
+        body = getattr(error, "body", None)
+        if isinstance(body, dict):
+            detail = body.get("error")
+            if isinstance(detail, dict) and detail.get("type") == "invalid_request_error":
+                return True
+        text = str(error)
+        return "'type': 'invalid_request_error'" in text or '"type": "invalid_request_error"' in text
+
+    def _disabled_thinking_kwargs(self) -> dict[str, Any]:
+        """关闭思考模式的请求参数，需与 bind_tools 一起传入。"""
+        if self._config.use_responses_api:
+            return {"reasoning": {"effort": "none"}}
+        return {"reasoning_effort": "none"}
 
     def _with_structured_output_instruction(self, messages: list[BaseMessage]) -> list[BaseMessage]:
         return [

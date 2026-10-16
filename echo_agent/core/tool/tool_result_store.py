@@ -10,7 +10,7 @@ class ToolResultStore:
     工具执行结果存储管理器:  统一管理 ToolResult，根据序列化后的数据大小，决定将结果保留在内存中或卸载到临时 JSON 文件
     """
     # 默认阈值
-    DEFAULT_THRESHOLD = 128 * 1024
+    DEFAULT_THRESHOLD = 64 * 1024
 
     def __init__(self, threshold: int = DEFAULT_THRESHOLD) -> None:
         if threshold < 0:
