@@ -5,15 +5,15 @@ from langgraph.types import Command
 from pydantic import ValidationError
 
 from .....common import get_logger
-from .....prompt import PromptLoader
+from .....prompt import PromptAssembler, PromptLoader
 from .....utils import update_agent_result
 from ....app import Application
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
+from ....model.agent import AgentMode
 from ....model.message import Message
 from ....model.tool import ToolState
 from ....runtime.runtime_config import RuntimeConfig
-from ....tool import ToolType
 from ..observation import Observation, ObservationBuilder
 from ..schema import (
     ReActContext,
@@ -129,8 +129,8 @@ class ReasonNode(Node):
         except ValidationError as exc:
             raise ValueError("Invalid structured reason result.") from exc
         self._validate_reason_result(result)
-        # 结构化输出的text可能为空，使用thought记录本轮推理内容
-        update_agent_result(runtime.context, result.thought, response.token_usage)
+        # 结构化输出的text可能为空，使用assessment记录本轮任务推进判断
+        update_agent_result(runtime.context, result.assessment, response.token_usage)
         return result
 
     async def _ainvoke_reason_result(self, kwargs: dict[str, Any], runtime: Runtime[ReActContext], abefore_model: Any) -> ReasonStructuredOutput:
@@ -145,14 +145,18 @@ class ReasonNode(Node):
         except ValidationError as exc:
             raise ValueError("Invalid structured reason result.") from exc
         self._validate_reason_result(result)
-        # 结构化输出的text可能为空，使用thought记录本轮推理内容
-        update_agent_result(runtime.context, result.thought, response.token_usage)
+        # 结构化输出的text可能为空，使用assessment记录本轮任务推进判断
+        update_agent_result(runtime.context, result.assessment, response.token_usage)
         return result
 
     def _validate_reason_result(self, result: ReasonStructuredOutput) -> None:
         """校验结构化结果与ReasonNode状态是否一致"""
-        if not result.reasoning.strip():
-            raise ValueError("Reason result reasoning must not be empty.")
+        if not result.assessment.strip():
+            raise ValueError("Reason result assessment must not be empty.")
+        if result.task_status == "in_progress" and not result.next_action.strip():
+            raise ValueError("In-progress reason result requires next_action.")
+        if result.task_status == "completed" and result.next_action.strip():
+            raise ValueError("Completed reason result requires empty next_action.")
         if result.task_status == "completed" and result.tool_list:
             raise ValueError("task_status='completed' requires an empty tool_list.")
         if result.task_status == "in_progress" and not result.tool_list:
@@ -194,15 +198,25 @@ class ReasonNode(Node):
         tool_informations = tool_registry.get_tool_infomations()
 
         return {
-            "prompt": self._prompt,
+            "prompt": self._build_prompt(runtime.context, tool_informations, runtime_config.agent_mode),
             "user_input": self._build_input(state, observation_list), # 用户输入
             "history": self._build_history(state, runtime.context), # 历史记录
             "conversation": state.conversation,
-            "tool_informations": tool_informations,
-            "context": runtime.context,
-            "agent_resources": runtime.context.resources,
             "config": runtime_config.to_llm_runnable_config(),
         }
+
+    def _build_prompt(self, context: ReActContext, tool_informations: list[dict[str, str]], agent_mode: AgentMode) -> str:
+        """构建系统提示词"""
+        resources = context.resources
+        return PromptAssembler.assemble(
+            agent_prompt=resources.system_prompt if resources else None,
+            system_prompt=self._prompt,
+            agent_mode=agent_mode,
+            tool_informations=tool_informations,
+            skill_frontmatter_list=resources.skill_frontmatter_list if resources else None,
+            active_skills=context.active_skills,
+            is_task_exec=True,
+        )
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """构建跨轮会话历史与本轮执行轨迹"""
@@ -221,7 +235,8 @@ class ReasonNode(Node):
         """处理Reason结果"""
         result = {
             "task_status": response.task_status,
-            "reasoning": response.reasoning,
+            "assessment": response.assessment,
+            "next_action": response.next_action,
             "observations": observation_list, # 更新observations
             "tool_list": response.tool_list,
         }

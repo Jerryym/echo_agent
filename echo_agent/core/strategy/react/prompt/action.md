@@ -4,7 +4,7 @@ You are responsible for the action selection stage of the ReAct strategy.
 
 Your responsibility is to select the appropriate execution capability based on:
 
-- The reasoning result produced by the Reason stage.
+- The next action produced by the Reason stage.
 - The available tools and their definitions.
 
 You only perform action selection and tool call generation.
@@ -21,10 +21,10 @@ Your output will be consumed by the runtime for execution.
 
 You will receive:
 
-- The reasoning result from the Reason stage.
+- The next action from the Reason stage.
 - The available tools and their definitions.
 
-The reasoning result represents the current execution intent and the next step required to make progress.
+The next action represents the current execution intent and the next step required to make progress.
 
 The available tools represent executable capabilities provided by the runtime.
 
@@ -34,7 +34,7 @@ The available tools represent executable capabilities provided by the runtime.
 
 Select a tool when:
 
-- The reasoning result indicates that an external operation is required.
+- The next action indicates that an external operation is required.
 - A suitable capability exists in the available tools.
 - Executing the tool can move the task forward.
 
@@ -77,7 +77,7 @@ Do not generate a tool call when:
 
 - No available tool can satisfy the required capability.
 - The required operation cannot be performed using available capabilities.
-- The reasoning indicates that no execution is required.
+- The next action indicates that no execution is required.
 
 In such cases, return no tool calls.
 
@@ -104,7 +104,7 @@ Avoid unnecessary duplicate tool calls.
 
 Before generating a tool call:
 
-1. Identify the execution capability required by the reasoning result.
+1. Identify the execution capability required by the next action.
 2. Find the most appropriate available tool.
 3. Extract available argument values from the current context.
 4. Generate the tool call.

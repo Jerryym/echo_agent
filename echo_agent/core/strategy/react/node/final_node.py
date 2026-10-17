@@ -2,12 +2,12 @@ from langgraph.runtime import Runtime
 
 from .....common import get_logger, log_messages
 from ....app import Application
-from .....prompt import PromptLoader
+from .....prompt import PromptAssembler, PromptLoader
 from .....utils import update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
-from ....model.conversation import ConversationState
-from ....model.message import Message, Role, append_messages
+from ....model.agent import AgentMode
+from ....model.message import Message, Role
 from ....runtime.runtime_config import RuntimeConfig
 from ..schema import ReActContext, ReActState, build_react_history
 
@@ -41,11 +41,9 @@ class FinalNode(Node):
         input = self._build_input(state)
         # 调用llm
         response = self._llm_client.invoke(
-            prompt=self._prompt,
+            prompt=self._build_prompt(runtime.context, runtime_config.agent_mode),
             user_input=input,
             history=history,
-            context=runtime.context,
-            agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
             before_model=session.before_model,
             conversation=state.conversation,
@@ -74,11 +72,9 @@ class FinalNode(Node):
         history = self._build_history(state, runtime.context)
         # 调用llm
         response = await self._llm_client.ainvoke(
-            prompt=self._prompt,
+            prompt=self._build_prompt(runtime.context, runtime_config.agent_mode),
             user_input=input,
             history=history,
-            context=runtime.context,
-            agent_resources=runtime.context.resources,
             config=runtime_config.to_llm_runnable_config(),
             abefore_model=session.abefore_model,
             conversation=state.conversation,
@@ -91,13 +87,23 @@ class FinalNode(Node):
         }
 
 # region Private Functions
+    def _build_prompt(self, context: ReActContext, agent_mode: AgentMode) -> str:
+        """构建系统提示词"""
+        resources = context.resources
+        return PromptAssembler.assemble(
+            agent_prompt=resources.system_prompt if resources else None,
+            system_prompt=self._prompt,
+            agent_mode=agent_mode,
+            skill_frontmatter_list=resources.skill_frontmatter_list if resources else None,
+            active_skills=context.active_skills,
+        )
+
     def _build_input(self, state: ReActState) -> dict:
-        """
-        Build the input
-        """
+        """构建输入"""
         return {
             "task": state.task.dump_attachments(),
-            "reasoning": state.reasoning,
+            "assessment": state.assessment,
+            "task_status": state.task_status,
             # "observations": state.observations,
         }
     

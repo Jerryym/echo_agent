@@ -8,16 +8,12 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
 from ...common import get_logger
-from ...prompt import PromptAssembler
 from ...utils import ContextUsageCalculator, MessageAdapter
-from ..graph.schema import BaseContext
-from ..model.agent import AgentResources
 from ..model.conversation import ConversationState
 from ..model.input import UserInput
 from ..model.message import Message
 from ..model.token_usage import TokenUsage
 from ..model.tool import ToolCall
-from ..runtime import RuntimeConfig
 from .exception import (
     LLMException,
     LLMInitializeError,
@@ -59,10 +55,7 @@ class LLMClient:
         prompt: str, 
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
-        tool_informations: Optional[list[dict[str, str]]] = None,
         tool_list: list[BaseTool | dict[str, Any]] | None = None,
-        context: BaseContext | None = None,
-        agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         before_model: BeforeModelHook | None = None,
         conversation: ConversationState | None = None,
@@ -71,13 +64,10 @@ class LLMClient:
         调用模型
 
         参数:
-            prompt: 提示语
+            prompt: 已拼接完成的系统提示
             user_input: 用户输入
             history: 历史记录
-            tool_informations: 工具信息列表（name / description）
-            tool_list: 工具列表
-            context: Runtime Context（含 active_skills）
-            agent_resources: Agent 静态资源（system_prompt / skill_list；可空）
+            tool_list: 绑定到模型的工具列表
             config: 配置
         """
         try:
@@ -86,10 +76,6 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
-                tool_informations=tool_informations,
-                tool_list=tool_list,
-                context=context,
-                agent_resources=agent_resources,
             )
             # Hook: before_model
             messages = self._before_model(
@@ -98,10 +84,7 @@ class LLMClient:
                 conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
-                tool_informations=tool_informations,
                 tool_list=tool_list,
-                context=context,
-                agent_resources=agent_resources,
             )
             # 配置模型
             model = self._configure_model(tool_list=tool_list)
@@ -119,10 +102,7 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
-        tool_informations: Optional[list[dict[str, str]]] = None,
         tool_list: list[BaseTool | dict[str, Any]] | None = None,
-        context: BaseContext | None = None,
-        agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         abefore_model: AsyncBeforeModelHook | None = None,
         conversation: ConversationState | None = None,
@@ -131,12 +111,10 @@ class LLMClient:
         调用模型（异步）
         
         参数:
-            prompt: 提示语
+            prompt: 已拼接完成的系统提示
             user_input: 用户输入
             history: 历史记录
-            tool_list: 工具列表
-            context: Runtime Context（含 active_skills）
-            agent_resources: Agent 静态资源（system_prompt / skill_list；可空）
+            tool_list: 绑定到模型的工具列表
             config: 配置
         """
         try:
@@ -145,10 +123,6 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
-                tool_informations=tool_informations,
-                tool_list=tool_list,
-                context=context,
-                agent_resources=agent_resources,
             )
             # Hook: before_model
             messages = await self._abefore_model(
@@ -157,10 +131,7 @@ class LLMClient:
                 conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
-                tool_informations=tool_informations,
                 tool_list=tool_list,
-                context=context,
-                agent_resources=agent_resources,
             )
             # 配置模型
             model = self._configure_model(tool_list=tool_list)
@@ -181,9 +152,6 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
-        tool_informations: Optional[list[dict[str, str]]] = None,
-        context: BaseContext | None = None,
-        agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         before_model: BeforeModelHook | None = None,
         conversation: ConversationState | None = None,
@@ -195,12 +163,9 @@ class LLMClient:
 
         参数:
             schema: 输出 schema
-            prompt: 提示语
+            prompt: 已拼接完成的系统提示
             user_input: 用户输入
             history: 历史记录
-            tool_informations: 工具信息列表（name / description）
-            context: Runtime Context（含 active_skills）
-            agent_resources: Agent 静态资源（system_prompt / skill_list；可空）
             config: 配置
         """
         try:
@@ -209,9 +174,6 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
-                tool_informations=tool_informations,
-                context=context,
-                agent_resources=agent_resources,
             )
             # Hook: before_model
             messages = self._before_model(
@@ -220,10 +182,7 @@ class LLMClient:
                 conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
-                tool_informations=tool_informations,
                 tool_list=None,
-                context=context,
-                agent_resources=agent_resources,
             )
             
             structured_messages = self._with_structured_output_instruction(messages)
@@ -239,9 +198,6 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
-        tool_informations: Optional[list[dict[str, str]]] = None,
-        context: BaseContext | None = None,
-        agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         abefore_model: AsyncBeforeModelHook | None = None,
         conversation: ConversationState | None = None,
@@ -253,12 +209,9 @@ class LLMClient:
 
         参数:
             schema: 输出 schema
-            prompt: 提示语
+            prompt: 已拼接完成的系统提示
             user_input: 用户输入
             history: 历史记录
-            tool_informations: 工具信息列表（name / description）
-            context: Runtime Context（含 active_skills）
-            agent_resources: Agent 静态资源（system_prompt / skill_list；可空）
             config: 配置
         """
         try:
@@ -267,19 +220,13 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
-                tool_informations=tool_informations,
-                context=context,
-                agent_resources=agent_resources,
             )
             # Hook: before_model
             messages = await self._abefore_model(
                 messages=messages,
                 prompt=prompt,
                 user_input=user_input,
-                tool_informations=tool_informations,
                 tool_list=None,
-                context=context,
-                agent_resources=agent_resources,
                 abefore_model=abefore_model,
                 conversation=conversation,
             )
@@ -295,10 +242,7 @@ class LLMClient:
         self, prompt: str, 
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
-        tool_informations: Optional[list[dict[str, str]]] = None,
         tool_list: list[BaseTool | dict[str, Any]] | None = None,
-        context: BaseContext | None = None,
-        agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         before_model: BeforeModelHook | None = None,
         conversation: ConversationState | None = None,
@@ -307,12 +251,10 @@ class LLMClient:
         流式调用模型
 
         参数:
-            prompt: 提示语
+            prompt: 已拼接完成的系统提示
             user_input: 用户输入
             history: 历史记录
-            tool_list: 工具列表
-            context: Runtime Context（含 active_skills）
-            agent_resources: Agent 静态资源（system_prompt / skill_list；可空）
+            tool_list: 绑定到模型的工具列表
             config: 配置
         """
         try:
@@ -321,10 +263,6 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
-                tool_informations=tool_informations,
-                tool_list=tool_list,
-                context=context,
-                agent_resources=agent_resources,
             )
             # Hook: before_model
             messages = self._before_model(
@@ -333,10 +271,7 @@ class LLMClient:
                 conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
-                tool_informations=tool_informations,
                 tool_list=tool_list,
-                context=context,
-                agent_resources=agent_resources,
             )
             # 配置模型
             model = self._configure_model(tool_list=tool_list)
@@ -353,10 +288,7 @@ class LLMClient:
         prompt: str,
         user_input: UserInput | dict | str,
         history: Optional[Sequence[Message]] = None,
-        tool_informations: Optional[list[dict[str, str]]] = None,
         tool_list: list[BaseTool | dict[str, Any]] | None = None,
-        context: BaseContext | None = None,
-        agent_resources: AgentResources | None = None,
         config: RunnableConfig | None = None,
         abefore_model: AsyncBeforeModelHook | None = None,
         conversation: ConversationState | None = None,
@@ -365,13 +297,10 @@ class LLMClient:
         流式调用模型（异步）
 
         参数:
-            prompt: 提示语
+            prompt: 已拼接完成的系统提示
             user_input: 用户输入
             history: 历史记录
-            tool_informations: 工具信息列表（name / description）
-            tool_list: 工具列表
-            context: Runtime Context（含 active_skills）
-            agent_resources: Agent 静态资源（system_prompt / skill_list；可空）
+            tool_list: 绑定到模型的工具列表
             config: 配置
         """
         try:
@@ -380,10 +309,6 @@ class LLMClient:
                 prompt=prompt,
                 user_input=user_input,
                 history=history or [],
-                tool_informations=tool_informations,
-                tool_list=tool_list,
-                context=context,
-                agent_resources=agent_resources,
             )
             # Hook: before_model
             messages = await self._abefore_model(
@@ -392,10 +317,7 @@ class LLMClient:
                 conversation=conversation,
                 prompt=prompt,
                 user_input=user_input,
-                tool_informations=tool_informations,
                 tool_list=tool_list,
-                context=context,
-                agent_resources=agent_resources,
             )
             # 配置模型
             model = self._configure_model(tool_list=tool_list)
@@ -476,25 +398,13 @@ class LLMClient:
         prompt: str, 
         user_input: UserInput | dict | str, 
         history: Optional[Sequence[Message]] = None, 
-        tool_informations: Optional[list[dict[str, str]]] = None,
-        tool_list: list[BaseTool | dict[str, Any]] | None = None,
-        context: BaseContext | None = None,
-        agent_resources: AgentResources | None = None,
     ):
         """
         构建 LangChain Messages
         """
         messages: list[BaseMessage] = []
 
-        # 添加系统提示词（含 Runtime Context 注入的 Loaded Skills，不写入 history）
-        system_prompt = self._build_prompt(
-            prompt,
-            tool_informations=tool_informations,
-            tool_list=tool_list,
-            context=context,
-            agent_resources=agent_resources,
-        )
-        messages.append(SystemMessage(content=system_prompt))
+        messages.append(SystemMessage(content=prompt))
         # 添加历史记录
         messages.extend(MessageAdapter.to_langchain_messages(history or []))
         # 添加用户输入
@@ -507,28 +417,6 @@ class LLMClient:
         
         return messages
 
-    def _build_prompt(
-        self,
-        prompt: str,
-        tool_informations: list[dict[str, str]] | None = None,
-        tool_list: list[BaseTool | dict[str, Any]] | None = None,
-        context: BaseContext | None = None,
-        agent_resources: AgentResources | None = None,
-    ):
-        """
-        构建提示词
-        """
-        runtime_config = RuntimeConfig.get_runtime_config()
-        return PromptAssembler.assemble(
-                agent_prompt=agent_resources.system_prompt if agent_resources else None,
-                system_prompt=prompt,
-                agent_mode=runtime_config.agent_mode,
-                tool_informations=tool_informations,
-                tool_list=tool_list,
-                skill_frontmatter_list=agent_resources.skill_frontmatter_list if agent_resources else None,
-                active_skills=context.active_skills if context else None,
-            )
-            
     def _configure_model(self, tool_list: list[BaseTool | dict[str, Any]] | None = None):
         """配置模型"""
         model = self._model
@@ -543,10 +431,7 @@ class LLMClient:
         messages: list[BaseMessage],
         prompt: str,
         user_input: UserInput | dict | str,
-        tool_informations: list[dict[str, str]] | None,
         tool_list: list[BaseTool | dict[str, Any]] | None,
-        context: BaseContext | None,
-        agent_resources: AgentResources | None,
         before_model: BeforeModelHook | None,
         conversation: ConversationState | None = None,
     ) -> list[BaseMessage]:
@@ -568,10 +453,6 @@ class LLMClient:
             prompt=prompt,
             user_input=user_input,
             history=updated_history,
-            tool_informations=tool_informations,
-            tool_list=tool_list,
-            context=context,
-            agent_resources=agent_resources,
         )
         updated_context_usage = ContextUsageCalculator.calculate(updated_messages, tools=tool_list)
         logger.info("context compressed | before=%s after=%s", context_usage, updated_context_usage)
@@ -583,10 +464,7 @@ class LLMClient:
         abefore_model: AsyncBeforeModelHook | None,
         prompt: str,
         user_input: UserInput | dict | str,
-        tool_informations: list[dict[str, str]] | None,
         tool_list: list[BaseTool | dict[str, Any]] | None,
-        context: BaseContext | None,
-        agent_resources: AgentResources | None,
         conversation: ConversationState | None = None,
     ) -> list[Message]:
         """Hook: async before model"""
@@ -607,10 +485,6 @@ class LLMClient:
             prompt=prompt,
             user_input=user_input,
             history=updated_history,
-            tool_informations=tool_informations,
-            tool_list=tool_list,
-            context=context,
-            agent_resources=agent_resources,
         )
         updated_context_usage = ContextUsageCalculator.calculate(updated_messages, tools=tool_list)
         logger.info("context compressed | before=%s after=%s", context_usage, updated_context_usage)

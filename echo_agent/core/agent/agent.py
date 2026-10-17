@@ -41,7 +41,9 @@ from ..tool.toolkit import (
     create_write_file_tool,
     create_write_xls_tool,
     create_write_xlsx_tool,
+    create_append_file_tool,
     create_read_tool_result_tool,
+    create_append_xlsx_tool,
 )
 from ..tool.utils import to_tool_definition
 from .agent_config import AgentConfig
@@ -473,6 +475,7 @@ class Agent:
         """注册文件系统工具"""
         read_file = create_read_file_tool()
         write_file = create_write_file_tool()
+        append_file = create_append_file_tool()
         edit_file = create_edit_file_tool()
         search_files = create_search_files_tool()
         list_directory = create_list_directory_tool()
@@ -480,6 +483,7 @@ class Agent:
 
         self._tool_registry.register(to_tool_definition(read_file), read_file)
         self._tool_registry.register(to_tool_definition(write_file), write_file)
+        self._tool_registry.register(to_tool_definition(append_file), append_file)
         self._tool_registry.register(to_tool_definition(edit_file), edit_file)
         self._tool_registry.register(to_tool_definition(search_files), search_files)
         self._tool_registry.register(to_tool_definition(list_directory), list_directory)
@@ -491,11 +495,13 @@ class Agent:
         write_xls = create_write_xls_tool()
         read_xlsx = create_read_xlsx_tool()
         write_xlsx = create_write_xlsx_tool()
+        append_xlsx = create_append_xlsx_tool()
         
         self._tool_registry.register(to_tool_definition(read_xls), read_xls)
         self._tool_registry.register(to_tool_definition(write_xls), write_xls)
         self._tool_registry.register(to_tool_definition(read_xlsx), read_xlsx)
         self._tool_registry.register(to_tool_definition(write_xlsx), write_xlsx)
+        self._tool_registry.register(to_tool_definition(append_xlsx), append_xlsx)
 
     def _build_input(self, input: UserInput | type[BaseInput], conversation: ConversationState) -> dict | BaseInput:
         """构建输入"""

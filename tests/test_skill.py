@@ -17,8 +17,8 @@ import warnings
 
 from echo_agent.core.capability.skill import SkillLoader, SkillManager, SkillParser
 from echo_agent.core.graph.schema import BaseContext
-from echo_agent.core.llm.llm_client import LLMClient
 from echo_agent.core.model.session import SessionState
+from echo_agent.prompt import PromptAssembler
 from echo_agent.core.model.skill import (
     SkillFrontmatter,
     SkillSource,
@@ -203,13 +203,12 @@ async def test_load_and_read_tools() -> None:
     print("ok")
 
 
-async def test_llm_build_prompt_no_global_catalog() -> None:
-    _print("LLMClient._build_prompt (no global catalog)")
-    client = object.__new__(LLMClient)
+async def test_prompt_assembler_no_global_catalog() -> None:
+    _print("PromptAssembler (no global catalog)")
 
-    without = LLMClient._build_prompt(client, "ACTION PROMPT", tool_list=None)
-    assert without == "ACTION PROMPT"
+    without = PromptAssembler.assemble(system_prompt="ACTION PROMPT")
     assert "Available Skills" not in without
+    assert without.endswith("ACTION PROMPT")
 
     fake_tools = [
         {
@@ -221,8 +220,9 @@ async def test_llm_build_prompt_no_global_catalog() -> None:
             },
         }
     ]
-    with_tools = LLMClient._build_prompt(client, "ACTION PROMPT", tool_list=fake_tools)
+    with_tools = PromptAssembler.assemble(system_prompt="ACTION PROMPT", tool_list=fake_tools)
     assert "Tool Call Policy" in with_tools
+    assert "Available Skills" not in with_tools
     assert with_tools.endswith("ACTION PROMPT")
     print("ok")
 
@@ -234,7 +234,7 @@ async def main() -> None:
     test_skill_loader_and_manager()
     test_active_skills_dict_identity_survives_context_rebuild()
     await test_load_and_read_tools()
-    await test_llm_build_prompt_no_global_catalog()
+    await test_prompt_assembler_no_global_catalog()
     print("\nAll skill tests passed.")
 
 

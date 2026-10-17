@@ -18,12 +18,19 @@ class PromptAssembler:
         tool_list: list[Any] | None = None,
         skill_frontmatter_list: dict[str, SkillFrontmatter] | None = None,
         active_skills: dict[str, SkillRuntimeContext] | None = None,
+        is_task_exec: bool = False,
     ) -> str:
         prompts: list[str] = []
 
         # Agent System Prompt
         if agent_prompt:
             prompts.append(agent_prompt.strip())
+
+        # Task Execution Policy
+        if is_task_exec:
+            task_execution_policy = PromptLoader.load("prompt/task_execution_policy.md")
+            if task_execution_policy:
+                prompts.append(task_execution_policy)
 
         # Tool Definition Policy
         if tool_informations:
@@ -36,7 +43,7 @@ class PromptAssembler:
                 tool_definitions = tool_definitions.replace("{{TOOL_NAME_LIST}}", tool_list_text)
                 prompts.append(tool_definitions)
 
-        # Tool Policy
+        # Tool Call Policy
         if tool_list:
             tool_policy = PromptLoader.load("prompt/tool_call_policy.md")
             if tool_policy:

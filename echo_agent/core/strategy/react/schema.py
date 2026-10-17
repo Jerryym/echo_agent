@@ -36,7 +36,8 @@ class ReActState(BaseState):
 
     参数:
         task: 任务
-        reasoning: 推理结果
+        assessment: 当前任务进展判断
+        next_action: 下一步执行意图
         tool_list: 工具列表, 用于指导ActionNode节点绑定工具
         task_status: 任务状态
             in_progress: 进行中
@@ -53,7 +54,8 @@ class ReActState(BaseState):
         retry_count: 当前 ReAct 执行过程中，因异常（no_tool_calls、invalid_tools）导致重新尝试的次数。
     """
     task: StrategyTask = Field(default_factory=StrategyTask)
-    reasoning: str = ""
+    assessment: str = ""
+    next_action: str = ""
     tool_list: list[str] = Field(default_factory=list)
     task_status: Literal[
         "in_progress", 
@@ -101,56 +103,40 @@ class ReActContext(BaseContext):
 
 class ReasonStructuredOutput(BaseModel):
     """
-    Reason节点结构化输出
+    Reason节点结构化输出：任务推进判断、下一步执行决策与循环控制
 
     参数:
-        thought: 思考结果，面向调试和可观测性的思考过程
-        reasoning: 执行推理结果，用于指导下一步执行
-        tool_list: 下一步执行所需的工具名称列表
-        task_status: 任务状态，用于驱动 ReAct 流程
+        assessment: 评估
+        next_action: 下一步操作
+        tool_list: 工具列表
+        task_status: 任务状态
     """
-    thought: str = Field(
+    assessment: str = Field(
         description=(
-            "A concise description of the reasoning process used to analyze "
-            "the current task. This field is intended for tracing, debugging, "
-            "and runtime visualization only. It is not used for tool selection "
-            "or execution."
+            "Concise assessment of the task's current progress, "
+            "completed work, remaining requirements, and available "
+            "results that can be used immediately."
         )
     )
-    reasoning: str = Field(
+    next_action: str = Field(
         description=(
-            "A structured execution-oriented reasoning result describing the "
-            "operation or capability that should be performed next. This output "
-            "will be consumed by the Action node to generate tool calls. "
-            "Do not include tool names, tool parameters, or tool call arguments."
+            "The single next operation that best advances the task, "
+            "derived from the current progress assessment. "
+            "This field is consumed by ActionNode. "
+            "Do not include tool names or tool arguments."
         )
     )
     tool_list: list[str] = Field(
         default_factory=list,
         description=(
-            "A list of tool names required for the next execution step. "
-            "Only select names from the available tool name list. "
-            "This field represents required capabilities, not final tool calls. "
-            "Do not include parameters."
+            "Available tool names required to perform the next operation. "
+            "Do not include tool arguments."
         )
     )
     task_status: Literal["in_progress", "completed"] = Field(
         description=(
-            "Reason-owned lifecycle signal only. "
-            "Allowed values: 'in_progress' | 'completed'. "
-            "Do NOT output human_in_the_loop, no_tool_calls, invalid_tools, "
-            "cancelled, or failed (those are set by Action/runtime). "
-            "'in_progress': the user objective is not yet achieved; further "
-            "execution is required. Put the next required operation in "
-            "'reasoning' and identify the required tools in 'tool_list'. "
-            "'completed': the user objective has been achieved AND confirmed "
-            "by the current-step observations and/or by tool messages already "
-            "present in conversation history. Do not require observations to "
-            "repeat tool-message payloads. "
-            "If neither channel confirms the objective, you MUST use "
-            "'in_progress' even when a conversational reply seems sufficient—"
-            "Final, not Reason, produces the user-facing answer. "
-            "Never mark 'completed' because Action produced no tool calls; "
-            "that signal is handled by runtime status, not by this field."
+            "Whether further execution is required. "
+            "Use 'completed' only when the objective has been satisfied "
+            "with sufficient evidence."
         )
     )

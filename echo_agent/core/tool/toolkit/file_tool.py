@@ -1,37 +1,111 @@
 from pathlib import Path
+from typing import TextIO
 
 from langchain_core.tools import BaseTool, tool
 
 
+# 默认读取最大行数
+_DEFAULT_READ_MAX_LINES = 200
+# 默认读取最大字符数
+_DEFAULT_READ_MAX_CHARS = 12000
+# 最大读取行数
+_MAX_READ_LINES = 2000
+# 最大读取字符数
+_MAX_READ_CHARS = 32768
+# 读取缓冲区大小
+_READ_BUFFER_SIZE = 4096
+# 搜索文件最大数量
+_SEARCH_FILES_LIMIT = 200
+
+
 def create_read_file_tool() -> BaseTool:
     """创建读文件工具"""
-
     @tool
-    def read_file(path: str) -> str:
+    def read_file(
+        path: str, 
+        start_line: int = 1, 
+        start_column: int = 0, 
+        max_lines: int = _DEFAULT_READ_MAX_LINES, 
+        max_chars: int = _DEFAULT_READ_MAX_CHARS, 
+        encoding: str = "utf-8-sig",
+    ) -> dict[str, str | int | bool]:
         """
-        Read the content of a regular file.
+        Read a bounded portion of a regular text file.
 
-        Use this tool when the current task requires reading file content.
-
-        MUST NOT be used to read Skill definitions, instructions, or any
-        other Skill-related content. Use the Skill loading mechanism instead.
+        Use the returned next_line and next_column for exact continuation.
+        Lines are 1-based; columns are 0-based decoded character offsets.
+        This tool MUST NOT read Skill definitions or other Skill content;
+        use the Skill loading mechanism instead.
 
         Args:
-            path: Absolute file path to read.
+            path: Absolute file path.
+            start_line: First line to read (1-based).
+            start_column: Character offset inside start_line (0-based).
+            max_lines: Maximum number of logical lines to visit (1..2000).
+            max_chars: Maximum returned characters (1..32768).
+            encoding: Text encoding (default UTF-8 with optional BOM).
 
         Returns:
-            The file content.
+            Content, current cursor, next cursor, and EOF flag.
         """
-        file_path = _resolve_path(path)
+        if start_line < 1 or start_column < 0:
+            raise ValueError("start_line must be >= 1 and start_column must be >= 0")
+        if not 1 <= max_lines <= _MAX_READ_LINES:
+            raise ValueError(f"max_lines must be between 1 and {_MAX_READ_LINES}")
+        if not 1 <= max_chars <= _MAX_READ_CHARS:
+            raise ValueError(f"max_chars must be between 1 and {_MAX_READ_CHARS}")
+        if not encoding.strip():
+            raise ValueError("encoding is required")
 
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        if not file_path.is_file():
-            raise IsADirectoryError(f"Path is not a file: {file_path}")
-
+        file_path = _resolve_file(path)
         try:
-            return _read_text(file_path)
+            with file_path.open("r", encoding=encoding, errors="strict", newline="") as stream:
+                reached = _skip_lines(stream, start_line - 1)
+                if not reached:
+                    if start_column:
+                        raise ValueError("start_column must be 0 beyond EOF")
+                    return {
+                        "content": "", "start_line": start_line,
+                        "start_column": start_column, "next_line": start_line,
+                        "next_column": 0, "eof": True,
+                    }
+                _skip_columns(stream, start_column)
+                remaining = max_chars
+                current_line = start_line
+                current_column = start_column
+                pieces: list[str] = []
+
+                for _ in range(max_lines):
+                    if remaining == 0:
+                        break
+                    piece = stream.readline(remaining)
+                    if not piece:
+                        break
+                    pieces.append(piece)
+                    remaining -= len(piece)
+                    if piece.endswith("\n") or piece.endswith("\r"):
+                        current_line += 1
+                        current_column = 0
+                    else:
+                        current_column += len(piece)
+                        # A bounded readline may have stopped inside a line.
+                        if remaining == 0:
+                            break
+                        # No line terminator means EOF (readline otherwise
+                        # returns at a newline), so stop reading.
+                        break
+
+                position = stream.tell()
+                eof = stream.read(1) == ""
+                stream.seek(position)
+                return {
+                    "content": "".join(pieces),
+                    "start_line": start_line,
+                    "start_column": start_column,
+                    "next_line": current_line,
+                    "next_column": current_column,
+                    "eof": eof,
+                }
         except OSError as exc:
             raise OSError(f"Failed to read file: {file_path}") from exc
 
@@ -49,14 +123,14 @@ def create_read_file_tool() -> BaseTool:
 
 def create_write_file_tool() -> BaseTool:
     """创建写文件工具"""
-
     @tool
     def write_file(path: str, content: str) -> str:
         """
         Write content to a file.
 
-        Use this tool when the current task requires creating or updating
-        a file.
+        Use this tool when the current task requires creating or replacing
+        the entire content of a file. For adding content to an existing
+        file, use append_file instead.
 
         Args:
             path: Absolute file path to write.
@@ -66,7 +140,6 @@ def create_write_file_tool() -> BaseTool:
             A message indicating that the file was written successfully.
         """
         file_path = _resolve_path(path)
-
         if file_path.exists() and not file_path.is_file():
             raise IsADirectoryError(f"Path is not a file: {file_path}")
 
@@ -89,9 +162,49 @@ def create_write_file_tool() -> BaseTool:
     return write_file
 
 
+def create_append_file_tool() -> BaseTool:
+    """创建文件追加工具"""
+    @tool
+    def append_file(path: str, content: str, encoding: str = "utf-8") -> str:
+        """
+        Append text to the end of an existing regular file.
+
+        The content is appended verbatim; no newline is inserted.
+        Call write_file first to create a missing file. Repeated calls
+        append duplicate content, so avoid blind retries.
+
+        Args:
+            path: Absolute path to an existing file.
+            content: Text to append.
+            encoding: Existing file encoding (default UTF-8).
+
+        Returns:
+            A message with appended character count.
+        """
+        if not encoding.strip():
+            raise ValueError("encoding is required")
+        file_path = _resolve_file(path)
+        try:
+            with file_path.open("a", encoding=encoding, errors="strict", newline="") as stream:
+                stream.write(content)
+        except OSError as exc:
+            raise OSError(f"Failed to append file: {file_path}") from exc
+        return f"File appended successfully: {file_path} ({len(content)} character(s))"
+
+    # 设置annotations
+    append_file.metadata = {
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": False,
+        }
+    }
+    return append_file
+
+
 def create_edit_file_tool() -> BaseTool:
     """创建文件编辑工具"""
-
     @tool
     def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = False) -> str:
         """
@@ -131,14 +244,9 @@ def create_edit_file_tool() -> BaseTool:
         if count == 0:
             raise ValueError(f"old_string was not found in file: {file_path}")
         if not replace_all and count > 1:
-            raise ValueError(
-                f"old_string matched {count} times; provide more context "
-                "or set replace_all=true"
-            )
+            raise ValueError(f"old_string matched {count} times; provide more context or set replace_all=true")
 
-        updated = content.replace(old_string, new_string) if replace_all else content.replace(
-            old_string, new_string, 1
-        )
+        updated = content.replace(old_string, new_string) if replace_all else content.replace(old_string, new_string, 1)
 
         try:
             file_path.write_text(updated, encoding="utf-8")
@@ -159,12 +267,8 @@ def create_edit_file_tool() -> BaseTool:
     return edit_file
 
 
-_SEARCH_FILES_LIMIT = 200
-
-
 def create_search_files_tool() -> BaseTool:
     """创建文件搜索工具"""
-
     @tool
     def search_files(path: str, pattern: str) -> str:
         """
@@ -220,7 +324,6 @@ def create_search_files_tool() -> BaseTool:
 
 def create_list_directory_tool() -> BaseTool:
     """创建目录列举工具"""
-
     @tool
     def list_directory(path: str) -> str:
         """
@@ -267,7 +370,6 @@ def create_list_directory_tool() -> BaseTool:
 
 def create_directory_tool() -> BaseTool:
     """创建目录创建工具"""
-
     @tool
     def create_directory(path: str) -> str:
         """
@@ -314,8 +416,18 @@ def _read_text(file_path: Path) -> str:
     return data.decode("latin-1")
 
 
+def _resolve_file(path: str) -> Path:
+    """解析并校验已存在的文件"""
+    file_path = _resolve_path(path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+    if not file_path.is_file():
+        raise IsADirectoryError(f"Path is not a file: {file_path}")
+    return file_path
+
+
 def _resolve_path(path: str) -> Path:
-    """解析路径；仅接受绝对路径。"""
+    """解析路径；仅接受绝对路径"""
     raw = (path or "").strip()
     if not raw:
         raise ValueError("path is required")
@@ -326,10 +438,32 @@ def _resolve_path(path: str) -> Path:
 
 
 def _resolve_directory(path: str) -> Path:
-    """解析并校验目录路径。"""
+    """解析并校验目录路径"""
     dir_path = _resolve_path(path)
     if not dir_path.exists():
         raise FileNotFoundError(f"Directory not found: {dir_path}")
     if not dir_path.is_dir():
         raise NotADirectoryError(f"Path is not a directory: {dir_path}")
     return dir_path
+
+
+def _skip_lines(stream: TextIO, count: int) -> bool:
+    """跳过 count 个完整逻辑行；到达 EOF 时返回 False"""
+    for _ in range(count):
+        while True:
+            piece = stream.readline(_READ_BUFFER_SIZE)
+            if not piece:
+                return False
+            if piece.endswith("\n") or piece.endswith("\r"):
+                break
+    return True
+
+
+def _skip_columns(stream: TextIO, count: int) -> None:
+    """在当前行内跳过 count 个字符，不允许越过行尾"""
+    remaining = count
+    while remaining:
+        chunk = stream.readline(min(remaining, _READ_BUFFER_SIZE))
+        if not chunk or "\n" in chunk or "\r" in chunk:
+            raise ValueError("start_column exceeds the length of the requested line")
+        remaining -= len(chunk)

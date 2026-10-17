@@ -5,7 +5,7 @@ from langgraph.types import Command
 
 from .....common import get_logger
 from ....app import Application
-from .....prompt import PromptLoader
+from .....prompt import PromptAssembler, PromptLoader
 from .....utils import MessageAdapter, update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
@@ -56,14 +56,13 @@ class ActionNode(Node):
         bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode, tool_registry)
         if not bound_tools:
             return self._handle_blocked([], state)
+        tool_list = to_openai_tool_json_schema(bound_tools)
         # 调用llm
         response = self._llm_client.invoke(
-            prompt=self._prompt,
-            user_input={"reasoning": state.reasoning},
+            prompt=self._build_prompt(runtime.context, runtime_config.agent_mode, tool_list),
+            user_input={"next_action": state.next_action},
             history=self._build_history(state, runtime.context),
-            tool_list=to_openai_tool_json_schema(bound_tools),
-            context=runtime.context,
-            agent_resources=runtime.context.resources,
+            tool_list=tool_list,
             config=runtime_config.to_llm_runnable_config(),
             # before_model=session.before_model,
             conversation=state.conversation,
@@ -87,14 +86,13 @@ class ActionNode(Node):
         bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode, tool_registry)
         if not bound_tools:
             return self._handle_blocked([], state)
+        tool_list = to_openai_tool_json_schema(bound_tools)
         # 调用llm
         response = await self._llm_client.ainvoke(
-            prompt=self._prompt,
-            user_input={"reasoning": state.reasoning},
+            prompt=self._build_prompt(runtime.context, runtime_config.agent_mode, tool_list),
+            user_input={"next_action": state.next_action},
             history=self._build_history(state, runtime.context),
-            tool_list=to_openai_tool_json_schema(bound_tools),
-            context=runtime.context,
-            agent_resources=runtime.context.resources,
+            tool_list=tool_list,
             config=runtime_config.to_llm_runnable_config(),
             # abefore_model=session.abefore_model,
             conversation=state.conversation,
@@ -138,6 +136,18 @@ class ActionNode(Node):
             return self._handle_approval(state, tool_calls)
 
         return self._handle_ready(tool_calls, state, context, tool_registry)
+
+    def _build_prompt(self, context: ReActContext, agent_mode: AgentMode, tool_list: list[Any]) -> str:
+        """构建系统提示词"""
+        resources = context.resources
+        return PromptAssembler.assemble(
+            agent_prompt=resources.system_prompt if resources else None,
+            system_prompt=self._prompt,
+            agent_mode=agent_mode,
+            tool_list=tool_list,
+            skill_frontmatter_list=resources.skill_frontmatter_list if resources else None,
+            active_skills=context.active_skills,
+        )
 
     def _build_history(self, state: ReActState, context: ReActContext | None = None) -> list[Message]:
         """构建跨轮会话历史与本轮执行轨迹"""

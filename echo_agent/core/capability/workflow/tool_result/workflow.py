@@ -54,7 +54,7 @@ def build_read_payload(task_id: str, content: str, next_offset: int, eof: bool) 
         "task_id": task_id,
         "content": content,
         "next_offset": next_offset,
-        "eof": eof,
+        # "eof": eof,
     }
 
 
