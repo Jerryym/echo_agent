@@ -662,7 +662,7 @@ class LLMClient:
         structured_output_tool = create_structured_output_tool(schema)
 
         if self._config.use_responses_api:
-            tool_choice: str | dict[str, Any] = "required"
+            tool_choice: str | dict[str, Any] = "auto"
         else:
             tool_choice = {
                 "type": "function",
@@ -739,32 +739,15 @@ class LLMClient:
     def _parse_structured_response(self, response: AIMessage, structured_tool: BaseTool) -> LLMResult:
         """解析 LLM 结构化输出"""
         try:
-            # 查找结构化输出工具调用
-            structured_result: JsonObject | None = None
-            for tool_call in response.tool_calls:
-                if tool_call["name"] != structured_tool.name:
-                    continue
-
-                args = tool_call["args"]
-                if not isinstance(args, dict):
-                    raise LLMResponseDecodeError(message="structured output tool arguments must be a JSON object")
-
-                result = structured_tool.invoke(args)
-                if not isinstance(result, dict):
-                    raise LLMResponseDecodeError(message="structured output tool result must be a JSON object")
-
-                structured_result = cast(JsonObject, result)
-                break
-
             text, reasoning = self._normalize_content(response)
-            if structured_result is None:
-                if not text.strip():
-                    raise LLMResponseDecodeError(message="structured output tool was not called")
-                payload = self._load_json_object(text)
-                result = structured_tool.invoke(payload)
-                if not isinstance(result, dict):
-                    raise LLMResponseDecodeError(message="structured output tool result must be a JSON object")
-                structured_result = cast(JsonObject, result)
+            payload = self._structured_payload(response, structured_tool.name, text)
+            if payload is None:
+                raise LLMResponseDecodeError(message="structured output was not found")
+
+            result = structured_tool.invoke(payload)
+            if not isinstance(result, dict):
+                raise LLMResponseDecodeError(message="structured output tool result must be a JSON object")
+            structured_result = cast(JsonObject, result)
             # 解析 Token Usage
             usage_metadata = response.usage_metadata or {}
             input_token_details = (usage_metadata.get("input_token_details", None) or {})
@@ -791,6 +774,57 @@ class LLMClient:
                 message="parse structured response failed",
                 detail=str(e),
             )
+
+    def _structured_payload(self, response: AIMessage, tool_name: str, text: str) -> dict[str, Any] | None:
+        """从工具调用、content block 或正文中取出结构化参数"""
+        for tool_call in response.tool_calls or []:
+            if tool_call.get("name") != tool_name:
+                continue
+            args = tool_call.get("args")
+            if isinstance(args, dict):
+                return args
+            if isinstance(args, str) and args.strip():
+                return self._load_json_object(args)
+            raise LLMResponseDecodeError(message="structured output tool arguments must be a JSON object")
+
+        block_payload = self._payload_from_content_blocks(response.content, tool_name)
+        if block_payload is not None:
+            return block_payload
+
+        if text.strip():
+            return self._load_json_object(text)
+        return None
+
+    def _payload_from_content_blocks(self, content: Any, tool_name: str) -> dict[str, Any] | None:
+        """从 tool_use / function_call block 中取出参数"""
+        if not isinstance(content, list):
+            return None
+
+        for block in content:
+            if isinstance(block, dict):
+                block_type = block.get("type")
+                name = block.get("name")
+                raw = block.get("input") or block.get("arguments") or block.get("args")
+            elif hasattr(block, "type"):
+                block_type = getattr(block, "type", None)
+                name = getattr(block, "name", None)
+                raw = (
+                    getattr(block, "input", None)
+                    or getattr(block, "arguments", None)
+                    or getattr(block, "args", None)
+                )
+            else:
+                continue
+
+            if block_type not in ("tool_use", "tool_call", "function_call", "input_json"):
+                continue
+            if name and name != tool_name:
+                continue
+            if isinstance(raw, dict):
+                return raw
+            if isinstance(raw, str) and raw.strip():
+                return self._load_json_object(raw)
+        return None
 
     def _load_json_object(self, text: str) -> dict[str, Any]:
         """将归一化后的 JSON 文本解析为对象"""
