@@ -3,8 +3,8 @@ from langgraph.runtime import Runtime
 from ...common import format_value, get_logger
 from ...utils import update_agent_tool
 from ..graph import BaseContext, BaseState, Node
-from ..model.conversation import ConversationContextItem, ConversationContextType
-from ..model.message import Message, Role
+from ..model.session import SessionItemType, SessionItem
+from ..model.message import Message, Role, append_messages
 from ..model.tool import ToolResultItem, ToolState
 from .tool_executor import ToolExecutor
 from .tool_result_store import ToolResultStore
@@ -20,8 +20,7 @@ class ToolNode(Node):
     Args:
         name: 节点名称
         tool_executor: 工具执行器
-        message_field: 消息字段名称
-        artifact_threshold: 工具结果写入 Message 的最大字节数
+        message_field: 可选的执行轨迹字段，工具消息始终写入工作上下文
     """
     def __init__(self, name: str, tool_executor: ToolExecutor, message_field: str | None = None):
         super().__init__(name)
@@ -42,7 +41,7 @@ class ToolNode(Node):
             result_item = self._tool_result_store.put(result)
             tool_result_items.append(result_item)
             # logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
-        return self._build_result(tool_result_items, runtime.context)
+        return self._build_result(tool_result_items, runtime.context, state)
 
     async def arun(self, state: BaseState, runtime: Runtime[BaseContext]) -> dict:
         """
@@ -57,17 +56,20 @@ class ToolNode(Node):
             result_item = self._tool_result_store.put(result)
             tool_result_items.append(result_item)
             # logger.info("result name=%s success=%s result=%s", result.name, result.success, format_value(result.result))
-        return self._build_result(tool_result_items, runtime.context)
+        return self._build_result(tool_result_items, runtime.context, state)
 
-    def _build_result(self, tool_result_items: list[ToolResultItem], context: BaseContext) -> dict:
+    def _build_result(self, tool_result_items: list[ToolResultItem], context: BaseContext, state: BaseState) -> dict:
         # 构建ToolMessage
         tool_messages = self._build_tool_messages(tool_result_items)
-        # 构建ConversationContextItem
-        context_items = self._build_context_items(tool_result_items)
-        if context is not None and context_items:
-            context.session_state.merge_context_items(context_items)
+        # 构建SessionItem
+        session_items = self._build_session_items(tool_result_items)
+        if context is not None and session_items:
+            context.session_state.merge_session_items(session_items)
 
-        result = {
+        work_context = state.context.model_copy(deep=True)
+        work_context.messages = append_messages(work_context.messages, tool_messages)
+        result: dict[str, object] = {
+            "context": work_context,
             "tool_state": ToolState(tool_calls=[], tool_results=tool_result_items),
         }
         # 如果消息字段名称不为空, 则将工具调用消息添加到消息字段中
@@ -110,16 +112,16 @@ class ToolNode(Node):
         )
 
     @staticmethod
-    def _build_context_items(result_items: list[ToolResultItem]) -> list[ConversationContextItem]:
+    def _build_session_items(result_items: list[ToolResultItem]) -> list[SessionItem]:
         """构建工具结果的上下文项"""
-        context_items: list[ConversationContextItem] = []
+        session_items: list[SessionItem] = []
         for item in result_items:
-            context_items.append(
-                ConversationContextItem(
+            session_items.append(
+                SessionItem(
                     id=f"tool_result:{item.tool_call_id}",
-                    type=ConversationContextType.TOOL_RESULT,
+                    type=SessionItemType.TOOL_RESULT,
                     content=item.model_dump(mode="json"),
                 )
             )
 
-        return context_items
+        return session_items

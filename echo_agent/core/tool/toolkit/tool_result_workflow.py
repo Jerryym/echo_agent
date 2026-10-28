@@ -8,7 +8,7 @@ from langgraph.runtime import get_runtime
 from ...capability.workflow.builder import WorkflowTaskBuilder
 from ...capability.workflow.tool_result.schema import ToolResultReadResult, ToolResultTaskState
 from ...capability.workflow.tool_result.workflow import build_read_payload, validate_read_budget
-from ...model.conversation import ConversationContextItem, ConversationContextType
+from ...model.session import SessionItem, SessionItemType
 from ...model.tool import ToolResultItem
 
 
@@ -32,7 +32,8 @@ def create_read_tool_result_tool(workflow: Pregel) -> BaseTool:
         if task_id is None:
             if not tool_call_id.strip():
                 raise ValueError("tool_call_id is required for the first read")
-            result_item = _resolve_tool_result_item(tool_call_id, context.session_state.context_items)
+            session_state = context.session_state
+            result_item = _resolve_tool_result_item(tool_call_id, session_state.items)
             # 先分配 task_id，供 Workflow 的完整返回预算校验使用。
             task = WorkflowTaskBuilder.build(ToolResultTaskState(result_item=result_item, task_id="pending"))
             state = ToolResultTaskState(result_item=result_item, task_id=task.task_id)
@@ -80,9 +81,9 @@ def create_read_tool_result_tool(workflow: Pregel) -> BaseTool:
     return read_tool_result
 
 
-def _resolve_tool_result_item(tool_call_id: str, context_items: list[ConversationContextItem]) -> ToolResultItem:
+def _resolve_tool_result_item(tool_call_id: str, session_items: list[SessionItem]) -> ToolResultItem:
     item_id = f"tool_result:{tool_call_id}"
-    for item in context_items:
-        if item.id == item_id and item.type == ConversationContextType.TOOL_RESULT:
+    for item in session_items:
+        if item.id == item_id and item.type == SessionItemType.TOOL_RESULT:
             return ToolResultItem.model_validate(item.content)
     raise LookupError(f"Tool result not found: {tool_call_id}")

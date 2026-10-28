@@ -1,23 +1,17 @@
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
-from langchain.tools import tool
 from pydantic import BaseModel, Field
 
 from ...graph import BaseContext, BaseInput, BaseOutput, BaseState
-from ...model.conversation import ConversationState
-from ...model.message import Message, Role, append_messages
+from ...model.context import ContextState
+from ...model.message import Message, append_messages
 from ..strategy_task import StrategyTask
 from .observation import Observation, append_observations
 
 
-def build_react_history(conversation: ConversationState, trajectory: list[Message]) -> list[Message]:
-    """读取会话摘要和消息，再追加本轮轨迹"""
-    history: list[Message] = []
-    if conversation.summary is not None:
-        history.append(Message(role=Role.SYSTEM, content=conversation.summary.render()))
-    history.extend(conversation.messages)
-    history.extend(trajectory)
-    return history
+def build_react_history(context: ContextState) -> list[Message]:
+    """工作消息是模型历史的唯一来源，轨迹仅用于执行记录。"""
+    return [message.model_copy(deep=True) for message in context.messages]
 
 
 class ReActInput(BaseInput):

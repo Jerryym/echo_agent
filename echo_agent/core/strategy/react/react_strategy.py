@@ -5,7 +5,6 @@ from ....utils import MessageAdapter
 from ...graph import BaseContext, BaseState, Node, SubGraph, START_NODE, END_NODE, GraphSchema
 from ...llm import LLMConfig
 from ...model.input import UserInput
-from ...model.message import Role, append_messages
 from ...runtime.human_in_the_loop import HITLSubgraph
 from ...tool import ToolExecutor, ToolNode, ToolRegistry
 from ..strategy import BaseStrategy
@@ -93,13 +92,13 @@ class ReActStrategy(BaseStrategy):
             attachments=attachments,
         )
         logger.info("to_strategy_input | task=%s, user_content=%s", task, user_content)
-
-        conversation = state.conversation.model_copy(deep=True)
-        logger.info("to_strategy_input | task=%s, messages=%s", task, len(conversation.messages))
+        logger.info("to_strategy_input | task=%s, messages=%s", task, len(state.context.messages))
 
         return ReActInput(
             task=task,
-            conversation=conversation,
+            steps=[step.model_copy(deep=True) for step in state.steps],
+            current_step=(state.current_step.model_copy(deep=True) if state.current_step is not None else None),
+            context=state.context.model_copy(deep=True)
         )
 
     def to_strategy_context(self, context: BaseContext | None = None) -> ReActContext | None:
@@ -130,24 +129,14 @@ class ReActStrategy(BaseStrategy):
         return react_context
 
     def to_parent_state(self, output: ReActOutput) -> dict:
-        """
-        将 Strategy Output 映射为 Parent State 更新内容
-        """
-        # 获取本轮工具调用结果
-        tool_messages = [
-            message
-            for message in output.trajectory
-            if message.role == Role.TOOL or message.tool_calls
-        ]
-
-        # 追加本轮工具调用结果
-        conversation = output.conversation.model_copy(deep=True)
-        if tool_messages:
-            conversation.messages = append_messages(conversation.messages, tool_messages)
-        
+        """将 Strategy Output 映射为 Parent State 更新内容"""
+        # 获取当前上下文
+        context = output.context.model_copy(deep=True)
         return {
+            "steps": [step.model_copy(deep=True) for step in output.steps],
+            "current_step": (output.current_step.model_copy(deep=True) if output.current_step is not None else None),
             "response": output.response,
-            "conversation": conversation,
+            "context": context,
         }
 
 

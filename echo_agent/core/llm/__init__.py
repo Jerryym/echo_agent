@@ -1,3 +1,4 @@
+from .context_budget_gateway import ContextBudgetGateway
 from .exception import (
     LLMException,
     LLMInitializeError,
@@ -14,6 +15,7 @@ from .structured_output import (
     validate_structured_output,
 )
 
+
 __all__ = [
     "LLMClient",
     "LLMConfig",
@@ -27,4 +29,5 @@ __all__ = [
     "StructuredOutputSchema",
     "create_structured_output_tool",
     "validate_structured_output",
+    "ContextBudgetGateway",
 ]

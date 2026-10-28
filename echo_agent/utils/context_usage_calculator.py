@@ -13,12 +13,13 @@ class ContextUsageCalculator:
     """
     @staticmethod
     def calculate(messages: list[BaseMessage], tools: list[dict[str, Any] | BaseTool] | None = None) -> int:
-        message_tokens = count_tokens_approximately(messages)
-        tool_tokens = ContextUsageCalculator._calculate_tool_tokens(tools)
-        return message_tokens + tool_tokens
+        # message_tokens = count_tokens_approximately(messages, tools=tools)
+        # tool_tokens = ContextUsageCalculator._calculate_tool_tokens(tools)
+        # return message_tokens + tool_tokens
+        return count_tokens_approximately(messages, tools=tools)
 
     @staticmethod
-    def _calculate_tool_tokens(tools: list[dict[str, Any] | BaseTool]) -> int:
+    def _calculate_tool_tokens(tools: list[dict[str, Any] | BaseTool] | None) -> int:
         if not tools:
             return 0
 

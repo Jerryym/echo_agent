@@ -12,16 +12,16 @@ from ..capability.workflow.tool_result import create_tool_result_read_workflow
 from ..graph import (
     BaseContext,
     BaseInput,
+    BaseState,
     Graph,
     GraphCompileOptions,
     GraphSchema,
     Node,
 )
-from ..llm import LLMClient
 from ..mcp import MCPClient
 from ..model.agent import AgentMode, AgentResources, AgentResult
 from ..model.session import SessionState
-from ..model.conversation import ConversationState
+from ..model.context import ContextState
 from ..model.input import UserInput
 from ..model.message import Message, Role, append_messages
 from ..model.skill import SkillRuntimeContext
@@ -48,7 +48,7 @@ from ..tool.toolkit import (
 from ..tool.utils import to_tool_definition
 from .agent_config import AgentConfig
 from .agent_session import AgentSession
-from .agent_turn import TurnStatus
+from .agent_turn import AgentTurn, TurnStatus
 
 logger = get_logger("agent")
 
@@ -172,7 +172,7 @@ class Agent:
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         context = self._build_context(session_id, input, http_request, resume=False)
-        graph_input = self._build_input(input, context.session_state.conversation)
+        graph_input = self._build_input(input, context.session_state.context)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         self._unload_idle_skills_for_user_turn(context)
         result = self._compiled_graph.invoke(graph_input, runnable_config, context=context)
@@ -190,7 +190,7 @@ class Agent:
         调用 Agent 执行（异步）
         """
         context = self._build_context(session_id, input, http_request, resume=False)
-        graph_input = self._build_input(input, context.session_state.conversation)
+        graph_input = self._build_input(input, context.session_state.context)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         self._unload_idle_skills_for_user_turn(context)
         result = await self._compiled_graph.ainvoke(graph_input, runnable_config, context=context)
@@ -216,7 +216,7 @@ class Agent:
             metadata: 元数据, 智能体运行时需要的额外信息, 由调用方自行定义
         """
         context = self._build_context(session_id, input, http_request, resume=False)
-        graph_input = self._build_input(input, context.session_state.conversation)
+        graph_input = self._build_input(input, context.session_state.context)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         self._unload_idle_skills_for_user_turn(context)
         return self._stream_iterator(graph_input, runnable_config, context, session_id, version)
@@ -234,7 +234,7 @@ class Agent:
         流式调用 Agent 执行（异步）
         """
         context = self._build_context(session_id, input, http_request, resume=False)
-        graph_input = self._build_input(input, context.session_state.conversation)
+        graph_input = self._build_input(input, context.session_state.context)
         runnable_config = self._build_runnable_config(session_id, agent_mode, http_request, metadata)
         self._unload_idle_skills_for_user_turn(context)
         return self._astream_iterator(graph_input, runnable_config, context, session_id, version)
@@ -378,6 +378,7 @@ class Agent:
         session = self._agent_sessions.get(session_id)
         if session is None or session.current_turn is None:
             return
+        self._sync_turn_steps(session.current_turn, getattr(self.get_state(session_id), "values", None))
         latest_checkpoint_id = self._read_checkpoint_id(session_id)
         pre_checkpoint_id = session.current_turn.pre_checkpoint_id
         session.cancel_turn(latest_checkpoint_id)
@@ -385,12 +386,10 @@ class Agent:
 
     def restore_checkpoint(self, session_id: str, checkpoint_id: str | None) -> None:
         """
-        将 thread tip fork 回指定 checkpoint。不修改 Turn、conversation、
-        token_usage 和 context_items。无 checkpoint_id 且已有会话消息时
+        将 thread tip fork 回指定 checkpoint。不修改 Turn、conversation、token_usage 和 items。无 checkpoint_id 且已有会话消息时
         跳过空图基线，避免误伤已结算历史。
 
-        LangGraph 的 update_state 不删除历史，只 fork 出新 tip，使后续
-        无 checkpoint_id 的 get_state / invoke / astream 读到基线语义。
+        LangGraph 的 update_state 不删除历史，只 fork 出新 tip，使后续无 checkpoint_id 的 get_state / invoke / astream 读到基线语义。
 
         Args:
             session_id: 会话 ID（= thread_id）
@@ -503,14 +502,25 @@ class Agent:
         self._tool_registry.register(to_tool_definition(write_xlsx), write_xlsx)
         self._tool_registry.register(to_tool_definition(append_xlsx), append_xlsx)
 
-    def _build_input(self, input: UserInput | type[BaseInput], conversation: ConversationState) -> dict | BaseInput:
+    def _build_input(self, input: UserInput | type[BaseInput], context: ContextState) -> dict | BaseInput:
         """构建输入"""
-        graph_conversation = conversation.model_copy(deep=True)
+        graph_context = context.model_copy(deep=True)
+
         input_schema = self._graph.input_schema
         if input_schema is None:
-            return {"input": input, "conversation": graph_conversation}
+            return {
+                "input": input, 
+                "steps": [],
+                "current_step": None,
+                "context": graph_context,
+            }
         if isinstance(input, input_schema):
-            return input.model_copy(update={"conversation": graph_conversation})
+            return input.model_copy(
+                update={
+                    "steps": [],
+                    "current_step": None,
+                    "context": graph_context,
+                })
         raise TypeError(f"输入类型错误，期望 {input_schema}，实际 {type(input)}")
 
     def _build_runnable_config(
@@ -591,7 +601,7 @@ class Agent:
             """获取 Agent Session"""
             session = self._agent_sessions.get(session_id)
             if session is None:
-                session = AgentSession(session_id, self._agent_config.conversation_max_tokens, self._agent_config.llm_config)
+                session = AgentSession(session_id, self._agent_config.context_window, self._agent_config.llm_config)
                 self._agent_sessions[session_id] = session
             return session
     
@@ -633,6 +643,8 @@ class Agent:
         agent_result = turn.result
 
         snapshot = self.get_state(session_id)
+        if not self._sync_turn_steps(turn, result):
+            self._sync_turn_steps(turn, getattr(snapshot, "values", None))
         # Graph 处于 HITL 等中断状态，保留当前 Turn
         if snapshot.next:
             turn.latest_checkpoint_id = self._read_checkpoint_id(session_id)
@@ -650,14 +662,31 @@ class Agent:
 
         self._append_conversation(session_id, result)
 
-        # 更新 Token Usage
-        self._update_token_usage(session_id, context)
+        # 用量已逐次累计，此处仅输出结算日志。
+        self._log_token_usage(session_id, context)
 
         # 当前 Turn 完成，保存结果并清理当前 Turn
         final_result = agent_result.model_copy(deep=True)
         session.finish_turn(final_result)
 
         return final_result
+
+    @staticmethod
+    def _sync_turn_steps(turn: AgentTurn, value: Any) -> bool:
+        """将已提交的 Graph 步骤同步到 Turn；缺少字段时保留已有记录"""
+        if isinstance(value, dict):
+            if "steps" not in value:
+                return False
+            steps = value["steps"]
+            current_step = value.get("current_step")
+        else:
+            if value is None or not hasattr(value, "steps"):
+                return False
+            steps = value.steps
+            current_step = getattr(value, "current_step", None)
+        state = BaseState.model_validate({"steps": steps, "current_step": current_step})
+        turn.update_steps(state.steps, state.current_step)
+        return True
 
     async def _agenerate_result(self, session_id: str,  context: BaseContext, result: Any = None) -> AgentResult:
         """
@@ -666,13 +695,12 @@ class Agent:
         agent_result = self._generate_result(session_id, context, result)
         return agent_result
 
-    def _update_token_usage(self, session_id: str, context: BaseContext) -> None:
-        """将本轮 token 用量累加到 SessionState"""
+    def _log_token_usage(self, session_id: str, context: BaseContext) -> None:
+        """记录 Turn 和 Session 累计消耗，不再次结算用量。"""
         if context.agent_result is None:
             return
         usage = context.agent_result.token_usage
         session_state = self._get_session_state(session_id)
-        session_state.token_usage = session_state.token_usage.add(usage)
         logger.info(
             "token_usage | turn_input=%s turn_output=%s turn_total=%s | session_total=%s",
             usage.input_tokens,
@@ -751,11 +779,13 @@ class Agent:
             assistant = "本轮已结束，无最终回复。"
 
         session_state = self._get_session_state(session_id)
-        graph_conversation = self._read_conversation(result) or self._read_conversation(getattr(snapshot, "values", None))
-        if graph_conversation is not None:
-            session_state.conversation = graph_conversation.model_copy(deep=True)
-        conversation = session_state.conversation
+        # 仅提交工作上下文；正式交互记录不从 Graph 覆盖。
+        graph_context = self._read_context(result) or self._read_context(getattr(snapshot, "values", None))
+        if graph_context is not None:
+            session_state.context = graph_context.model_copy(deep=True)
+
         # 添加 Assistant 消息
+        conversation = session_state.conversation
         conversation.messages = append_messages(
             conversation.messages,
             [
@@ -763,17 +793,18 @@ class Agent:
             ],
         )
 
-    def _read_conversation(self, value: Any) -> ConversationState | None:
-        """从 Graph 结果中读取会话副本"""
+    def _read_context(self, value: Any) -> ContextState | None:
+        """从 Graph 结果中读取工作上下文副本"""
         if value is None:
             return None
-        raw = value.get("conversation") if isinstance(value, dict) else getattr(value, "conversation", None)
+
+        raw = value.get("context") if isinstance(value, dict) else getattr(value, "context", None)
         if raw is None:
             return None
-        if isinstance(raw, ConversationState):
+        if isinstance(raw, ContextState):
             return raw
         if isinstance(raw, dict):
-            return ConversationState.model_validate(raw)
+            return ContextState.model_validate(raw)
         return None
 
     def _restore_first_turn_baseline(self, session_id: str) -> None:

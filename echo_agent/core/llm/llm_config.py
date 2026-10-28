@@ -28,6 +28,7 @@ class LLMConfig(BaseModel):
 
         timeout: 超时时间（秒）
         max_retries: 最大重试次数
+        context_window: 上下文长度
 
         parallel_tool_calls: 是否并行调用工具
         builtin_tools: 模型/provider 内置工具列表，由调用方按模型能力传入
@@ -48,6 +49,7 @@ class LLMConfig(BaseModel):
     # 模型生成配置
     temperature: float = 0.2
     max_tokens: int = 1024
+    context_window: int = Field(default=1_000_000, gt=0, description="模型最大上下文窗口 Token 数")
 
     # 请求与重试配置
     timeout: int = 1200

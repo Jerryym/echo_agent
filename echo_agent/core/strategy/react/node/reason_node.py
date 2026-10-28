@@ -6,14 +6,16 @@ from pydantic import ValidationError
 
 from .....common import get_logger
 from .....prompt import PromptAssembler, PromptLoader
-from .....utils import update_agent_result
+from .....utils import update_agent_reasoning, update_agent_result, update_token_usage
 from ....app import Application
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.agent import AgentMode
+from ....model.step import Step
 from ....model.message import Message
 from ....model.tool import ToolState
 from ....runtime.runtime_config import RuntimeConfig
+from ....runtime.context import ContextCompactor
 from ..observation import Observation, ObservationBuilder
 from ..schema import (
     ReActContext,
@@ -41,6 +43,7 @@ class ReasonNode(Node):
         super().__init__(name)
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/reasoning.md")
+        self._context_compactor = ContextCompactor(llm_config) # 上下文压缩器
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         """
@@ -58,10 +61,24 @@ class ReasonNode(Node):
                 "observations": observation_list,
                 "tool_list": [],
             })
+
+        # 判断是否需要压缩上下文
+        if self._context_compactor.should_compact(state.context):
+            compacted_context, token_usage = self._context_compactor.compress(state.context)
+            logger.info("context compacted | tokens=%s", token_usage.total_tokens)
+            state.context = compacted_context
+            update_agent_result(runtime.context, '上下文已压缩', token_usage) 
+            
         try:
             result = self._invoke(state, runtime, observation_list)
         except (ValidationError, ValueError) as exc:
             logger.warning("reason failed: %s", exc)
+            return self._router(state, runtime.context, {
+                "task_status": "failed",
+                "observations": observation_list,
+                "tool_list": [],
+            })
+        if result is None:
             return self._router(state, runtime.context, {
                 "task_status": "failed",
                 "observations": observation_list,
@@ -86,6 +103,14 @@ class ReasonNode(Node):
                 "observations": observation_list,
                 "tool_list": [],
             })
+
+        # 判断是否需要压缩上下文
+        if self._context_compactor.should_compact(state.context):
+            compacted_context, token_usage = await self._context_compactor.acompress(state.context)
+            logger.info("context compacted | tokens=%s", token_usage.total_tokens)
+            state.context = compacted_context
+            update_agent_result(runtime.context, '上下文已压缩', token_usage) 
+
         try:
             result = await self._ainvoke(state, runtime, observation_list)
         except (ValidationError, ValueError) as exc:
@@ -95,58 +120,91 @@ class ReasonNode(Node):
                 "observations": observation_list,
                 "tool_list": [],
             })
+        if result is None:
+            return self._router(state, runtime.context, {
+                "task_status": "failed",
+                "observations": observation_list,
+                "tool_list": [],
+            })
         logger.info("result=%r", result)
         return self._handle_result(result, state, runtime.context, observation_list)
 
-    def _invoke(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
+    def _invoke(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput | None:
         """生成并校验结构化推理结果"""
         kwargs = self._prepare_invoke(state, runtime, observation_list)
-        runtime_config = RuntimeConfig.get_runtime_config()
-        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        return self._invoke_reason_result(kwargs, runtime, session.before_model)
+        return self._invoke_reason_result(state, kwargs, runtime)
 
-    async def _ainvoke(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput:
+    async def _ainvoke(self, state: ReActState, runtime: Runtime[ReActContext], observation_list: list[Observation]) -> ReasonStructuredOutput | None:
         """异步生成并校验结构化推理结果"""
         kwargs = self._prepare_invoke(state, runtime, observation_list)
-        runtime_config = RuntimeConfig.get_runtime_config()
-        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
-        return await self._ainvoke_reason_result(kwargs, runtime, session.abefore_model)
+        return await self._ainvoke_reason_result(state, kwargs, runtime)
 
-    def _invoke_reason_result(
-        self,
-        kwargs: dict[str, Any],
-        runtime: Runtime[ReActContext],
-        before_model: Any,
-    ) -> ReasonStructuredOutput:
+    def _invoke_reason_result(self, state: ReActState, kwargs: dict[str, Any], runtime: Runtime[ReActContext]) -> ReasonStructuredOutput | None:
         """生成并校验一轮结构化推理结果"""
-        response = self._llm_client.invoke_structured(
-            schema=ReasonStructuredOutput,
-            **kwargs,
-            before_model=before_model,
-        )
+        step = Step()
+        state.steps = [*state.steps, step]
+        state.current_step = step
+        try:
+            response = self._llm_client.invoke_structured(
+                schema=ReasonStructuredOutput,
+                **kwargs,
+            )
+            step.token_usage = response.token_usage.model_copy(deep=True)
+            update_token_usage(runtime.context, response.token_usage)
+        except Exception as exc:
+            step.error = str(exc)
+            logger.warning("reason step failed: %s", exc)
+            return None
+        finally:
+            state.current_step = None
         try:
             result = ReasonStructuredOutput.model_validate(response.structured)
-        except ValidationError as exc:
-            raise ValueError("Invalid structured reason result.") from exc
-        self._validate_reason_result(result)
+        except ValidationError:
+            step.error = "Invalid structured reason result."
+            logger.warning("reason step failed: %s", step.error)
+            return None
+        try:
+            self._validate_reason_result(result)
+        except ValueError as exc:
+            step.error = str(exc)
+            logger.warning("reason step failed: %s", exc)
+            return None
         # 结构化输出的text可能为空，使用assessment记录本轮任务推进判断
-        update_agent_result(runtime.context, result.assessment, response.token_usage)
+        update_agent_reasoning(runtime.context, result.assessment)
         return result
 
-    async def _ainvoke_reason_result(self, kwargs: dict[str, Any], runtime: Runtime[ReActContext], abefore_model: Any) -> ReasonStructuredOutput:
+    async def _ainvoke_reason_result(self, state: ReActState, kwargs: dict[str, Any], runtime: Runtime[ReActContext]) -> ReasonStructuredOutput | None:
         """异步生成并校验一轮结构化推理结果"""
-        response = await self._llm_client.ainvoke_structured(
-            schema=ReasonStructuredOutput,
-            **kwargs,
-            abefore_model=abefore_model,
-        )
+        step = Step()
+        state.steps = [*state.steps, step]
+        state.current_step = step
+        try:
+            response = await self._llm_client.ainvoke_structured(
+                schema=ReasonStructuredOutput,
+                **kwargs,
+            )
+            step.token_usage = response.token_usage.model_copy(deep=True)
+            update_token_usage(runtime.context, response.token_usage)
+        except Exception as exc:
+            step.error = str(exc)
+            logger.warning("reason step failed: %s", exc)
+            return None
+        finally:
+            state.current_step = None
         try:
             result = ReasonStructuredOutput.model_validate(response.structured)
-        except ValidationError as exc:
-            raise ValueError("Invalid structured reason result.") from exc
-        self._validate_reason_result(result)
+        except ValidationError:
+            step.error = "Invalid structured reason result."
+            logger.warning("reason step failed: %s", step.error)
+            return None
+        try:
+            self._validate_reason_result(result)
+        except ValueError as exc:
+            step.error = str(exc)
+            logger.warning("reason step failed: %s", exc)
+            return None
         # 结构化输出的text可能为空，使用assessment记录本轮任务推进判断
-        update_agent_result(runtime.context, result.assessment, response.token_usage)
+        update_agent_reasoning(runtime.context, result.assessment)
         return result
 
     def _validate_reason_result(self, result: ReasonStructuredOutput) -> None:
@@ -201,7 +259,6 @@ class ReasonNode(Node):
             "prompt": self._build_prompt(runtime.context, tool_informations, runtime_config.agent_mode),
             "user_input": self._build_input(state, observation_list), # 用户输入
             "history": self._build_history(state, runtime.context), # 历史记录
-            "conversation": state.conversation,
             "config": runtime_config.to_llm_runnable_config(),
         }
 
@@ -222,7 +279,7 @@ class ReasonNode(Node):
         """构建跨轮会话历史与本轮执行轨迹"""
         if context is None:
             raise ValueError("ReActContext is required for ReasonNode")
-        return build_react_history(state.conversation, state.trajectory)
+        return build_react_history(state.context)
 
     def _build_input(self, state: ReActState, observation_list: list[Observation]) -> dict:
         """构建输入"""
@@ -249,7 +306,9 @@ class ReasonNode(Node):
 
     def _router(self, state: ReActState, context: ReActContext | None, update_state: dict) -> Command:
         next_node = self._select_node(state, context, update_state)
-        update_state["conversation"] = state.conversation
+        update_state["steps"] = state.steps
+        update_state["current_step"] = state.current_step
+        update_state["context"] = state.context
         return Command(update=update_state, goto=next_node)
 
     def _select_node(self, state: ReActState, context: ReActContext | None, update_state: dict) -> Literal["action", "final"]:

@@ -4,6 +4,7 @@ from ..graph import BaseInput
 from ..model.agent import AgentResult
 from ..model.input import UserInput
 from ..model.workflow import WorkflowTask
+from ..model.step import Step
 
 
 class TurnStatus(str, Enum):
@@ -28,6 +29,9 @@ class AgentTurn:
         self._result = result
         self._status = TurnStatus.RUNNING
         self._workflow_tasks: dict[str, WorkflowTask] = {}
+
+        self._steps: list[Step] = []
+        self._current_step: Step | None = None
 
         self._pre_checkpoint_id: str | None = None
         self._latest_checkpoint_id: str | None = None
@@ -60,6 +64,21 @@ class AgentTurn:
     @property
     def tool_names(self) -> list[str]:
         return list(self._result.tool_names)
+
+    @property
+    def steps(self) -> list[Step]:
+        """本轮已提交的模型交互步骤快照"""
+        return [step.model_copy(deep=True) for step in self._steps]
+
+    @property
+    def current_step(self) -> Step | None:
+        """最近一次 Graph 快照中的当前步骤"""
+        return self._current_step.model_copy(deep=True) if self._current_step is not None else None
+
+    def update_steps(self, steps: list[Step], current_step: Step | None) -> None:
+        """承接 Graph 步骤快照，不与执行状态共享可变对象"""
+        self._steps = [step.model_copy(deep=True) for step in steps]
+        self._current_step = current_step.model_copy(deep=True) if current_step is not None else None
 
     @property
     def pre_checkpoint_id(self) -> str | None:

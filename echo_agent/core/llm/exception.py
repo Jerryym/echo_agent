@@ -51,3 +51,8 @@ class LLMResponseDecodeError(LLMException):
     - message 类型不支持
     """
     pass
+
+
+class LLMContextBudgetExceeded(LLMException):
+    """模型上下文预算超出异常"""
+    pass

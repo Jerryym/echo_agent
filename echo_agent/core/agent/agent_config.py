@@ -23,7 +23,7 @@ class AgentConfig(BaseModel):
         skill_list: 技能列表
         allowed_directories: 允许访问的目录（保留字段；不驱动 MCP）
         mcp_servers: MCP Server 连接配置（全部显式声明，无内置预设）
-        conversation_max_tokens: 对话最大词元数
+        context_window: 会话上下文窗口大小
     """
     id: str | None = None
 
@@ -40,7 +40,7 @@ class AgentConfig(BaseModel):
     allowed_directories: str | list[str] | None = None
     mcp_servers: list[MCPConnectionConfig] = Field(default_factory=list)
 
-    conversation_max_tokens: int = 256000
+    context_window: int = Field(default=256_000, gt=0)
 
     @field_validator("skill_list", mode="before")
     @classmethod

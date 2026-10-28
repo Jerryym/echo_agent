@@ -3,11 +3,17 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..model.agent import AgentResources
-from ..model.conversation import ConversationState
+from ..model.context import ContextState
 from ..model.hitl import HITLInteraction
 from ..model.input import UserInput
 from ..model.tool import ToolState
-from .context_ref import ActiveSkillsMap, AgentResultRef, SessionStateRef, WorkflowTasksMap
+from ..model.step import Step
+from .context_ref import (
+    ActiveSkillsMap,
+    AgentResultRef,
+    SessionStateRef,
+    WorkflowTasksMap,
+)
 
 
 class BaseInput(BaseModel):
@@ -15,9 +21,12 @@ class BaseInput(BaseModel):
     Graph 输入模型
 
     参数:
-        conversation: 会话状态
+        context: 上下文状态
     """
-    conversation: ConversationState = Field(default_factory=ConversationState)
+    steps: list[Step] = Field(default_factory=list)
+    current_step: Step | None = None
+
+    context: ContextState = Field(default_factory=ContextState)
 
 
 class BaseOutput(BaseModel):
@@ -25,9 +34,12 @@ class BaseOutput(BaseModel):
     Graph 输出模型
 
     参数:
-        conversation: 会话状态
+        context: 上下文状态
     """
-    conversation: ConversationState = Field(default_factory=ConversationState)
+    steps: list[Step] = Field(default_factory=list)
+    current_step: Step | None = None
+
+    context: ContextState = Field(default_factory=ContextState)
 
 
 class BaseState(BaseModel):
@@ -37,13 +49,18 @@ class BaseState(BaseModel):
     参数:
         input: 输入
         response: 响应
-        conversation: 会话状态
-        tool: 工具状态
-        hitl: HITL状态
+        context: 上下文状态
+        steps: 本轮模型交互步骤，按执行顺序保存
+        current_step: 当前正在进行的模型交互步骤
+        tool_state: 工具状态
+        hitl_state: HITL状态
     """
     input: UserInput | dict[str, Any] | str | None = None
     response: str | None = None
-    conversation: ConversationState = Field(default_factory=ConversationState)
+    context: ContextState = Field(default_factory=ContextState)
+
+    steps: list[Step] = Field(default_factory=list)
+    current_step: Step | None = None
 
     tool_state: ToolState = Field(default_factory=ToolState)
     hitl_state: HITLInteraction = Field(default_factory=HITLInteraction)

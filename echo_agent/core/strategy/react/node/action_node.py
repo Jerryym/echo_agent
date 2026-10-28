@@ -10,11 +10,13 @@ from .....utils import MessageAdapter, update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.agent import AgentMode
+from ....model.step import Step
 from ....model.hitl import HITLInput, HITLInteraction, HITLOutput, HITLType
-from ....model.message import Message
+from ....model.message import Message, append_messages
 from ....model.skill import SkillStatus
 from ....model.tool import ToolCall, ToolState
 from ....runtime.runtime_config import RuntimeConfig
+from ....runtime.context import ContextCompactor
 from ....tool import ToolDefinition, ToolGateWay, ToolRegistry, ToolType
 from ....tool.exception import ToolAuthorizationError
 from ....tool.utils import get_tool_definition, to_openai_tool_json_schema
@@ -39,6 +41,7 @@ class ActionNode(Node):
         self._llm_client = LLMClient(llm_config)
         self._prompt = PromptLoader.load("core/strategy/react/prompt/action.md")
         self._tool_gateway = ToolGateWay()
+        self._context_compactor = ContextCompactor(llm_config) # 上下文压缩器
 
     def run(self, state: ReActState, runtime: Runtime[ReActContext]) -> Command:
         logger.info("enter | step=%s retry=%s", state.step_count, state.retry_count)
@@ -50,23 +53,46 @@ class ActionNode(Node):
         if state.hitl_state.request or state.hitl_state.response:
             return self._handle_hitl(state, runtime.context, runtime_config.agent_mode, tool_registry)
 
-        # 获取指定会话
-        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
         # 生成tool_list
         bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode, tool_registry)
         if not bound_tools:
             return self._handle_blocked([], state)
         tool_list = to_openai_tool_json_schema(bound_tools)
+
+        # 判断是否需要压缩上下文
+        if self._context_compactor.should_compact(state.context):
+            compacted_context, token_usage = self._context_compactor.compress(state.context)
+            logger.info("context compacted | tokens=%s", token_usage.total_tokens)
+            state.context = compacted_context
+            update_agent_result(runtime.context, '上下文已压缩', token_usage) 
+
         # 调用llm
-        response = self._llm_client.invoke(
-            prompt=self._build_prompt(runtime.context, runtime_config.agent_mode, tool_list),
-            user_input={"next_action": state.next_action},
-            history=self._build_history(state, runtime.context),
-            tool_list=tool_list,
-            config=runtime_config.to_llm_runnable_config(),
-            # before_model=session.before_model,
-            conversation=state.conversation,
-        )
+        step = Step()
+        state.steps = [*state.steps, step]
+        state.current_step = step
+        try:
+            response = self._llm_client.invoke(
+                prompt=self._build_prompt(runtime.context, runtime_config.agent_mode, tool_list),
+                user_input={
+                    "assessment": state.assessment,
+                    "next_action": state.next_action,
+                },
+                history=self._build_history(state, runtime.context),
+                tool_list=tool_list,
+                config=runtime_config.to_llm_runnable_config(),
+            )
+            step.token_usage = response.token_usage.model_copy(deep=True)
+        except Exception as exc:
+            step.error = str(exc)
+            state.current_step = None
+            logger.warning("action step failed: %s", exc)
+            return self._router(state, {
+                "task_status": "failed",
+                "tool_state": ToolState(),
+            })
+        finally:
+            state.current_step = None
+
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, runtime.context, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
 
@@ -80,23 +106,46 @@ class ActionNode(Node):
         if state.hitl_state.request or state.hitl_state.response:
             return self._handle_hitl(state, runtime.context, runtime_config.agent_mode, tool_registry)
 
-        # 获取指定会话
-        session = Application.get_application().get_agent(runtime_config.agent_id).get_sesion(runtime_config.session_id)
         # 生成tool_list
         bound_tools = self._resolve_tools(state, runtime.context, runtime_config.agent_mode, tool_registry)
         if not bound_tools:
             return self._handle_blocked([], state)
         tool_list = to_openai_tool_json_schema(bound_tools)
+
+        # 判断是否需要压缩上下文
+        if self._context_compactor.should_compact(state.context):
+            compacted_context, token_usage = await self._context_compactor.acompress(state.context)
+            logger.info("context compacted | tokens=%s", token_usage.total_tokens)
+            state.context = compacted_context
+            update_agent_result(runtime.context, '上下文已压缩', token_usage) 
+
         # 调用llm
-        response = await self._llm_client.ainvoke(
-            prompt=self._build_prompt(runtime.context, runtime_config.agent_mode, tool_list),
-            user_input={"next_action": state.next_action},
-            history=self._build_history(state, runtime.context),
-            tool_list=tool_list,
-            config=runtime_config.to_llm_runnable_config(),
-            # abefore_model=session.abefore_model,
-            conversation=state.conversation,
-        )
+        step = Step()
+        state.steps = [*state.steps, step]
+        state.current_step = step
+        try:
+            response = await self._llm_client.ainvoke(
+                prompt=self._build_prompt(runtime.context, runtime_config.agent_mode, tool_list),
+                user_input={
+                    "assessment": state.assessment,
+                    "next_action": state.next_action,
+                },
+                history=self._build_history(state, runtime.context),
+                tool_list=tool_list,
+                config=runtime_config.to_llm_runnable_config(),
+            )
+            step.token_usage = response.token_usage.model_copy(deep=True)
+        except Exception as exc:
+            step.error = str(exc)
+            state.current_step = None
+            logger.warning("action step failed: %s", exc)
+            return self._router(state, {
+                "task_status": "failed",
+                "tool_state": ToolState(),
+            })
+        finally:
+            state.current_step = None
+       
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, runtime.context, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
 
@@ -153,7 +202,7 @@ class ActionNode(Node):
         """构建跨轮会话历史与本轮执行轨迹"""
         if context is None:
             raise ValueError("ReActContext is required for ActionNode")
-        return build_react_history(state.conversation, state.trajectory)
+        return build_react_history(state.context)
 
     def _authorize_tool(self, tool_definitions: list[ToolDefinition], tool_call: ToolCall, mode: AgentMode) -> bool:
         """检查工具权限"""
@@ -352,9 +401,17 @@ class ActionNode(Node):
 
 # region: Router Functions
     def _router(self, state: ReActState, update_state: dict) -> Command:
+        # 轨迹增量同时写入工作消息；完整轨迹不参与历史重建。
+        messages = update_state.get("trajectory")
+        if messages:
+            context = state.context.model_copy(deep=True)
+            context.messages = append_messages(context.messages, messages)
+            state.context = context
         next_node = self._select_node(state, update_state)
         logger.info("route action -> %s | status=%s", next_node, update_state.get("task_status", state.task_status))
-        update_state["conversation"] = state.conversation
+        update_state["steps"] = state.steps
+        update_state["current_step"] = state.current_step
+        update_state["context"] = state.context
         return Command(update=update_state, goto=next_node)
 
     def _select_node(self, state: ReActState, update_state: dict) -> Literal["HITL", "tool", "reason"]:
