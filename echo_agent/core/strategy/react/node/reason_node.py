@@ -13,7 +13,6 @@ from ....llm import LLMClient, LLMConfig
 from ....model.agent import AgentMode
 from ....model.step import Step
 from ....model.message import Message
-from ....model.tool import ToolState
 from ....runtime.runtime_config import RuntimeConfig
 from ....runtime.context import ContextCompactor
 from ..observation import Observation, ObservationBuilder
@@ -225,11 +224,13 @@ class ReasonNode(Node):
         observations = []
 
         if state.task_status == "in_progress":
-            for result_item in state.tool_state.tool_results:
-                observation = ObservationBuilder.build(result_item)
+            for tool_state in state.tool_states.values():
+                if tool_state.tool_result is None:
+                    continue
+                observation = ObservationBuilder.build(tool_state.tool_result)
                 observations.append(observation)
         elif state.task_status == "invalid_tools": # 非法工具
-            invalid_tools = [tool.name for tool in state.tool_state.tool_calls]
+            invalid_tools = [tool_state.tool_call.name for tool_state in state.tool_states.values()]
             observation = ObservationBuilder.build_from_task_status(state.task_status, invalid_tools)
             observations.append(observation)
         elif state.task_status == "no_tool_calls": # 没有工具调用
@@ -300,7 +301,7 @@ class ReasonNode(Node):
 
         # 清空Tool State
         if state.task_status == "invalid_tools" or response.task_status == "in_progress":
-            result["tool_state"] = ToolState(tool_calls=[], tool_results=[])
+            result["tool_states"] = {}
 
         return self._router(state, context, result)
 

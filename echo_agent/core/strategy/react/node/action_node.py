@@ -10,7 +10,7 @@ from .....utils import MessageAdapter, update_agent_result
 from ....graph import Node
 from ....llm import LLMClient, LLMConfig
 from ....model.agent import AgentMode
-from ....model.step import Step
+from ....model.step import Step, StepStatus
 from ....model.hitl import HITLInput, HITLInteraction, HITLOutput, HITLType
 from ....model.message import Message, append_messages
 from ....model.skill import SkillStatus
@@ -83,15 +83,13 @@ class ActionNode(Node):
             )
             step.token_usage = response.token_usage.model_copy(deep=True)
         except Exception as exc:
+            step.status = StepStatus.FAILED
             step.error = str(exc)
-            state.current_step = None
             logger.warning("action step failed: %s", exc)
             return self._router(state, {
                 "task_status": "failed",
-                "tool_state": ToolState(),
+                "tool_states": {},
             })
-        finally:
-            state.current_step = None
 
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, runtime.context, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
@@ -136,15 +134,13 @@ class ActionNode(Node):
             )
             step.token_usage = response.token_usage.model_copy(deep=True)
         except Exception as exc:
+            step.status = StepStatus.FAILED
             step.error = str(exc)
-            state.current_step = None
             logger.warning("action step failed: %s", exc)
             return self._router(state, {
                 "task_status": "failed",
-                "tool_state": ToolState(),
+                "tool_states": {},
             })
-        finally:
-            state.current_step = None
        
         update_agent_result(runtime.context, response.text, response.token_usage)
         return self._route_after_tool_selection(state, runtime.context, runtime_config.agent_mode, tool_registry, response.tool_calls, bound_tools)
@@ -152,6 +148,17 @@ class ActionNode(Node):
     def _route_after_tool_selection(self, state: ReActState, context: ReActContext, agent_mode: AgentMode, tool_registry: ToolRegistry, tool_calls: list[ToolCall] | None, bound_tools: list[ToolDefinition]) -> Command:
         if not tool_calls:
             return self._handle_no_tool_calls(state)
+
+        # 在任何参数校验、审批和字典构造前拒绝重复调用 ID。
+        try:
+            self._build_tool_states(tool_calls)
+        except ValueError as exc:
+            logger.warning("invalid tool call IDs: %s", exc)
+            self._update_current_step(state, StepStatus.FAILED, tool_calls=[], error=str(exc))
+            return self._router(state, {
+                "task_status": "invalid_tools",
+                "tool_states": {},
+            })
 
         # 判断是否存在非法工具
         invalid_names = self._get_invalid_tools(tool_calls, bound_tools)
@@ -218,39 +225,51 @@ class ActionNode(Node):
     def _handle_hitl(self, state: ReActState, context: ReActContext, agent_mode: AgentMode, tool_registry: ToolRegistry) -> Command:
         """ 处理 HITL 恢复场景"""
         hitl_state = state.hitl_state
-        if hitl_state.response:
-            # HITL 被取消
-            if hitl_state.response.status == "cancelled":
-                return self._router(state, {
-                    "task_status": "cancelled",
-                    "tool_state": ToolState(tool_calls=[]),
-                    "hitl_state": HITLInteraction(request=None, response=None),
-                })
+        # HITL 响应为空
+        if hitl_state.response is None or state.current_step is None:
+            logger.warning("tool_calls present without hitl response; refuse execution | tools=%s", [item.tool_call.name for item in state.tool_states.values()])
+            # 更新运行步状态
+            self._update_current_step(state, StepStatus.FAILED, error="HITL response or current step not found.")
+            return self._router(state, {
+                "task_status": "failed",
+                "tool_states": {},
+                "hitl_state": HITLInteraction(request=None, response=None),
+            })
 
-            if hitl_state.request:
-                if hitl_state.request.type == HITLType.INPUT:# INPUT 类型
-                    return self._handle_hitl_input(state, context, agent_mode, tool_registry, hitl_state)
-                if hitl_state.request.type == HITLType.APPROVAL:# APPROVAL 类型
-                    return self._handle_hitl_approval(state, context, agent_mode, tool_registry, hitl_state)
+        # HITL 被取消
+        if hitl_state.response.status == "cancelled":
+            # 更新运行步状态
+            self._update_current_step(state, StepStatus.CANCELLED)
+            return self._router(state, {
+                "task_status": "cancelled",
+                "tool_states": {},
+                "hitl_state": HITLInteraction(request=None, response=None),
+            })
 
-        logger.warning(
-            "tool_calls present without hitl response; refuse execution | tools=%s",
-            [tc.name for tc in state.tool_state.tool_calls],
-        )
+        # 处理 HITL 请求
+        if hitl_state.request:
+            if hitl_state.request.type == HITLType.INPUT: # INPUT 类型
+                return self._handle_hitl_input(state, context, agent_mode, tool_registry, hitl_state)
+            if hitl_state.request.type == HITLType.APPROVAL: # APPROVAL 类型
+                return self._handle_hitl_approval(state, context, agent_mode, tool_registry, hitl_state)
+
+        # 更新运行步状态
+        self._update_current_step(state, StepStatus.FAILED, error="HITL request missing or unsupported.")
         return self._router(state, {
             "task_status": "failed",
-            "tool_state": ToolState(tool_calls=[], tool_results=[]),
+            "tool_states": {},
             "hitl_state": HITLInteraction(request=None, response=None),
         })
 
     def _handle_hitl_input(self, state: ReActState, context: ReActContext, agent_mode: AgentMode, tool_registry: ToolRegistry, hitl_interaction: HITLInteraction) -> Command:
         """处理 HITL INPUT 类型"""
-        tool_calls = self._fill_tool_calls(state.tool_state.tool_calls, hitl_interaction.response)
-        
-        # 二次参数校验
+        # 填充工具参数
+        tool_calls = self._fill_tool_calls(self._get_tool_calls(state.tool_states), hitl_interaction.response)
+        # 参数校验
         missing_map = self._get_missing_parameters(tool_registry, tool_calls)
         if missing_map:
             return self._handle_missing_parameters(state, tool_registry, tool_calls, missing_map)
+        
         # 参数完整，清理 missing_args
         tool_calls = self._mark_missing_parameters(tool_calls, {})
         # 判断是否需要人工审核
@@ -263,17 +282,20 @@ class ActionNode(Node):
         """处理 HITL APPROVAL 类型"""
         approved = (hitl_interaction.response.result or {}).get("approved")
         if approved is not True:
+            # 更新运行步状态
+            self._update_current_step(state, StepStatus.CANCELLED)
             return self._router(state, {
                 "task_status": "cancelled",
-                "tool_state": ToolState(tool_calls=[]),
+                "tool_states": {},
                 "hitl_state": HITLInteraction(request=None, response=None),
             })
-        
-        tool_calls = state.tool_state.tool_calls
+        tool_calls = self._get_tool_calls(state.tool_states)
         return self._handle_ready(tool_calls, state, context, tool_registry, clear_hitl=True)
 
     def _handle_no_tool_calls(self, state: ReActState) -> Command:
         """处理没有工具调用的情况"""
+        # 更新运行步状态
+        self._update_current_step(state, StepStatus.FAILED, tool_calls=[], error="No tool calls selected.")
         return self._router(state, {
             "task_status": "no_tool_calls", # 没有工具调用
             "retry_count": state.retry_count + 1,
@@ -281,17 +303,21 @@ class ActionNode(Node):
 
     def _handle_invalid_tools(self, invalid_tools: list[ToolCall], state: ReActState) -> Command:
         """处理非法工具的情况"""
+        # 更新运行步状态
+        self._update_current_step(state, StepStatus.FAILED, tool_calls=invalid_tools, error="Invalid tools selected.")
         return self._router(state, {
             "task_status": "invalid_tools", # 非法工具
-            "tool_state": ToolState(tool_calls=invalid_tools), # 传入非法工具
+            "tool_states": self._build_tool_states(invalid_tools), # 传入非法工具
             "retry_count": state.retry_count + 1,
         })
 
     def _handle_blocked(self, tool_calls: list[ToolCall], state: ReActState) -> Command:
         """处理阻塞状态"""
+        # 更新运行步状态
+        self._update_current_step(state, StepStatus.FAILED, tool_calls=tool_calls, error="Blocked by tool authorization.")
         return self._router(state, {
             "task_status": "blocked", # 工具权限验证失败
-            "tool_state": ToolState(tool_calls=tool_calls), # 传入阻塞工具
+            "tool_states": self._build_tool_states(tool_calls), # 传入阻塞工具
             "retry_count": state.retry_count + 1,
         })
 
@@ -314,20 +340,24 @@ class ActionNode(Node):
                 context.max_steps,
                 [tool_call.name for tool_call in tool_calls],
             )
-            # 禁止执行，交由 Reason 根据 failed 状态路由 Final。
+            # 禁止执行，交由 Reason 根据 failed 状态路由 Final
+            self._update_current_step(state, StepStatus.FAILED, tool_calls=tool_calls, error="Action step budget exhausted.")
             update_state: dict[str, Any] = {
                 "task_status": "failed",
-                "tool_state": ToolState(tool_calls=[], tool_results=[]),
+                "tool_states": {},
             }
             # 清除 HITL 状态
             if clear_hitl:
                 update_state["hitl_state"] = HITLInteraction(request=None, response=None)
             return self._router(state, update_state)
 
+        # 更新运行步状态
+        self._update_current_step(state, StepStatus.PENDING, tool_calls=tool_calls)
+        # 更新状态
         update_state = {
             "task_status": "in_progress",
             "step_count": next_step_count,
-            "tool_state": ToolState(tool_calls=tool_calls),
+            "tool_states": self._build_tool_states(tool_calls),
             "trajectory": [MessageAdapter.to_tool_call_message(tool_calls)],
         }
         # 清除 HITL 状态
@@ -362,13 +392,14 @@ class ActionNode(Node):
             },
         )
 
+        # 更新运行步状态
+        self._update_current_step(state, StepStatus.WAITING, tool_calls=updated_tool_calls)
         # 更新状态
         update_state = {
             "task_status": "human_in_the_loop",
-            "tool_state": ToolState(tool_calls=updated_tool_calls),
+            "tool_states": self._build_tool_states(updated_tool_calls),
             "hitl_state": HITLInteraction(request=request, response=None),
         }
-
         return self._router(state, update_state)
 
     def _handle_approval(self, state: ReActState, tool_calls: list[ToolCall]) -> Command:
@@ -390,14 +421,43 @@ class ActionNode(Node):
             },
         )
 
+        # 更新运行步状态
+        self._update_current_step(state, StepStatus.WAITING, tool_calls=tool_calls)
         # 更新状态
         update_state = {
             "task_status": "human_in_the_loop",
-            "tool_state": ToolState(tool_calls=tool_calls),
+            "tool_states": self._build_tool_states(tool_calls),
             "hitl_state": HITLInteraction(request=request, response=None),
         }
-
         return self._router(state, update_state)
+
+    @staticmethod
+    def _build_tool_states(tool_calls: list[ToolCall]) -> dict[str, ToolState]:
+        tool_states: dict[str, ToolState] = {}
+        for tool_call in tool_calls:
+            call_id = tool_call.tool_call_id
+            if call_id in tool_states:
+                raise ValueError(f"Duplicate tool_call_id: {call_id}")
+            tool_states[call_id] = ToolState(tool_call=tool_call.model_copy(deep=True))
+        return tool_states
+
+    @staticmethod
+    def _get_tool_calls(tool_states: dict[str, ToolState]) -> list[ToolCall]:
+        return [tool_state.tool_call for tool_state in tool_states.values()]
+
+    @staticmethod
+    def _update_current_step(state: ReActState, status: StepStatus, tool_calls: list[ToolCall] | None = None, error: str | None = None) -> None:
+        """更新当前运行步"""
+        step = state.current_step
+        if step is None:
+            return
+
+        step.status = status
+        if tool_calls is not None:
+            step.content_type = "tool"
+            step.content = ActionNode._build_tool_states(tool_calls)
+        if error is not None:
+            step.error = error
 
 # region: Router Functions
     def _router(self, state: ReActState, update_state: dict) -> Command:
@@ -409,6 +469,17 @@ class ActionNode(Node):
             state.context = context
         next_node = self._select_node(state, update_state)
         logger.info("route action -> %s | status=%s", next_node, update_state.get("task_status", state.task_status))
+        
+        step = state.current_step
+        if step is not None:
+            snapshot = step.model_copy(deep=True)
+            if any(item.id == step.id for item in state.steps):
+                state.steps = [snapshot if item.id == step.id else item for item in state.steps]
+            else:
+                state.steps = [*state.steps, snapshot]
+            if step.status in (StepStatus.COMPLETED, StepStatus.FAILED, StepStatus.CANCELLED):
+                state.current_step = None
+        
         update_state["steps"] = state.steps
         update_state["current_step"] = state.current_step
         update_state["context"] = state.context

@@ -52,7 +52,7 @@ class BaseState(BaseModel):
         context: 上下文状态
         steps: 本轮模型交互步骤，按执行顺序保存
         current_step: 当前正在进行的模型交互步骤
-        tool_state: 工具状态
+        tool_states: 工具状态
         hitl_state: HITL状态
     """
     input: UserInput | dict[str, Any] | str | None = None
@@ -62,7 +62,7 @@ class BaseState(BaseModel):
     steps: list[Step] = Field(default_factory=list)
     current_step: Step | None = None
 
-    tool_state: ToolState = Field(default_factory=ToolState)
+    tool_states: dict[str, ToolState] = Field(default_factory=dict)
     hitl_state: HITLInteraction = Field(default_factory=HITLInteraction)
 
 

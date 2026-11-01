@@ -97,8 +97,8 @@ class ToolState(BaseModel):
     工具状态
 
     Args:
-        tool_calls: 工具调用列表
-        tool_results: 工具执行结果列表
+        tool_call: 工具调用
+        tool_result: 工具执行结果
     """
-    tool_calls: list[ToolCall] = Field(default_factory=list)
-    tool_results: list[ToolResultItem] = Field(default_factory=list)
+    tool_call: ToolCall
+    tool_result: ToolResultItem | None = None
