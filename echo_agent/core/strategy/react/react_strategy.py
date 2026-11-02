@@ -25,8 +25,6 @@ class ReActStrategy(BaseStrategy):
         self._llm_config = llm_config
         self._tool_registry = tool_registry
         self._tool_executor = ToolExecutor(self._tool_registry)
-        self._max_steps = 20
-        self._retry_max_count = 3
 
     def build(self) -> SubGraph:
         """
@@ -117,8 +115,6 @@ class ReActStrategy(BaseStrategy):
             resources=context.resources,
             active_skills=active_skills,
             agent_result=context.agent_result,
-            max_steps=self._max_steps,
-            retry_max_count=self._retry_max_count,
         )
 
         if react_context.session_state is not context.session_state:

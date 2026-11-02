@@ -1,12 +1,12 @@
 from langgraph.runtime import Runtime
 
 from ...common import format_value, get_logger
-from ...utils import update_agent_tool
+from ...utils import canonical_json, sha256_hex, update_agent_tool
 from ..graph import BaseContext, BaseState, Node
-from ..model.session import SessionItemType, SessionItem
 from ..model.message import Message, Role, append_messages
+from ..model.session import SessionItem, SessionItemType
+from ..model.step import StepStatus, Step
 from ..model.tool import ToolResultItem, ToolState
-from ..model.step import StepStatus
 from .tool_executor import ToolExecutor
 from .tool_result_store import ToolResultStore
 from .utils import format_tool_content
@@ -87,6 +87,7 @@ class ToolNode(Node):
             step.status = step_status
             step.content_type = "tool"
             step.content = tool_states
+            self._record_tool_fingerprints(step, tool_states)
 
             snapshot = step.model_copy(deep=True)
             if any(item.id == step.id for item in state.steps):
@@ -155,6 +156,25 @@ class ToolNode(Node):
             for item in result_items
         }
         return tool_states
+
+    def _record_tool_fingerprints(self, step: Step, tool_states: dict[str, ToolState]) -> None:
+        fingerprints: dict[str, str] = {}
+        for tool_call_id, tool_state in tool_states.items():
+            item = tool_state.tool_result
+            if item is None or not item.success or item.storage != "memory" or item.result is None:
+                continue
+            try:
+                if isinstance(item.result, str):
+                    digest = sha256_hex(item.result)
+                elif isinstance(item.result, dict):
+                    digest = sha256_hex(item.result)
+                else:
+                    digest = sha256_hex(canonical_json(item.result))
+            except (TypeError, ValueError):
+                continue
+            fingerprints[tool_call_id] = digest
+        if fingerprints:
+            step.fingerprint = fingerprints
 
     @staticmethod
     def _format_external_result_content(result_item: ToolResultItem) -> str:

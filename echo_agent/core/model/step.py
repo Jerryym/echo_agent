@@ -27,6 +27,7 @@ class Step(BaseModel):
         status: 步骤状态
         content_type: 步骤内容类型
         content: 步骤内容, 支持：文本、JSON、工具状态
+        fingerprint：
         token_usage: 步骤使用的Token数量
         error: 步骤错误信息
     """
@@ -34,6 +35,7 @@ class Step(BaseModel):
     status: StepStatus = Field(default=StepStatus.RUNNING)
     content_type: Literal["text", "json", "tool"] | None = None
     content: str | dict[str, JsonValue] | dict[str, ToolState] | None = None
+    fingerprint: str | dict[str, str] | None = None
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
     error: str | None = None
 

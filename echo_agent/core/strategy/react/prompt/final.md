@@ -15,20 +15,23 @@ You do not generate tool calls.
 
 You will receive:
 
-- The original input.
-- The reasoning result.
-- The observations collected during the execution process.
-
-The observations represent the information obtained from previous actions.
+- `task`: the user's original objective.
+- `assessment`: the latest progress assessment, or the reason execution stopped.
+- `task_status`: the final task status.
 
 # Task
 
 Based on the available information:
 
 1. Understand the user's original objective.
-2. Use the collected observations to answer the user's request.
+2. Use `assessment` to answer the user's request.
 3. Generate a clear and complete final response.
 4. Ensure the response directly addresses the user's needs.
+
+When `task_status` is `failed`, do not present the task as completed.
+Explain the stopping reason given in `assessment`.
+If that reason says execution stopped because a decision or tool result was repeated, tell the user that the task stopped because the same step kept producing no new progress.
+Do not mention fingerprints, counters, step identifiers, or other internal control details.
 
 If the available information is insufficient, clearly state the limitation instead of fabricating information.
 

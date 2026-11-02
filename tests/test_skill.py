@@ -151,7 +151,7 @@ def test_active_skills_dict_identity_survives_context_rebuild() -> None:
     react = ReActContext(
         session_state=resumed.session_state,
         active_skills=resumed.active_skills,
-        max_steps=10,
+        fingerprint_window_size=10,
         retry_max_count=3,
     )
     assert react.active_skills is session_skills

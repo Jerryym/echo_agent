@@ -45,7 +45,9 @@ class ReActState(BaseState):
         observations: 观察
         trajectory: 轨迹列表
         step_count: 步数
-        retry_count: 当前 ReAct 执行过程中，因异常（no_tool_calls、invalid_tools）导致重新尝试的次数。
+        retry_count: 当前 ReAct 执行过程中，因异常（no_tool_calls、invalid_tools）导致重新尝试的次数
+        duplicate_fingerprint_count：记录重复指纹评估单元的累计次数
+        duplicate_fingerprint_clear_count：记录连续正常指纹评估单元的次数
     """
     task: StrategyTask = Field(default_factory=StrategyTask)
     assessment: str = ""
@@ -63,8 +65,11 @@ class ReActState(BaseState):
     ] = "in_progress"
     observations: Annotated[list[Observation], append_observations] = Field(default_factory=list)
     trajectory: Annotated[list[Message], append_messages] = Field(default_factory=list)
+
     step_count: int = Field(default=0)
     retry_count: int = Field(default=0)
+    duplicate_fingerprint_count: int = Field(default=0)
+    duplicate_fingerprint_clear_count: int = Field(default=0)
 
 
 class ReActOutput(BaseOutput):
@@ -84,11 +89,15 @@ class ReActContext(BaseContext):
     ReAct 上下文模型
 
     参数:
-        max_steps: 最大推理步数
+        fingerprint_window_size: 指纹评估窗口大小
         retry_max_count: 最大重试次数
+        duplicate_fingerprint_max_count: 最大重复指纹评估单元次数
+        duplicate_fingerprint_reset_threshold: 连续正常指纹评估单元次数阈值
     """
-    max_steps: int = Field(default=20)
+    fingerprint_window_size: int = Field(default=20)
     retry_max_count: int = Field(default=3)
+    duplicate_fingerprint_max_count: int = Field(default=3, gt=0)
+    duplicate_fingerprint_reset_threshold: int = Field(default=5, gt=0)
 
 
 # ---------------------------------------------------------------------------
