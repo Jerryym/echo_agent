@@ -465,8 +465,8 @@ class Agent:
         tool_result_analyse = (create_read_tool_result_tool(workflow))
         # knowledge_base_query = create_knowledge_base_query_tool()
 
-        self._tool_registry.register(to_tool_definition(load_skill, tool_type=ToolType.WORKFLOW), load_skill)
-        self._tool_registry.register(to_tool_definition(read_skill, tool_type=ToolType.WORKFLOW), read_skill)
+        self._tool_registry.register(to_tool_definition(load_skill), load_skill)
+        self._tool_registry.register(to_tool_definition(read_skill), read_skill)
         self._tool_registry.register(to_tool_definition(tool_result_analyse, tool_type=ToolType.WORKFLOW), tool_result_analyse)
         # self._tool_registry.register(to_tool_definition(knowledge_base_query), knowledge_base_query)
 
