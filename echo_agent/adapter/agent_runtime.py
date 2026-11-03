@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import aclosing
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, TypeAlias
 
@@ -58,6 +59,7 @@ class AgentRuntime:
         self._agent_map: dict[str, Agent] = {}
         self._factory = factory
         self._max_agents = max_agents
+        self._pending_creates = 0
         # (agent_id, session_id) → 当轮 ActiveRun
         self._active_runs: dict[tuple[str, str], _ActiveRun] = {}
         # 串行化 Cancel / 开跑，避免重叠请求撞 session already running
@@ -80,39 +82,43 @@ class AgentRuntime:
         """
         创建智能体
         """
-        if self._max_agents is not None and len(self._agent_map) >= self._max_agents:
+        if self._max_agents is not None and len(self._agent_map) + self._pending_creates >= self._max_agents:
             raise AgentLimitExceededError(
                 f"max_agents limit reached: {self._max_agents}"
             )
-        result = self._factory(config, runtime_options)
-        agent = await result if inspect.isawaitable(result) else result
-        if not isinstance(agent, Agent):
-            raise TypeError(
-                f"agent factory must return Agent, got {type(agent).__name__}"
-            )
-        if getattr(agent, "_compiled_graph", None) is None:
-            raise TypeError(
-                "agent factory must call Agent.compile() before returning"
-            )
-        agent_id = (agent.agent_id or "").strip()
-        if not agent_id:
-            raise TypeError("agent factory must set Agent.agent_id")
-        if agent_id in self._agent_map:
-            raise ValueError(f"agent already exists: {agent_id}")
-        self._agent_map[agent_id] = agent
-        return agent_id
+        self._pending_creates += 1
+        try:
+            result = self._factory(config, runtime_options)
+            agent = await result if inspect.isawaitable(result) else result
+            if not isinstance(agent, Agent):
+                raise TypeError(
+                    f"agent factory must return Agent, got {type(agent).__name__}"
+                )
+            if getattr(agent, "_compiled_graph", None) is None:
+                raise TypeError(
+                    "agent factory must call Agent.compile() before returning"
+                )
+            agent_id = (agent.agent_id or "").strip()
+            if not agent_id:
+                raise TypeError("agent factory must set Agent.agent_id")
+            if agent_id in self._agent_map:
+                raise ValueError(f"agent already exists: {agent_id}")
+            self._agent_map[agent_id] = agent
+            return agent_id
+        finally:
+            self._pending_creates -= 1
 
     async def delete_agent(self, agent_id: str) -> None:
         """移除并丢弃 agent 实例（宿主业务结束时调用）。"""
         agent_id = (agent_id or "").strip()
         if not agent_id:
             raise ValueError("agent_id is required")
-        if agent_id not in self._agent_map:
-            raise KeyError(f"agent not found: {agent_id}")
-        # 先中止该 agent 上未结束的当轮，再移除实例
-        for aid, sid in [k for k in list(self._active_runs) if k[0] == agent_id]:
-            await self.cancel(aid, sid)
-        agent = self._agent_map.pop(agent_id)
+        async with self._schedule_lock:
+            agent = self.get_agent(agent_id)
+            # 与任务登记共用锁，取消期间不允许新任务进入。
+            for aid, sid in [k for k in self._active_runs if k[0] == agent_id]:
+                await self._cancel_locked(agent, aid, sid)
+            self._agent_map.pop(agent_id)
         close = getattr(agent, "aclose", None) or getattr(agent, "close", None)
         if close is None:
             return
@@ -217,8 +223,9 @@ class AgentRuntime:
                 # 取消路径下 finally 内 await 可能再次被 cancel；用 nowait 保证收尾
                 queue.put_nowait(_STREAM_DONE)
 
-        async for event in self._run_stream(agent_id, session_id, agent, _producer):
-            yield event
+        async with aclosing(self._run_stream(agent_id, session_id, agent, _producer)) as events:
+            async for event in events:
+                yield event
 
     async def resume(
         self,
@@ -270,8 +277,9 @@ class AgentRuntime:
             finally:
                 queue.put_nowait(_STREAM_DONE)
 
-        async for event in self._run_stream(agent_id, session_id, agent, _producer):
-            yield event
+        async with aclosing(self._run_stream(agent_id, session_id, agent, _producer)) as events:
+            async for event in events:
+                yield event
 
     async def _run_unary(
         self,
@@ -282,6 +290,8 @@ class AgentRuntime:
     ) -> AgentInvokeResult:
         """将单次 ainvoke/aresume 放入 Task 并登记，供 Cancel 取消。"""
         async with self._schedule_lock:
+            if self.get_agent(agent_id) is not agent:
+                raise KeyError(f"agent replaced: {agent_id}")
             await self._cancel_locked(agent, agent_id, session_id)
             pre_checkpoint_id = self._read_pre_checkpoint_id(agent, session_id)
             task = asyncio.create_task(runner())
@@ -303,9 +313,11 @@ class AgentRuntime:
         session_id: str,
         agent: Agent,
         producer: Callable[[asyncio.Queue[Any]], Awaitable[None]],
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> AsyncGenerator[AgentEvent, None]:
         """将 astream 消费放入 Task + Queue，供 Cancel 取消生产者。"""
         async with self._schedule_lock:
+            if self.get_agent(agent_id) is not agent:
+                raise KeyError(f"agent replaced: {agent_id}")
             await self._cancel_locked(agent, agent_id, session_id)
             pre_checkpoint_id = self._read_pre_checkpoint_id(agent, session_id)
             queue: asyncio.Queue[Any] = asyncio.Queue()

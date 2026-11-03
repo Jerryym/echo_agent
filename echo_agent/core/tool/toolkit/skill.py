@@ -112,7 +112,7 @@ async def _aread_http_resource(package: SkillPackage, relative: str, http_reques
 
 
 def create_load_skill_tool(skill_manager: SkillManager):
-    """创建绑定到指定 SkillManager 的 load_skill 工具。"""
+    """创建绑定到指定 SkillManager 的 load_skill 工具"""
 
     @tool
     async def load_skill(name: str) -> str:

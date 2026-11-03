@@ -149,7 +149,7 @@ class ActionNode(Node):
         if not tool_calls:
             return self._handle_no_tool_calls(state)
 
-        # 在任何参数校验、审批和字典构造前拒绝重复调用 ID。
+        # 在任何参数校验、审批和字典构造前拒绝重复调用 ID
         try:
             self._build_tool_states(tool_calls)
         except ValueError as exc:
@@ -191,7 +191,7 @@ class ActionNode(Node):
         if self._need_approval(tool_registry, tool_calls):
             return self._handle_approval(state, tool_calls)
 
-        return self._handle_ready(tool_calls, state, tool_registry)
+        return self._handle_ready(tool_calls, state)
 
     def _build_prompt(self, context: ReActContext, agent_mode: AgentMode, tool_list: list[Any]) -> str:
         """构建系统提示词"""
@@ -276,7 +276,7 @@ class ActionNode(Node):
         if self._need_approval(tool_registry, tool_calls):
             return self._handle_approval(state, tool_calls)
         
-        return self._handle_ready(tool_calls, state, tool_registry, clear_hitl=True)
+        return self._handle_ready(tool_calls, state, clear_hitl=True)
 
     def _handle_hitl_approval(self, state: ReActState, context: ReActContext, agent_mode: AgentMode, tool_registry: ToolRegistry, hitl_interaction: HITLInteraction) -> Command:
         """处理 HITL APPROVAL 类型"""
@@ -290,7 +290,7 @@ class ActionNode(Node):
                 "hitl_state": HITLInteraction(request=None, response=None),
             })
         tool_calls = self._get_tool_calls(state.tool_states)
-        return self._handle_ready(tool_calls, state, tool_registry, clear_hitl=True)
+        return self._handle_ready(tool_calls, state, clear_hitl=True)
 
     def _handle_no_tool_calls(self, state: ReActState) -> Command:
         """处理没有工具调用的情况"""
@@ -321,24 +321,17 @@ class ActionNode(Node):
             "retry_count": state.retry_count + 1,
         })
 
-    def _handle_ready(self, tool_calls: list[ToolCall], state: ReActState, tool_registry: ToolRegistry, clear_hitl: bool = False) -> Command:
+    def _handle_ready(self, tool_calls: list[ToolCall], state: ReActState, clear_hitl: bool = False) -> Command:
         """统一的工具执行入口；在进入 ToolNode 前检查并更新 Step"""
         if not tool_calls:
             return self._handle_no_tool_calls(state)
-        try:
-            increment = self._get_step_increment(tool_calls, tool_registry)
-        except ValueError as exc:
-            logger.warning("tool selection invalid before execution: %s", exc)
-            return self._handle_invalid_tools(tool_calls, state)
-
-        next_step_count = state.step_count + increment
 
         # 更新运行步状态
         self._update_current_step(state, StepStatus.PENDING, tool_calls=tool_calls)
         # 更新状态
         update_state = {
             "task_status": "in_progress",
-            "step_count": next_step_count,
+            "step_count": state.step_count + 1,
             "tool_states": self._build_tool_states(tool_calls),
             "trajectory": [MessageAdapter.to_tool_call_message(tool_calls)],
         }
@@ -581,7 +574,7 @@ class ActionNode(Node):
         for skill in context.active_skills.values():
             if skill.status != SkillStatus.LOADED:
                 continue
-            allowed_tools= skill.package.frontmatter.allowed_tools
+            allowed_tools = skill.package.frontmatter.allowed_tools
             if allowed_tools:
                 tool_names.update(allowed_tools)
 

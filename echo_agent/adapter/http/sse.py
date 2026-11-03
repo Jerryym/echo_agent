@@ -24,24 +24,6 @@ def format_sse(event: AgentEvent) -> str:
     return f"event: {event.type}\ndata: {data}\n\n"
 
 
-async def ensure_cancelled(
-    runtime: AgentRuntime,
-    agent_id: str,
-    session_id: str,
-) -> None:
-    """断流 / CancelledError 时确保当轮 Task 取消（幂等）。"""
-    if not agent_id or not session_id:
-        return
-    try:
-        await runtime.cancel(agent_id, session_id)
-    except Exception:  # noqa: BLE001
-        logger.exception(
-            "ensure cancel failed agent_id=%s session_id=%s",
-            agent_id,
-            session_id,
-        )
-
-
 async def iter_sse(
     request: Request,
     runtime: AgentRuntime,
@@ -62,13 +44,11 @@ async def iter_sse(
     try:
         async for event in events:
             if await request.is_disconnected():
-                await ensure_cancelled(runtime, agent_id, session_id)
                 return
             yield format_sse(event)
             if event.type == "error":
                 return
     except asyncio.CancelledError:
-        await ensure_cancelled(runtime, agent_id, session_id)
         if not await request.is_disconnected():
             yield format_sse(AgentEvent(type="cancelled", data={}))
         return
@@ -95,3 +75,8 @@ async def iter_sse(
                 )
             )
         return
+    finally:
+        # 关闭本次流，由 Runtime 按 task 身份清理，避免取消替代它的新请求。
+        close = getattr(events, "aclose", None)
+        if close is not None:
+            await close()

@@ -155,4 +155,4 @@ def test_stream_cancelled_error_emits_cancelled_event():
     events = _parse_sse(resp.text)
     assert events[0][0] == "message"
     assert events[-1] == ("cancelled", {})
-    runtime.cancel.assert_awaited()
+    runtime.cancel.assert_not_awaited()
